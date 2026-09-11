@@ -1,0 +1,10 @@
+/build*/
+/.cache/
+/.DS_Store
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.c2paseq/
+*.pem
+*.key
+*.p12

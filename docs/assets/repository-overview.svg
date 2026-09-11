@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">C2PA Creative Sequencer workflow</title>
+  <desc id="desc">Audio stems move through arrangement and restrained VST processing into a stereo WAV. A separate provenance record adds ingredients and actions before signing and post-export verification.</desc>
+  <rect width="1200" height="520" fill="#F5F0E6"/>
+  <style>
+    .kicker { font: 600 15px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; letter-spacing: 2px; fill: #5A544C; }
+    .heading { font: 700 27px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #171716; }
+    .stage { font: 700 17px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #171716; }
+    .body { font: 15px Georgia, serif; fill: #35312D; }
+    .mono { font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #171716; }
+    .kicker-accent { font: 600 15px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; letter-spacing: 2px; fill: #F2C14E; }
+    .stage-light { font: 700 17px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #F5F0E6; }
+    .body-light { font: 15px Georgia, serif; fill: #D8D0C4; }
+  </style>
+  <text x="56" y="47" class="kicker">CREATIVE FLOW + VERIFIABLE HISTORY</text>
+  <text x="56" y="84" class="heading">From source stems to an authenticated mix</text>
+
+  <g transform="translate(56 132)">
+    <path d="M20 43 C45 12 68 74 94 35 S140 74 166 35 S210 62 232 43" fill="none" stroke="#171716" stroke-width="4"/>
+    <rect x="0" y="0" width="252" height="102" fill="none" stroke="#D44B37" stroke-width="5"/>
+    <text x="0" y="133" class="stage">01  SOURCE STEMS</text>
+    <text x="0" y="157" class="body">Original bytes + credentials</text>
+  </g>
+
+  <path d="M330 182 H378" stroke="#171716" stroke-width="3"/><path d="M378 182 l-11 -7 v14 z" fill="#171716"/>
+
+  <g transform="translate(402 117)">
+    <rect x="0" y="0" width="302" height="132" fill="#F2C14E"/>
+    <line x1="22" y1="34" x2="280" y2="34" stroke="#171716" stroke-width="2"/>
+    <line x1="22" y1="67" x2="280" y2="67" stroke="#171716" stroke-width="2"/>
+    <line x1="22" y1="100" x2="280" y2="100" stroke="#171716" stroke-width="2"/>
+    <rect x="68" y="20" width="96" height="28" fill="#D44B37"/>
+    <rect x="118" y="53" width="138" height="28" fill="#287271"/>
+    <rect x="38" y="86" width="112" height="28" fill="#E8E1D5" stroke="#171716" stroke-width="2"/>
+    <text x="0" y="164" class="stage">02  ARRANGE + EDIT</text>
+    <text x="0" y="188" class="body">Non-destructive creative state</text>
+  </g>
+
+  <path d="M728 182 H776" stroke="#171716" stroke-width="3"/><path d="M776 182 l-11 -7 v14 z" fill="#171716"/>
+
+  <g transform="translate(800 132)">
+    <rect x="0" y="0" width="150" height="102" fill="#287271"/>
+    <line x1="28" y1="26" x2="122" y2="26" stroke="#F5F0E6" stroke-width="3"/>
+    <line x1="28" y1="51" x2="122" y2="51" stroke="#F5F0E6" stroke-width="3"/>
+    <line x1="28" y1="76" x2="122" y2="76" stroke="#F5F0E6" stroke-width="3"/>
+    <circle cx="61" cy="26" r="7" fill="#F2C14E"/>
+    <circle cx="98" cy="51" r="7" fill="#F2C14E"/>
+    <circle cx="48" cy="76" r="7" fill="#F2C14E"/>
+    <text x="0" y="133" class="stage">03  PROCESS</text>
+    <text x="0" y="157" class="body">One VST3 per track</text>
+  </g>
+
+  <path d="M974 182 H1022" stroke="#171716" stroke-width="3"/><path d="M1022 182 l-11 -7 v14 z" fill="#171716"/>
+
+  <g transform="translate(1046 122)">
+    <path d="M0 0 H88 L120 32 V120 H0 Z" fill="#D44B37"/>
+    <path d="M88 0 V32 H120" fill="none" stroke="#F5F0E6" stroke-width="3"/>
+    <path d="M20 72 C38 51 51 91 68 68 S94 87 104 72" fill="none" stroke="#F5F0E6" stroke-width="3"/>
+    <text x="0" y="150" class="stage">04  RENDER</text>
+    <text x="0" y="174" class="mono">stereo.wav</text>
+  </g>
+
+  <path d="M174 321 V367 H940 V321" fill="none" stroke="#766E64" stroke-width="2" stroke-dasharray="8 8"/>
+  <rect x="284" y="343" width="544" height="126" fill="#171716"/>
+  <text x="310" y="376" class="kicker-accent">PROVENANCE LAYER</text>
+  <text x="310" y="411" class="stage-light">Ingredients + meaningful operations</text>
+  <text x="310" y="440" class="body-light">Build manifest → sign → embed → reopen and verify</text>
+  <path d="M828 406 H886" stroke="#F2C14E" stroke-width="3"/><path d="M886 406 l-11 -7 v14 z" fill="#F2C14E"/>
+  <rect x="906" y="376" width="220" height="64" fill="#F2C14E"/>
+  <text x="930" y="402" class="stage">VERIFIED OUTPUT</text>
+  <text x="930" y="425" class="mono">C2PA + normal WAV</text>
+</svg>
