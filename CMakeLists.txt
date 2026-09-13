@@ -30,6 +30,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/app/MainWindow.h
     src/engine/AudioEngine.cpp
     src/engine/AudioEngine.h
+    src/engine/ClipOcclusion.cpp
+    src/engine/ClipOcclusion.h
     src/engine/NativeAudioClipPolicy.cpp
     src/engine/NativeAudioClipPolicy.h
     src/engine/ProjectEngine.cpp
@@ -50,6 +52,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/transport/TransportFormatting.h
     src/ui/ArrangementView.cpp
     src/ui/ArrangementView.h
+    src/ui/ArrangementShortcuts.cpp
+    src/ui/ArrangementShortcuts.h
     src/ui/PlacesBrowser.cpp
     src/ui/PlacesBrowser.h
     src/ui/PlacesStore.cpp
@@ -146,11 +150,27 @@ if(BUILD_TESTING)
         juce::juce_recommended_config_flags)
     add_test(NAME timeline_geometry COMMAND C2PATimelineTests)
 
+    add_executable(C2PAArrangementRulesTests
+        tests/engine/ArrangementRulesTests.cpp
+        src/engine/ClipOcclusion.cpp
+        src/engine/ClipOcclusion.h
+        src/project/Project.h
+        src/ui/ArrangementShortcuts.cpp
+        src/ui/ArrangementShortcuts.h)
+    target_include_directories(C2PAArrangementRulesTests PRIVATE src)
+    target_compile_features(C2PAArrangementRulesTests PRIVATE cxx_std_20)
+    target_link_libraries(C2PAArrangementRulesTests PRIVATE
+        juce::juce_gui_basics
+        juce::juce_recommended_config_flags)
+    add_test(NAME arrangement_rules COMMAND C2PAArrangementRulesTests)
+
     add_executable(C2PAArrangementEditingTests
         tests/engine/ArrangementEditingTests.cpp
         src/app/AppInfo.h
         src/engine/AudioEngine.cpp
         src/engine/AudioEngine.h
+        src/engine/ClipOcclusion.cpp
+        src/engine/ClipOcclusion.h
         src/engine/NativeAudioClipPolicy.cpp
         src/engine/NativeAudioClipPolicy.h
         src/engine/ProjectEngine.cpp

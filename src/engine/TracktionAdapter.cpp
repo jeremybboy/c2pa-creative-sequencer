@@ -240,6 +240,28 @@ juce::Result TracktionAdapter::setTrackProperties(int trackIndex,
     return juce::Result::ok();
 }
 
+juce::Result TracktionAdapter::setTrackMute(int trackIndex, bool muted)
+{
+    if (edit == nullptr || trackIndex < 0)
+        return juce::Result::fail("Invalid audio track");
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    tracks[trackIndex]->setMute(muted);
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::setTrackSolo(int trackIndex, bool soloed)
+{
+    if (edit == nullptr || trackIndex < 0)
+        return juce::Result::fail("Invalid audio track");
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    tracks[trackIndex]->setSolo(soloed);
+    return juce::Result::ok();
+}
+
 juce::AudioFormatManager& TracktionAdapter::audioFormatManager() noexcept
 {
     return engine.getAudioFileFormatManager().readFormatManager;

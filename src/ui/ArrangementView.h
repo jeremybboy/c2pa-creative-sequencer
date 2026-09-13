@@ -45,6 +45,9 @@ private:
     void createProject();
     void openProject();
     void saveProject();
+    void togglePlayback();
+    void undoEdit();
+    void redoEdit();
     void importAudioFiles(const juce::Array<juce::File>&, int x, int y);
     void rebuildArrangement();
     void layoutArrangement();

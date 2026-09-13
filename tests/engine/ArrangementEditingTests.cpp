@@ -106,9 +106,24 @@ int main()
     if (tracks[1].clips.size() != 2)
         return fail(13, "split/delete produced the wrong clip count");
 
+    engine.seek(0.5);
+    engine.play();
+    const auto beforeAudibilityChange = engine.transportSnapshot();
+    if (! beforeAudibilityChange.playing || beforeAudibilityChange.positionSeconds < 0.49)
+        return fail(14, "transport test could not start playback from the test position");
+    if (engine.setTrackMute(1, true).failed())
+        return fail(14, "live mute failed");
+    const auto afterMute = engine.transportSnapshot();
+    if (! afterMute.playing || afterMute.positionSeconds < 0.49)
+        return fail(14, "mute stopped playback or reset the playhead");
+    if (engine.setTrackSolo(1, true).failed())
+        return fail(14, "live solo failed");
+    const auto afterSolo = engine.transportSnapshot();
+    if (! afterSolo.playing || afterSolo.positionSeconds < 0.49)
+        return fail(14, "solo stopped playback or reset the playhead");
+    engine.pause();
+
     if (engine.setTrackName(1, "Vocal").failed()
-        || engine.setTrackMute(1, true).failed()
-        || engine.setTrackSolo(1, true).failed()
         || engine.setTrackGain(1, -6.0).failed()
         || engine.setTrackPan(1, 0.4).failed())
         return fail(14, "track control mutation failed");
@@ -138,6 +153,7 @@ int main()
         return fail(19, "split clip timing or source offsets did not survive reopen");
 
     std::cout << "arrangement editing: import, move, trim, split, duplicate, delete, "
-                 "track controls, undo/redo, and reopen passed\n";
+                 "live mute/solo transport preservation, track controls, undo/redo, "
+                 "and reopen passed\n";
     return 0;
 }

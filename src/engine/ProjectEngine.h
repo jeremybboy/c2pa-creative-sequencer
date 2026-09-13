@@ -79,6 +79,9 @@ private:
     [[nodiscard]] juce::Result commitMutation(Project previous);
     [[nodiscard]] juce::Result mutateProject(
         const std::function<juce::Result(Project&)>& mutation);
+    [[nodiscard]] juce::Result commitLiveTrackAudibility(Project previous,
+                                                         int trackIndex,
+                                                         bool solo);
     void ensureTrackCount(int count);
 
     TracktionAdapter& tracktion;

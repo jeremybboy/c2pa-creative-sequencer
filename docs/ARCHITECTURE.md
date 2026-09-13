@@ -81,6 +81,18 @@ saves both representations, and records the prior project snapshot for undo. A f
 rebuild or save restores the prior model and Edit. Tracktion owns audio execution,
 not the user-facing arrangement identity.
 
+Clip order within a saved track is also playback priority. During an Edit rebuild,
+`ClipOcclusion` subtracts every later clip's time range from earlier clips and emits
+only the remaining playback segments, with corrected source offsets. The canonical
+clips and source media are unchanged, so moving or deleting a priority clip restores
+the underlying audio; occlusion never crosses track boundaries.
+
+Mute and Solo are live track-state changes rather than arrangement rebuilds. Their
+model values and Tracktion track values are updated through one command, then saved
+without replacing the active Edit, which preserves both transport state and playhead.
+The keyboard mapper routes Space, save, undo/redo, duplicate, split, and delete to the
+same `ArrangementView` command methods used by visible controls where those exist.
+
 `PlacesStore` persists multiple absolute sample-folder roots in the user's application
 data directory. `PlacesBrowser` reads folders lazily, displays only directories and
 supported audio files, and emits file references for drag placement; it never writes
@@ -91,11 +103,15 @@ enter the portable project bundle.
 
 - Timeline tests prove seconds/pixel round trips, beat/bar duration, snap behavior,
   zoom-anchor stability, and Places add/deduplicate/reload/remove persistence.
+- Arrangement-rule tests prove later clips occlude earlier clips only on the same
+  track, deleting the priority clip restores the original range, different tracks
+  retain simultaneous ranges, and all required keyboard mappings are present.
 - Project-model tests prove track state, clip placement/source offset/duration, and
   timeline zoom/scroll survive JSON save and load.
 - The production-engine integration test proves import to an existing track, horizontal
   move, vertical reassignment, two-edge trim state, duplicate, split, delete, track
-  controls, undo/redo, and exact save/reopen restoration.
+  controls, live Mute/Solo without transport stop or reset, undo/redo, and exact
+  save/reopen restoration.
 - The existing hosted playback regression still proves loop-tagged audio retains native
   duration/pitch and generates non-zero output.
 - The remaining mouse-feel, visual, and listening workflow is explicitly manual and must

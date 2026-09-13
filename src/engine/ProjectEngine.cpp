@@ -1,5 +1,6 @@
 #include "ProjectEngine.h"
 
+#include "ClipOcclusion.h"
 #include "TracktionAdapter.h"
 #include "project/MediaLibrary.h"
 #include "project/ProjectSerializer.h"
@@ -254,24 +255,22 @@ juce::Result ProjectEngine::setTrackName(int trackIndex, const juce::String& nam
 
 juce::Result ProjectEngine::setTrackMute(int trackIndex, bool muted)
 {
-    return mutateProject([&](Project& value)
-    {
-        if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(value.tracks.size())))
-            return juce::Result::fail("Invalid track");
-        value.tracks[static_cast<std::size_t>(trackIndex)].muted = muted;
-        return juce::Result::ok();
-    });
+    if (! project.has_value()
+        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
+        return juce::Result::fail("Invalid track");
+    auto previous = *project;
+    project->tracks[static_cast<std::size_t>(trackIndex)].muted = muted;
+    return commitLiveTrackAudibility(std::move(previous), trackIndex, false);
 }
 
 juce::Result ProjectEngine::setTrackSolo(int trackIndex, bool soloed)
 {
-    return mutateProject([&](Project& value)
-    {
-        if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(value.tracks.size())))
-            return juce::Result::fail("Invalid track");
-        value.tracks[static_cast<std::size_t>(trackIndex)].soloed = soloed;
-        return juce::Result::ok();
-    });
+    if (! project.has_value()
+        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
+        return juce::Result::fail("Invalid track");
+    auto previous = *project;
+    project->tracks[static_cast<std::size_t>(trackIndex)].soloed = soloed;
+    return commitLiveTrackAudibility(std::move(previous), trackIndex, true);
 }
 
 juce::Result ProjectEngine::setTrackGain(int trackIndex, double gainDb)
@@ -411,16 +410,17 @@ juce::Result ProjectEngine::rebuildEditFromProject()
         if (auto result = tracktion.setTrackProperties(static_cast<int>(trackIndex), track.name,
                 track.gainDb, track.pan, track.muted, track.soloed); result.failed())
             return result;
-        for (const auto& clip : track.clips)
+        for (const auto& segment : buildPlaybackClipSegments(track.clips))
         {
+            const auto& clip = track.clips[segment.clipIndex];
             const auto media = std::find_if(project->media.begin(), project->media.end(),
                 [&](const auto& item) { return item.id == clip.mediaId; });
             if (media == project->media.end())
                 return juce::Result::fail("Clip media is missing");
             const auto file = paths->root().getChildFile(media->relativePath);
             if (auto result = tracktion.insertAudioClip(file, media->originalFileName,
-                    static_cast<int>(trackIndex), clip.startSeconds,
-                    clip.sourceOffsetSeconds, clip.lengthSeconds); result.failed())
+                    static_cast<int>(trackIndex), segment.startSeconds,
+                    segment.sourceOffsetSeconds, segment.lengthSeconds); result.failed())
                 return result;
         }
     }
@@ -458,6 +458,32 @@ juce::Result ProjectEngine::mutateProject(
         return result;
     }
     return commitMutation(std::move(previous));
+}
+
+juce::Result ProjectEngine::commitLiveTrackAudibility(Project previous,
+                                                       int trackIndex,
+                                                       bool solo)
+{
+    const auto& updated = project->tracks[static_cast<std::size_t>(trackIndex)];
+    auto result = solo ? tracktion.setTrackSolo(trackIndex, updated.soloed)
+                       : tracktion.setTrackMute(trackIndex, updated.muted);
+    if (result.wasOk())
+        result = saveProject();
+
+    if (result.failed())
+    {
+        *project = std::move(previous);
+        const auto& restored = project->tracks[static_cast<std::size_t>(trackIndex)];
+        if (solo)
+            (void) tracktion.setTrackSolo(trackIndex, restored.soloed);
+        else
+            (void) tracktion.setTrackMute(trackIndex, restored.muted);
+        return result;
+    }
+
+    undoHistory.push_back(std::move(previous));
+    redoHistory.clear();
+    return juce::Result::ok();
 }
 
 void ProjectEngine::ensureTrackCount(int count)

@@ -2,6 +2,7 @@
 
 #include "engine/AudioEngine.h"
 #include "transport/TransportFormatting.h"
+#include "ui/ArrangementShortcuts.h"
 #include "ui/TrackHeaderView.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -149,28 +150,9 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     newProject.onClick = [this] { createProject(); };
     openProjectButton.onClick = [this] { openProject(); };
     saveProjectButton.onClick = [this] { saveProject(); };
-    undoButton.onClick = [this]
-    {
-        if (audioEngine.undo())
-        {
-            projectMessage = "Undo";
-            rebuildArrangement();
-        }
-    };
-    redoButton.onClick = [this]
-    {
-        if (audioEngine.redo())
-        {
-            projectMessage = "Redo";
-            rebuildArrangement();
-        }
-    };
-    playPause.onClick = [this]
-    {
-        if (audioEngine.transportSnapshot().playing) audioEngine.pause();
-        else audioEngine.play();
-        refreshTransport();
-    };
+    undoButton.onClick = [this] { undoEdit(); };
+    redoButton.onClick = [this] { redoEdit(); };
+    playPause.onClick = [this] { togglePlayback(); };
     stop.onClick = [this] { audioEngine.stop(); refreshTransport(); };
     loop.setClickingTogglesState(true);
     loop.onClick = [this] { audioEngine.setLooping(loop.getToggleState()); };
@@ -278,34 +260,34 @@ void ArrangementView::resized()
 
 bool ArrangementView::keyPressed(const juce::KeyPress& key)
 {
-    const auto code = key.getKeyCode();
-    const auto command = key.getModifiers().isCommandDown();
-    if ((code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey)
-        && selectedClipId.isNotEmpty())
+    switch (commandForKeyPress(key))
     {
-        applyEditResult(audioEngine.deleteClip(selectedClipId), "Deleted clip");
-        selectedClipId.clear();
-        return true;
+        case ArrangementCommand::togglePlayPause: togglePlayback(); return true;
+        case ArrangementCommand::save: saveProject(); return true;
+        case ArrangementCommand::undo: undoEdit(); return true;
+        case ArrangementCommand::redo: redoEdit(); return true;
+        case ArrangementCommand::duplicateClip:
+            if (selectedClipId.isNotEmpty())
+                applyEditResult(audioEngine.duplicateClip(selectedClipId), "Duplicated clip");
+            return true;
+        case ArrangementCommand::splitClip:
+            if (selectedClipId.isNotEmpty())
+                applyEditResult(audioEngine.splitClip(selectedClipId,
+                    audioEngine.transportSnapshot().positionSeconds), "Split clip");
+            return true;
+        case ArrangementCommand::deleteClip:
+            if (selectedClipId.isNotEmpty())
+            {
+                applyEditResult(audioEngine.deleteClip(selectedClipId), "Deleted clip");
+                selectedClipId.clear();
+            }
+            return true;
+        case ArrangementCommand::zoomIn:
+            zoomBy(1.25, timelineBounds.getWidth() * 0.5); return true;
+        case ArrangementCommand::zoomOut:
+            zoomBy(0.8, timelineBounds.getWidth() * 0.5); return true;
+        case ArrangementCommand::none: break;
     }
-    if (command && (code == 'd' || code == 'D') && selectedClipId.isNotEmpty())
-    {
-        applyEditResult(audioEngine.duplicateClip(selectedClipId), "Duplicated clip");
-        return true;
-    }
-    if (command && (code == 'e' || code == 'E') && selectedClipId.isNotEmpty())
-    {
-        applyEditResult(audioEngine.splitClip(selectedClipId,
-            audioEngine.transportSnapshot().positionSeconds), "Split clip");
-        return true;
-    }
-    if (command && (code == 'z' || code == 'Z'))
-    {
-        const auto changed = key.getModifiers().isShiftDown() ? audioEngine.redo() : audioEngine.undo();
-        if (changed) rebuildArrangement();
-        return true;
-    }
-    if (code == '+' || code == '=') { zoomBy(1.25, timelineBounds.getWidth() * 0.5); return true; }
-    if (code == '-' || code == '_') { zoomBy(0.8, timelineBounds.getWidth() * 0.5); return true; }
     return false;
 }
 
@@ -413,6 +395,33 @@ void ArrangementView::saveProject()
 {
     audioEngine.setTimelineView(geometry.pixelsPerSecond, geometry.scrollSeconds);
     showProjectResult(audioEngine.saveProject(), "Project saved");
+}
+
+void ArrangementView::togglePlayback()
+{
+    if (audioEngine.transportSnapshot().playing)
+        audioEngine.pause();
+    else
+        audioEngine.play();
+    refreshTransport();
+}
+
+void ArrangementView::undoEdit()
+{
+    if (audioEngine.undo())
+    {
+        projectMessage = "Undo";
+        rebuildArrangement();
+    }
+}
+
+void ArrangementView::redoEdit()
+{
+    if (audioEngine.redo())
+    {
+        projectMessage = "Redo";
+        rebuildArrangement();
+    }
 }
 
 void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files, int x, int y)

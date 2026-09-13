@@ -35,8 +35,8 @@ The first configure downloads the exact JUCE and Tracktion Engine revisions reco
 
 ## Arrangement controls
 
-Add sample roots with **Places → Add Folder…**, expand their folders, and drag supported audio directly to a track and musical position. Clips snap to beats by default; hold **Option** while dragging to bypass snap. Use **Delete**, **Command-D**, and **Command-E** for delete, duplicate, and split-at-playhead; **Command-Z** and **Shift-Command-Z** undo and redo. Use the **−/+** buttons or Command-scroll to zoom, Shift-scroll to move horizontally, and ordinary scroll to move vertically.
+Add sample roots with **Places → Add Folder…**, expand their folders, and drag supported audio directly to a track and musical position. Clips snap to beats by default; hold **Option** while dragging to bypass snap. **Space** toggles play/pause at the current playhead, **Command-S** saves, and **Command-Z** / **Shift-Command-Z** undo and redo. Use **Delete**, **Command-D**, and **Command-E** for delete, duplicate, and split-at-playhead; use the **−/+** buttons or Command-scroll to zoom, Shift-scroll to move horizontally, and ordinary scroll to move vertically.
 
 ## Known limitations
 
-PR 005 is intentionally an audio-arrangement slice: no recording, MIDI, warping, time stretching, plug-in UI, automation, advanced routing, render/export, or C2PA signing is present. Added Places are machine-local preferences rather than portable project data; imported audio is copied byte-for-byte into the project `Media/` directory, and moving or trimming a clip changes only non-destructive timing metadata.
+PR 005 is intentionally an audio-arrangement slice: no recording, MIDI, warping, time stretching, plug-in UI, automation, advanced routing, render/export, or C2PA signing is present. Added Places are machine-local preferences rather than portable project data; imported audio is copied byte-for-byte into the project `Media/` directory, and moving or trimming a clip changes only non-destructive timing metadata. On one track, a later placed or moved clip has playback priority only where it overlaps an earlier clip; different tracks still mix normally.
