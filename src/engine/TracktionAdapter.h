@@ -22,6 +22,13 @@ struct TransportSnapshot
     bool looping = false;
 };
 
+struct AudioFileMetadata
+{
+    double lengthSeconds = 0.0;
+    double sampleRate = 0.0;
+    int channels = 0;
+};
+
 class TracktionAdapter final
 {
 public:
@@ -41,6 +48,15 @@ public:
     void seek(double positionSeconds);
     void setLooping(bool shouldLoop);
     void setBpm(double bpm);
+    [[nodiscard]] juce::Result inspectAudioFile(const juce::File& file,
+                                                AudioFileMetadata& metadata);
+    [[nodiscard]] juce::Result insertAudioClip(const juce::File& file,
+                                               const juce::String& name,
+                                               int trackIndex,
+                                               double startSeconds,
+                                               double lengthSeconds);
+    [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
+    [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
     [[nodiscard]] bool createProjectEdit(const juce::File& editFile);
     [[nodiscard]] bool saveProjectEdit(const juce::File& editFile);
     [[nodiscard]] bool loadProjectEdit(const juce::File& editFile);
@@ -48,6 +64,7 @@ public:
 
 private:
     void configurePreferredAudioSettings();
+    void configureLoadedAudioClips();
     void prepareEdit();
 
     tracktion::engine::Engine engine;

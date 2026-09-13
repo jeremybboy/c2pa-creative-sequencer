@@ -1,6 +1,7 @@
 #include "ProjectEngine.h"
 
 #include "TracktionAdapter.h"
+#include "project/MediaLibrary.h"
 #include "project/ProjectSerializer.h"
 #include "transport/TransportFormatting.h"
 
@@ -76,6 +77,54 @@ void ProjectEngine::setBpm(double bpm)
         project->bpm = std::clamp(bpm, transport::minimumBpm, transport::maximumBpm);
 }
 
+juce::Result ProjectEngine::importAudio(const juce::File& source,
+                                        double startSeconds)
+{
+    if (! project.has_value() || ! paths.has_value())
+        return juce::Result::fail("Create or open a project before importing audio");
+
+    AudioFileMetadata metadata;
+    if (auto result = tracktion.inspectAudioFile(source, metadata); result.failed())
+        return result;
+
+    MediaReference media;
+    bool mediaWasAdded = false;
+    if (auto result = MediaLibrary::copySourceIntoProject(
+            *project, *paths, source, media, &mediaWasAdded);
+        result.failed())
+        return result;
+
+    const auto copiedFile = paths->root().getChildFile(media.relativePath);
+    const auto trackName = source.getFileNameWithoutExtension();
+    const auto trackIndex = static_cast<int>(project->tracks.size());
+    if (auto result = tracktion.insertAudioClip(copiedFile, trackName, trackIndex,
+                                                 std::max(0.0, startSeconds),
+                                                 metadata.lengthSeconds);
+        result.failed())
+    {
+        if (mediaWasAdded)
+        {
+            project->media.pop_back();
+            copiedFile.deleteFile();
+        }
+        return result;
+    }
+
+    ClipModel clip;
+    clip.id = juce::Uuid().toString();
+    clip.mediaId = media.id;
+    clip.startSeconds = std::max(0.0, startSeconds);
+    clip.lengthSeconds = metadata.lengthSeconds;
+
+    TrackModel track;
+    track.id = juce::Uuid().toString();
+    track.name = trackName;
+    track.clips.push_back(std::move(clip));
+    project->tracks.push_back(std::move(track));
+
+    return saveProject();
+}
+
 bool ProjectEngine::hasProject() const noexcept
 {
     return project.has_value();
@@ -94,5 +143,34 @@ const Project* ProjectEngine::currentProject() const noexcept
 const ProjectPaths* ProjectEngine::currentPaths() const noexcept
 {
     return paths.has_value() ? &*paths : nullptr;
+}
+
+std::vector<ArrangementTrackSnapshot> ProjectEngine::arrangementSnapshot() const
+{
+    std::vector<ArrangementTrackSnapshot> snapshot;
+    if (! project.has_value() || ! paths.has_value())
+        return snapshot;
+
+    for (const auto& track : project->tracks)
+    {
+        ArrangementTrackSnapshot trackSnapshot;
+        trackSnapshot.name = track.name;
+        for (const auto& clip : track.clips)
+        {
+            const auto media = std::find_if(project->media.begin(), project->media.end(),
+                [&clip](const auto& item) { return item.id == clip.mediaId; });
+            if (media == project->media.end())
+                continue;
+
+            trackSnapshot.clips.push_back({
+                media->originalFileName,
+                paths->root().getChildFile(media->relativePath),
+                clip.startSeconds,
+                clip.lengthSeconds
+            });
+        }
+        snapshot.push_back(std::move(trackSnapshot));
+    }
+    return snapshot;
 }
 }

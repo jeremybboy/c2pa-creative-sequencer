@@ -12,6 +12,7 @@ public:
         Project& project,
         const ProjectPaths& paths,
         const juce::File& source,
-        MediaReference& reference);
+        MediaReference& reference,
+        bool* added = nullptr);
 };
 }

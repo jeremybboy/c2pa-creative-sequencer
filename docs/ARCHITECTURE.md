@@ -42,3 +42,25 @@ Project JSON, Tracktion edit XML, and provenance JSON remain separate because th
 - A live macOS run created a project through the native save panel and produced `project.json`, `arrangement.tracktionedit`, `provenance.json`, and `Media/`.
 - The two JSON documents parsed successfully, and the Tracktion file contained native Edit XML.
 - After saving and quitting, a fresh app process opened the same bundle and restored its project identity.
+
+## PR 004 boundary
+
+`ProjectEngine` validates and registers imported WAV, AIFF, and MP3 files, while
+`TracktionAdapter` creates one full-length audio clip on a new track. The
+application treats imported stems as native-speed, absolute-time audio: embedded
+loop tempo and root-note metadata are retained in the source file but must not
+silently enable Tracktion auto-tempo, auto-pitch, looping, or time stretching.
+
+`NativeAudioClipPolicy` applies that rule after insertion. Loading an early PR 004
+project also removes automatic stretch state and restores the full source duration,
+so projects created before the fix remain playable without re-importing media.
+
+## PR 004 playback regression
+
+Tracktion automatically interpreted an ACID-tagged 125 BPM chord loop as an
+auto-tempo/auto-pitch clip, changed its duration from 7.68 seconds to 8.00 seconds
+at the project's 120 BPM, and produced a zero-valued hosted output because this
+POC intentionally has no time-stretch backend enabled. The regression test now
+creates a synthetic loop-tagged WAV that triggers the same state, applies the
+native playback policy, checks that the original duration is restored, and proves
+that the hosted output has a non-zero peak.

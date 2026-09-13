@@ -63,6 +63,32 @@ void AudioEngine::setBpm(double bpm)
     projectEngine.setBpm(bpm);
 }
 
+juce::Result AudioEngine::importAudio(const juce::File& source,
+                                      double startSeconds)
+{
+    return projectEngine.importAudio(source, startSeconds);
+}
+
+bool AudioEngine::isSupportedAudioFile(const juce::File& file)
+{
+    return file.hasFileExtension("wav;aif;aiff;mp3");
+}
+
+std::vector<ArrangementTrackSnapshot> AudioEngine::arrangementSnapshot() const
+{
+    return projectEngine.arrangementSnapshot();
+}
+
+juce::AudioFormatManager& AudioEngine::audioFormatManager() noexcept
+{
+    return tracktion.audioFormatManager();
+}
+
+juce::AudioThumbnailCache& AudioEngine::audioThumbnailCache() noexcept
+{
+    return tracktion.audioThumbnailCache();
+}
+
 juce::Result AudioEngine::createProject(const juce::File& projectFolder,
                                         const juce::String& projectName)
 {

@@ -38,6 +38,9 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - `tracktion::engine::Engine` constructs the project, device, render, audio-file, plug-in, and edit services and initializes the device manager through its behavior policy.
 - JUCE's `VST3PluginFormat`, `AudioPluginFormatManager`, `AudioPluginInstance`, and editor APIs provide the required discovery, instantiation, state, processing, and UI-hosting surface for later VST slices.
 - Upstream inconsistency: Tracktion's v3.2.0 files still expose some internal version strings as 3.1.0. Dependency reporting must use the pinned Git tag/commit rather than `Engine::getVersion()` until upstream resolves that mismatch.
+- Tracktion v3.2.0 registers WAV and AIFF readers unconditionally. Its MP3 reader is present only when JUCE's `JUCE_USE_MP3AUDIOFORMAT` compile flag is enabled; PR 004 sets that flag to `1` and the engine test decodes an embedded MP3 fixture.
+- Tracktion automatically enables tempo and pitch following for loop-tagged audio. This POC has no time-stretch backend enabled, so PR 004 explicitly normalises imported stems to native-speed, absolute-time playback; tempo matching remains out of scope.
+- JUCE's MP3 decoder header carries a patent/non-infringement disclaimer. This does not block the private local POC, but it belongs in the deferred distribution review together with the JUCE and Tracktion license decision.
 
 ### `c2pa-cpp`
 
@@ -54,6 +57,12 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - CTest passed `application_skeleton` (1/1).
 - The app launched as a persistent process, exposed a window titled `C2PA Creative Sequencer`, and exited cleanly after a standard application quit event.
 - GitHub Actions subsequently built and tested PR 001 successfully with the Xcode generator on its hosted macOS runner.
+
+## PR 004 audio-format evidence
+
+- The pinned Tracktion/JUCE pair built with `JUCE_USE_MP3AUDIOFORMAT=1` on the supported Apple-silicon macOS target.
+- The hosted-engine test generated and decoded WAV and AIFF fixtures, decoded an embedded MP3 fixture, completed a JUCE waveform thumbnail, inserted a Tracktion wave clip, and observed non-silent output from deterministic block processing.
+- User-facing import still performs a real decoder open before any source is registered or copied; an accepted filename extension alone is not treated as valid audio.
 
 ## Primary sources
 

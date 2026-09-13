@@ -9,8 +9,11 @@ namespace c2paseq
 juce::Result MediaLibrary::copySourceIntoProject(Project& project,
                                                   const ProjectPaths& paths,
                                                   const juce::File& source,
-                                                  MediaReference& reference)
+                                                  MediaReference& reference,
+                                                  bool* added)
 {
+    if (added != nullptr)
+        *added = false;
     if (! source.existsAsFile())
         return juce::Result::fail("Source media does not exist");
     if (auto result = paths.createDirectories(); result.failed())
@@ -55,6 +58,8 @@ juce::Result MediaLibrary::copySourceIntoProject(Project& project,
     reference.sha256 = sourceHash;
     reference.byteSize = source.getSize();
     project.media.push_back(reference);
+    if (added != nullptr)
+        *added = true;
     return juce::Result::ok();
 }
 }

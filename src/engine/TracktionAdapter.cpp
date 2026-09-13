@@ -1,6 +1,7 @@
 #include "TracktionAdapter.h"
 
 #include "app/AppInfo.h"
+#include "engine/NativeAudioClipPolicy.h"
 #include "transport/TransportFormatting.h"
 
 #include <algorithm>
@@ -160,6 +161,67 @@ void TracktionAdapter::setBpm(double bpm)
         tempo->setBpm(std::clamp(bpm, transport::minimumBpm, transport::maximumBpm));
 }
 
+juce::Result TracktionAdapter::inspectAudioFile(const juce::File& file,
+                                                 AudioFileMetadata& metadata)
+{
+    if (! file.existsAsFile())
+        return juce::Result::fail("Audio file does not exist");
+    if (! file.hasFileExtension("wav;aif;aiff;mp3"))
+        return juce::Result::fail("Supported audio formats are WAV, AIFF, and MP3");
+
+    tracktion::engine::AudioFile audioFile(engine, file);
+    if (! audioFile.isValid())
+        return juce::Result::fail("The file could not be decoded as audio");
+
+    metadata.lengthSeconds = audioFile.getLength();
+    metadata.sampleRate = audioFile.getSampleRate();
+    metadata.channels = audioFile.getNumChannels();
+    if (metadata.lengthSeconds <= 0.0 || metadata.sampleRate <= 0.0 || metadata.channels <= 0)
+        return juce::Result::fail("The audio file has invalid stream metadata");
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::insertAudioClip(const juce::File& file,
+                                                const juce::String& name,
+                                                int trackIndex,
+                                                double startSeconds,
+                                                double lengthSeconds)
+{
+    if (edit == nullptr || trackIndex < 0 || startSeconds < 0.0 || lengthSeconds <= 0.0)
+        return juce::Result::fail("Invalid audio clip placement");
+
+    edit->ensureNumberOfAudioTracks(trackIndex + 1);
+    const auto audioTracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, audioTracks.size()))
+        return juce::Result::fail("Could not create an audio track");
+
+    auto* track = audioTracks[trackIndex];
+    track->setName(name);
+    const auto start = tracktion::TimePosition::fromSeconds(startSeconds);
+    const tracktion::engine::ClipPosition clipPosition {
+        { start, start + tracktion::TimeDuration::fromSeconds(lengthSeconds) },
+        {}
+    };
+    const auto newClip = track->insertWaveClip(name, file, clipPosition, false);
+    if (newClip == nullptr)
+        return juce::Result::fail("Tracktion could not create the audio clip");
+
+    configureNativeAudioClip(*newClip, lengthSeconds);
+
+    edit->getTransport().ensureContextAllocated(true);
+    return juce::Result::ok();
+}
+
+juce::AudioFormatManager& TracktionAdapter::audioFormatManager() noexcept
+{
+    return engine.getAudioFileFormatManager().readFormatManager;
+}
+
+juce::AudioThumbnailCache& TracktionAdapter::audioThumbnailCache() noexcept
+{
+    return engine.getAudioFileManager().getAudioThumbnailCache();
+}
+
 bool TracktionAdapter::createProjectEdit(const juce::File& editFile)
 {
     auto replacement = tracktion::engine::createEmptyEdit(engine, editFile);
@@ -194,6 +256,7 @@ bool TracktionAdapter::loadProjectEdit(const juce::File& editFile)
     if (edit != nullptr)
         edit->getTransport().stop(false, true);
     edit = std::move(replacement);
+    configureLoadedAudioClips();
     edit->getTransport().ensureContextAllocated();
     return true;
 }
@@ -229,5 +292,33 @@ void TracktionAdapter::configurePreferredAudioSettings()
     const auto error = deviceManager.setAudioDeviceSetup(setup, true);
     if (error.isEmpty())
         engine.getDeviceManager().dispatchPendingUpdates();
+}
+
+void TracktionAdapter::configureLoadedAudioClips()
+{
+    if (edit == nullptr)
+        return;
+
+    for (auto* track : tracktion::engine::getAudioTracks(*edit))
+    {
+        for (auto* clip : track->getClips())
+        {
+            auto* waveClip = dynamic_cast<tracktion::engine::WaveAudioClip*>(clip);
+            if (waveClip == nullptr)
+                continue;
+
+            const auto hasAutomaticStretchState = waveClip->getAutoTempo()
+                || waveClip->getAutoPitch()
+                || waveClip->getTimeStretchMode()
+                    != tracktion::engine::TimeStretcher::disabled
+                || std::abs(waveClip->getSpeedRatio() - 1.0) > 0.000001;
+            if (! hasAutomaticStretchState)
+                continue;
+
+            const tracktion::engine::AudioFile source(engine, waveClip->getOriginalFile());
+            if (source.isValid())
+                configureNativeAudioClip(*waveClip, source.getLength());
+        }
+    }
 }
 }

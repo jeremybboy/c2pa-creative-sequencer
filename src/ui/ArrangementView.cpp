@@ -2,8 +2,11 @@
 
 #include "engine/AudioEngine.h"
 #include "transport/TransportFormatting.h"
+#include "ui/WaveformView.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
+
+#include <algorithm>
 
 namespace c2paseq
 {
@@ -14,7 +17,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     title.setFont(juce::FontOptions(15.0f, juce::Font::bold));
     title.setColour(juce::Label::textColourId, juce::Colour::fromRGB(242, 193, 78));
 
-    emptyState.setText("Empty arrangement\nAudio-stem import arrives in PR 004", juce::dontSendNotification);
+    emptyState.setText("Empty arrangement\nDrop WAV, AIFF, or MP3 audio here", juce::dontSendNotification);
     emptyState.setFont(juce::FontOptions(24.0f));
     emptyState.setJustificationType(juce::Justification::centred);
     emptyState.setColour(juce::Label::textColourId, juce::Colour::fromRGB(224, 218, 207));
@@ -29,6 +32,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     newProject.onClick = [this] { createProject(); };
     openProjectButton.onClick = [this] { openProject(); };
     saveProjectButton.onClick = [this] { saveProject(); };
+    importAudioButton.onClick = [this] { chooseAudioFiles(); };
 
     playPause.onClick = [this]
     {
@@ -88,6 +92,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     addAndMakeVisible(newProject);
     addAndMakeVisible(openProjectButton);
     addAndMakeVisible(saveProjectButton);
+    addAndMakeVisible(importAudioButton);
     addAndMakeVisible(audioSettings);
     addAndMakeVisible(playPause);
     addAndMakeVisible(stop);
@@ -132,11 +137,52 @@ void ArrangementView::resized()
     newProject.setBounds(projectBar.removeFromLeft(70).reduced(3));
     openProjectButton.setBounds(projectBar.removeFromLeft(70).reduced(3));
     saveProjectButton.setBounds(projectBar.removeFromLeft(70).reduced(3));
+    importAudioButton.setBounds(projectBar.removeFromLeft(110).reduced(3));
     projectName.setBounds(projectBar.reduced(6, 2));
 
     scrubber.setBounds(bounds.removeFromTop(24));
     status.setBounds(bounds.removeFromBottom(28));
     emptyState.setBounds(bounds);
+
+    constexpr int rowHeight = 92;
+    constexpr int trackHeaderWidth = 140;
+    const auto timelineWidth = juce::jmax(1, bounds.getWidth() - trackHeaderWidth);
+    const auto snapshots = audioEngine.arrangementSnapshot();
+    std::size_t viewIndex = 0;
+    for (std::size_t trackIndex = 0; trackIndex < snapshots.size(); ++trackIndex)
+    {
+        for (const auto& clip : snapshots[trackIndex].clips)
+        {
+            if (viewIndex >= waveformViews.size())
+                break;
+            const auto startRatio = clip.startSeconds / transport::timelineEndSeconds;
+            const auto lengthRatio = clip.lengthSeconds / transport::timelineEndSeconds;
+            const auto x = juce::jlimit(bounds.getX() + trackHeaderWidth, bounds.getRight() - 1,
+                bounds.getX() + trackHeaderWidth + juce::roundToInt(startRatio * timelineWidth));
+            const auto width = juce::jmax(1, juce::jmin(
+                juce::jmax(48, juce::roundToInt(lengthRatio * timelineWidth)),
+                bounds.getRight() - x));
+            const auto y = bounds.getY() + static_cast<int>(trackIndex) * rowHeight + 6;
+            waveformViews[viewIndex++]->setBounds(x, y, width, rowHeight - 12);
+        }
+    }
+}
+
+bool ArrangementView::isInterestedInFileDrag(const juce::StringArray& files)
+{
+    return ! files.isEmpty()
+        && std::all_of(files.begin(), files.end(), [](const auto& path)
+        {
+            return AudioEngine::isSupportedAudioFile(juce::File(path));
+        });
+}
+
+void ArrangementView::filesDropped(const juce::StringArray& files, int, int)
+{
+    juce::Array<juce::File> audioFiles;
+    for (const auto& path : files)
+        audioFiles.add(juce::File(path));
+    importAudioFiles(audioFiles);
 }
 
 void ArrangementView::timerCallback()
@@ -213,10 +259,81 @@ void ArrangementView::saveProject()
     showProjectResult(audioEngine.saveProject(), "Project saved");
 }
 
+void ArrangementView::chooseAudioFiles()
+{
+    if (! audioEngine.hasProject())
+    {
+        projectMessage = "Create or open a project before importing audio";
+        refreshTransport();
+        return;
+    }
+
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Import Audio",
+        juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+        "*.wav;*.aif;*.aiff;*.mp3");
+    const auto flags = juce::FileBrowserComponent::openMode
+        | juce::FileBrowserComponent::canSelectFiles
+        | juce::FileBrowserComponent::canSelectMultipleItems;
+    fileChooser->launchAsync(flags, [safe = juce::Component::SafePointer<ArrangementView>(this)]
+    (const juce::FileChooser& chooser)
+    {
+        if (safe == nullptr)
+            return;
+        safe->importAudioFiles(chooser.getResults());
+        safe->fileChooser.reset();
+    });
+}
+
+void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files)
+{
+    if (files.isEmpty())
+        return;
+
+    const auto startSeconds = audioEngine.transportSnapshot().positionSeconds;
+    int imported = 0;
+    for (const auto& file : files)
+    {
+        const auto result = audioEngine.importAudio(file, startSeconds);
+        if (result.failed())
+        {
+            projectMessage = "Import error: " + result.getErrorMessage();
+            rebuildArrangement();
+            refreshTransport();
+            return;
+        }
+        ++imported;
+    }
+
+    projectMessage = "Imported " + juce::String(imported)
+        + (imported == 1 ? " audio stem" : " audio stems");
+    rebuildArrangement();
+    refreshTransport();
+}
+
+void ArrangementView::rebuildArrangement()
+{
+    waveformViews.clear();
+    for (const auto& track : audioEngine.arrangementSnapshot())
+        for (const auto& clip : track.clips)
+        {
+            auto view = std::make_unique<WaveformView>(
+                audioEngine.audioFormatManager(), audioEngine.audioThumbnailCache(),
+                clip.mediaFile, clip.name);
+            addAndMakeVisible(*view);
+            waveformViews.push_back(std::move(view));
+        }
+    emptyState.setVisible(waveformViews.empty());
+    resized();
+    repaint();
+}
+
 void ArrangementView::showProjectResult(const juce::Result& result,
                                          const juce::String& successMessage)
 {
     projectMessage = result.wasOk() ? successMessage : "Project error: " + result.getErrorMessage();
+    if (result.wasOk())
+        rebuildArrangement();
     refreshTransport();
 }
 

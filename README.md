@@ -8,7 +8,7 @@ The creative path remains primary: imported stems become a non-destructive arran
 
 ## Status
 
-The repository is in version 0.1 proof-of-concept development. PR 001 provides the native macOS application shell, PR 002 adds audio-device configuration and transport, and PR 003 adds versioned `.c2paseq` project save/load. Audio import, clip editing, VST3 hosting, rendering, and C2PA integration remain planned work and must not be described as implemented yet.
+The repository is in version 0.1 proof-of-concept development. PR 001 provides the native macOS application shell, PR 002 adds audio-device configuration and transport, PR 003 adds versioned `.c2paseq` project save/load, and PR 004 adds WAV/AIFF/MP3 stem import, waveforms, and playback. Clip editing, VST3 hosting, rendering, and C2PA integration remain planned work and must not be described as implemented yet.
 
 ## Product boundary
 
@@ -35,4 +35,4 @@ The first configure downloads the exact JUCE and Tracktion Engine revisions reco
 
 ## Known limitations
 
-No audio content can be imported or arranged yet. The current app proves silent transport plus project creation, save, and reopen; playable audio begins in PR 004.
+Each imported stem creates one track at the current playhead position and is copied byte-for-byte into the project before use. The current timeline is fixed at two minutes, does not scroll, and does not yet support moving, trimming, fading, deleting, or mixing clips; those are later slices.
