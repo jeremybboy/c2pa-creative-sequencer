@@ -32,6 +32,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/engine/AudioEngine.h
     src/engine/TracktionAdapter.cpp
     src/engine/TracktionAdapter.h
+    src/transport/TransportFormatting.cpp
+    src/transport/TransportFormatting.h
     src/ui/ArrangementView.cpp
     src/ui/ArrangementView.h)
 
@@ -49,6 +51,7 @@ target_compile_definitions(C2PACreativeSequencer PRIVATE
 
 target_link_libraries(C2PACreativeSequencer PRIVATE
     tracktion::tracktion_engine
+    juce::juce_audio_utils
     juce::juce_gui_extra
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
@@ -65,4 +68,23 @@ if(BUILD_TESTING)
     target_include_directories(C2PACreativeSequencerTests PRIVATE src)
     target_compile_features(C2PACreativeSequencerTests PRIVATE cxx_std_20)
     add_test(NAME application_skeleton COMMAND C2PACreativeSequencerTests)
+
+    add_executable(C2PATransportTests
+        tests/engine/TransportFoundationTests.cpp
+        src/transport/TransportFormatting.cpp
+        src/transport/TransportFormatting.h)
+    target_include_directories(C2PATransportTests PRIVATE src)
+    target_compile_definitions(C2PATransportTests PRIVATE
+        JUCE_PLUGINHOST_AU=0
+        JUCE_PLUGINHOST_VST3=0
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        TRACKTION_ENABLE_ARA=0
+        TRACKTION_ENABLE_CMAJOR=0
+        TRACKTION_ENABLE_CONTROL_SURFACES=0
+        TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=0)
+    target_link_libraries(C2PATransportTests PRIVATE
+        tracktion::tracktion_engine
+        juce::juce_recommended_config_flags)
+    add_test(NAME transport_foundation COMMAND C2PATransportTests)
 endif()
