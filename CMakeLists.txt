@@ -45,13 +45,16 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/transport/TransportFormatting.cpp
     src/transport/TransportFormatting.h
     src/ui/ArrangementView.cpp
-    src/ui/ArrangementView.h)
+    src/ui/ArrangementView.h
+    src/ui/WaveformView.cpp
+    src/ui/WaveformView.h)
 
 target_include_directories(C2PACreativeSequencer PRIVATE src)
 
 target_compile_definitions(C2PACreativeSequencer PRIVATE
     JUCE_PLUGINHOST_AU=0
     JUCE_PLUGINHOST_VST3=0
+    JUCE_USE_MP3AUDIOFORMAT=1
     JUCE_USE_CURL=0
     JUCE_WEB_BROWSER=0
     TRACKTION_ENABLE_ARA=0
@@ -88,6 +91,7 @@ if(BUILD_TESTING)
     target_compile_definitions(C2PATransportTests PRIVATE
         JUCE_PLUGINHOST_AU=0
         JUCE_PLUGINHOST_VST3=0
+        JUCE_USE_MP3AUDIOFORMAT=1
         JUCE_USE_CURL=0
         JUCE_WEB_BROWSER=0
         TRACKTION_ENABLE_ARA=0

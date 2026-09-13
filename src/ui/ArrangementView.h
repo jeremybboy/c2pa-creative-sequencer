@@ -3,12 +3,15 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <memory>
+#include <vector>
 
 namespace c2paseq
 {
 class AudioEngine;
+class WaveformView;
 
 class ArrangementView final : public juce::Component,
+                              public juce::FileDragAndDropTarget,
                               private juce::Timer
 {
 public:
@@ -16,6 +19,8 @@ public:
 
     void paint(juce::Graphics& graphics) override;
     void resized() override;
+    bool isInterestedInFileDrag(const juce::StringArray& files) override;
+    void filesDropped(const juce::StringArray& files, int x, int y) override;
 
 private:
     void timerCallback() override;
@@ -24,6 +29,9 @@ private:
     void createProject();
     void openProject();
     void saveProject();
+    void chooseAudioFiles();
+    void importAudioFiles(const juce::Array<juce::File>& files);
+    void rebuildArrangement();
     void showProjectResult(const juce::Result& result, const juce::String& successMessage);
 
     AudioEngine& audioEngine;
@@ -34,6 +42,7 @@ private:
     juce::TextButton newProject { "New" };
     juce::TextButton openProjectButton { "Open" };
     juce::TextButton saveProjectButton { "Save" };
+    juce::TextButton importAudioButton { "Import Audio" };
     juce::TextButton audioSettings { "Audio Device" };
     juce::TextButton playPause { "Play" };
     juce::TextButton stop { "Stop" };
@@ -44,5 +53,6 @@ private:
     bool scrubberIsDragging = false;
     juce::String projectMessage;
     std::unique_ptr<juce::FileChooser> fileChooser;
+    std::vector<std::unique_ptr<WaveformView>> waveformViews;
 };
 }

@@ -58,9 +58,20 @@ int main()
         return fail(2, "could not create source fixture");
 
     c2paseq::MediaReference media;
+    bool mediaWasAdded = false;
     if (const auto result = c2paseq::MediaLibrary::copySourceIntoProject(
-            project, paths, source, media); result.failed())
+            project, paths, source, media, &mediaWasAdded); result.failed())
         return fail(3, result.getErrorMessage());
+    if (! mediaWasAdded)
+        return fail(3, "first media registration was not reported as new");
+
+    c2paseq::MediaReference duplicateMedia;
+    bool duplicateWasAdded = true;
+    if (const auto result = c2paseq::MediaLibrary::copySourceIntoProject(
+            project, paths, source, duplicateMedia, &duplicateWasAdded); result.failed())
+        return fail(3, result.getErrorMessage());
+    if (duplicateWasAdded || duplicateMedia.id != media.id || project.media.size() != 1)
+        return fail(3, "duplicate media was not deduplicated by SHA-256");
 
     c2paseq::ClipModel clip;
     clip.id = juce::Uuid().toString();

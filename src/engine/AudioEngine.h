@@ -22,6 +22,12 @@ public:
     void seek(double positionSeconds);
     void setLooping(bool shouldLoop);
     void setBpm(double bpm);
+    [[nodiscard]] juce::Result importAudio(const juce::File& source,
+                                           double startSeconds);
+    [[nodiscard]] static bool isSupportedAudioFile(const juce::File& file);
+    [[nodiscard]] std::vector<ArrangementTrackSnapshot> arrangementSnapshot() const;
+    [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
+    [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
 
     [[nodiscard]] juce::Result createProject(const juce::File& projectFolder,
                                              const juce::String& projectName);
