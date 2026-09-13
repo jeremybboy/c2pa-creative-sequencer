@@ -64,6 +64,7 @@ public:
 
 private:
     void configurePreferredAudioSettings();
+    void configureLoadedAudioClips();
     void prepareEdit();
 
     tracktion::engine::Engine engine;

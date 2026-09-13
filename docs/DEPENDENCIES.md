@@ -39,6 +39,7 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - JUCE's `VST3PluginFormat`, `AudioPluginFormatManager`, `AudioPluginInstance`, and editor APIs provide the required discovery, instantiation, state, processing, and UI-hosting surface for later VST slices.
 - Upstream inconsistency: Tracktion's v3.2.0 files still expose some internal version strings as 3.1.0. Dependency reporting must use the pinned Git tag/commit rather than `Engine::getVersion()` until upstream resolves that mismatch.
 - Tracktion v3.2.0 registers WAV and AIFF readers unconditionally. Its MP3 reader is present only when JUCE's `JUCE_USE_MP3AUDIOFORMAT` compile flag is enabled; PR 004 sets that flag to `1` and the engine test decodes an embedded MP3 fixture.
+- Tracktion automatically enables tempo and pitch following for loop-tagged audio. This POC has no time-stretch backend enabled, so PR 004 explicitly normalises imported stems to native-speed, absolute-time playback; tempo matching remains out of scope.
 - JUCE's MP3 decoder header carries a patent/non-infringement disclaimer. This does not block the private local POC, but it belongs in the deferred distribution review together with the JUCE and Tracktion license decision.
 
 ### `c2pa-cpp`

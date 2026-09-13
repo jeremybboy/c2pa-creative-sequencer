@@ -11,3 +11,7 @@ This is a focused engineering check, not the final provenance demo.
 7. Compare the SHA-256 of the original file and its copy under the project's `Media/` directory; they must match.
 
 WAV is the canonical manual check because later render and C2PA slices target WAV. Import success proves readable audio, a byte-preserving project copy, model registration, clip placement, cached waveform generation, and Tracktion playback; it does not prove C2PA inspection or signing.
+
+For a loop-tagged WAV, confirm that playback keeps the file's native duration and
+pitch even when its embedded BPM differs from the project BPM. PR 004 intentionally
+does not provide clip warping or tempo matching.

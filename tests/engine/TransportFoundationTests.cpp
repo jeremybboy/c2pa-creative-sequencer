@@ -1,3 +1,4 @@
+#include "engine/NativeAudioClipPolicy.h"
 #include "transport/TransportFormatting.h"
 
 #include <tracktion_engine/tracktion_engine.h>
@@ -38,10 +39,12 @@ bool isSilent(const juce::AudioBuffer<float>& buffer)
     return true;
 }
 
-bool writeTestAudio(const juce::File& file, juce::AudioFormat& format)
+bool writeTestAudio(const juce::File& file,
+                    juce::AudioFormat& format,
+                    double sampleRate = 44100.0,
+                    int numSamples = 11025,
+                    const juce::StringPairArray& metadata = {})
 {
-    constexpr double sampleRate = 44100.0;
-    constexpr int numSamples = 11025;
     juce::AudioBuffer<float> source(1, numSamples);
     for (int sample = 0; sample < numSamples; ++sample)
         source.setSample(0, sample, 0.35f * std::sin(
@@ -60,7 +63,7 @@ bool writeTestAudio(const juce::File& file, juce::AudioFormat& format)
         return false;
     }
     auto writer = std::unique_ptr<juce::AudioFormatWriter>(
-        format.createWriterFor(stream.release(), sampleRate, 1, 16, {}, 0));
+        format.createWriterFor(stream.release(), sampleRate, 1, 16, metadata, 0));
     if (writer == nullptr)
     {
         std::cerr << "could not create " << format.getFormatName() << " writer\n";
@@ -102,7 +105,7 @@ struct ScopedTestDirectory
 };
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
 
@@ -180,6 +183,7 @@ int main()
 
     ScopedTestDirectory testDirectory;
     const auto wavFile = testDirectory.file.getChildFile("tone.wav");
+    const auto loopTaggedWavFile = testDirectory.file.getChildFile("loop-125-Csharp.wav");
     const auto aiffFile = testDirectory.file.getChildFile("tone.aiff");
     const auto mp3File = testDirectory.file.getChildFile("tone.mp3");
     juce::WavAudioFormat wavFormat;
@@ -187,6 +191,21 @@ int main()
     if (! writeTestAudio(wavFile, wavFormat))
     {
         std::cerr << "failed to write WAV fixture\n";
+        return 8;
+    }
+    juce::StringPairArray loopMetadata;
+    loopMetadata.set(juce::WavAudioFormat::acidOneShot, "0");
+    loopMetadata.set(juce::WavAudioFormat::acidRootSet, "1");
+    loopMetadata.set(juce::WavAudioFormat::acidStretch, "1");
+    loopMetadata.set(juce::WavAudioFormat::acidizerFlag, "1");
+    loopMetadata.set(juce::WavAudioFormat::acidRootNote, "61");
+    loopMetadata.set(juce::WavAudioFormat::acidBeats, "4");
+    loopMetadata.set(juce::WavAudioFormat::acidDenominator, "4");
+    loopMetadata.set(juce::WavAudioFormat::acidNumerator, "4");
+    loopMetadata.set(juce::WavAudioFormat::acidTempo, "125");
+    if (! writeTestAudio(loopTaggedWavFile, wavFormat, 48000.0, 92160, loopMetadata))
+    {
+        std::cerr << "failed to write loop-tagged WAV fixture\n";
         return 8;
     }
     if (! writeTestAudio(aiffFile, aiffFormat))
@@ -222,29 +241,69 @@ int main()
     if (! thumbnail.isFullyLoaded() || thumbnail.getTotalLength() <= 0.0)
         return 11;
 
+    const auto playbackFile = argc > 1 ? juce::File::getCurrentWorkingDirectory()
+                                             .getChildFile(juce::String::fromUTF8(argv[1]))
+                                       : loopTaggedWavFile;
     auto* audioTrack = te::getAudioTracks(*edit)[0];
-    te::AudioFile wavAudio(engine, wavFile);
+    te::AudioFile wavAudio(engine, playbackFile);
     const te::ClipPosition clipPosition {
         { tracktion::TimePosition::fromSeconds(0.0),
           tracktion::TimePosition::fromSeconds(wavAudio.getLength()) },
         {}
     };
-    if (audioTrack->insertWaveClip("tone", wavFile, clipPosition, false) == nullptr)
+    const auto insertedClip = audioTrack->insertWaveClip(
+        playbackFile.getFileNameWithoutExtension(), playbackFile, clipPosition, false);
+    if (insertedClip == nullptr)
         return 12;
+
+    if (! insertedClip->getAutoTempo() || ! insertedClip->getAutoPitch())
+    {
+        std::cerr << "loop metadata did not reproduce Tracktion auto-stretch\n";
+        return 13;
+    }
+
+    std::cout << "playback fixture: " << playbackFile.getFullPathName() << '\n'
+              << "source seconds: " << wavAudio.getLength() << '\n'
+              << "clip seconds: " << insertedClip->getPosition().getLength().inSeconds() << '\n'
+              << "auto tempo: " << insertedClip->getAutoTempo() << '\n'
+              << "auto pitch: " << insertedClip->getAutoPitch() << '\n'
+              << "stretch mode: " << static_cast<int>(insertedClip->getActualTimeStretchMode())
+              << '\n';
+
+    c2paseq::configureNativeAudioClip(*insertedClip, wavAudio.getLength());
+    std::cout << "native clip seconds: "
+              << insertedClip->getPosition().getLength().inSeconds() << '\n'
+              << "native auto tempo: " << insertedClip->getAutoTempo() << '\n'
+              << "native auto pitch: " << insertedClip->getAutoPitch() << '\n'
+              << "native stretch mode: "
+              << static_cast<int>(insertedClip->getActualTimeStretchMode()) << '\n';
+    if (insertedClip->getAutoTempo()
+        || insertedClip->getAutoPitch()
+        || insertedClip->getActualTimeStretchMode() != te::TimeStretcher::disabled
+        || std::abs(insertedClip->getPosition().getLength().inSeconds()
+                    - wavAudio.getLength()) > 0.000001)
+    {
+        std::cerr << "native playback policy did not remove auto-stretch\n";
+        return 14;
+    }
 
     transport.stop(false, true);
     transport.ensureContextAllocated(true);
     transport.setPosition(tracktion::TimePosition::fromSeconds(0.0));
     transport.play(false);
-    bool heardAudio = false;
+    float peakMagnitude = 0.0f;
     for (int block = 0; block < 64; ++block)
     {
         audio.clear();
         audioInterface.processBlock(audio, midi);
-        heardAudio = heardAudio || ! isSilent(audio);
+        for (int channel = 0; channel < audio.getNumChannels(); ++channel)
+            peakMagnitude = std::max(
+                peakMagnitude,
+                audio.getMagnitude(channel, 0, audio.getNumSamples()));
     }
-    if (! heardAudio)
-        return 13;
+    std::cout << "output peak: " << peakMagnitude << '\n';
+    if (peakMagnitude == 0.0f)
+        return 15;
 
     std::cout << "transport and audio import: WAV/AIFF/MP3 decode, waveform, and playback passed\n";
     return 0;
