@@ -60,6 +60,8 @@ struct Project
     juce::String createdAt;
     juce::String modifiedAt;
     double bpm = 120.0;
+    double timelinePixelsPerSecond = 96.0;
+    double timelineScrollSeconds = 0.0;
     std::vector<TrackModel> tracks;
     std::vector<MediaReference> media;
     std::vector<PluginState> plugins;

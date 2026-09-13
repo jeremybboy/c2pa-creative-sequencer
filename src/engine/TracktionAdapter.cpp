@@ -185,9 +185,11 @@ juce::Result TracktionAdapter::insertAudioClip(const juce::File& file,
                                                 const juce::String& name,
                                                 int trackIndex,
                                                 double startSeconds,
+                                                double sourceOffsetSeconds,
                                                 double lengthSeconds)
 {
-    if (edit == nullptr || trackIndex < 0 || startSeconds < 0.0 || lengthSeconds <= 0.0)
+    if (edit == nullptr || trackIndex < 0 || startSeconds < 0.0
+        || sourceOffsetSeconds < 0.0 || lengthSeconds <= 0.0)
         return juce::Result::fail("Invalid audio clip placement");
 
     edit->ensureNumberOfAudioTracks(trackIndex + 1);
@@ -196,11 +198,10 @@ juce::Result TracktionAdapter::insertAudioClip(const juce::File& file,
         return juce::Result::fail("Could not create an audio track");
 
     auto* track = audioTracks[trackIndex];
-    track->setName(name);
     const auto start = tracktion::TimePosition::fromSeconds(startSeconds);
     const tracktion::engine::ClipPosition clipPosition {
         { start, start + tracktion::TimeDuration::fromSeconds(lengthSeconds) },
-        {}
+        tracktion::TimeDuration::fromSeconds(sourceOffsetSeconds)
     };
     const auto newClip = track->insertWaveClip(name, file, clipPosition, false);
     if (newClip == nullptr)
@@ -209,6 +210,55 @@ juce::Result TracktionAdapter::insertAudioClip(const juce::File& file,
     configureNativeAudioClip(*newClip, lengthSeconds);
 
     edit->getTransport().ensureContextAllocated(true);
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::setTrackProperties(int trackIndex,
+                                                   const juce::String& name,
+                                                   double gainDb,
+                                                   double pan,
+                                                   bool muted,
+                                                   bool soloed)
+{
+    if (edit == nullptr || trackIndex < 0)
+        return juce::Result::fail("Invalid audio track");
+
+    edit->ensureNumberOfAudioTracks(trackIndex + 1);
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Could not create audio track");
+
+    auto* track = tracks[trackIndex];
+    track->setName(name);
+    track->setMute(muted);
+    track->setSolo(soloed);
+    if (auto* volume = track->getVolumePlugin())
+    {
+        volume->setVolumeDb(static_cast<float>(juce::jlimit(-60.0, 12.0, gainDb)));
+        volume->setPan(static_cast<float>(juce::jlimit(-1.0, 1.0, pan)));
+    }
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::setTrackMute(int trackIndex, bool muted)
+{
+    if (edit == nullptr || trackIndex < 0)
+        return juce::Result::fail("Invalid audio track");
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    tracks[trackIndex]->setMute(muted);
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::setTrackSolo(int trackIndex, bool soloed)
+{
+    if (edit == nullptr || trackIndex < 0)
+        return juce::Result::fail("Invalid audio track");
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    tracks[trackIndex]->setSolo(soloed);
     return juce::Result::ok();
 }
 

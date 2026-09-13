@@ -64,9 +64,51 @@ void AudioEngine::setBpm(double bpm)
 }
 
 juce::Result AudioEngine::importAudio(const juce::File& source,
+                                      int trackIndex,
                                       double startSeconds)
 {
-    return projectEngine.importAudio(source, startSeconds);
+    return projectEngine.importAudio(source, trackIndex, startSeconds);
+}
+
+juce::Result AudioEngine::moveClip(const juce::String& id, int trackIndex, double start)
+{
+    return projectEngine.moveClip(id, trackIndex, start);
+}
+
+juce::Result AudioEngine::trimClip(const juce::String& id, double start,
+                                   double offset, double length)
+{
+    return projectEngine.trimClip(id, start, offset, length);
+}
+
+juce::Result AudioEngine::deleteClip(const juce::String& id) { return projectEngine.deleteClip(id); }
+juce::Result AudioEngine::duplicateClip(const juce::String& id) { return projectEngine.duplicateClip(id); }
+juce::Result AudioEngine::splitClip(const juce::String& id, double position)
+{
+    return projectEngine.splitClip(id, position);
+}
+juce::Result AudioEngine::setTrackName(int i, const juce::String& n) { return projectEngine.setTrackName(i, n); }
+juce::Result AudioEngine::setTrackMute(int i, bool v) { return projectEngine.setTrackMute(i, v); }
+juce::Result AudioEngine::setTrackSolo(int i, bool v) { return projectEngine.setTrackSolo(i, v); }
+juce::Result AudioEngine::setTrackGain(int i, double v) { return projectEngine.setTrackGain(i, v); }
+juce::Result AudioEngine::setTrackPan(int i, double v) { return projectEngine.setTrackPan(i, v); }
+bool AudioEngine::undo() { return projectEngine.undo(); }
+bool AudioEngine::redo() { return projectEngine.redo(); }
+bool AudioEngine::canUndo() const noexcept { return projectEngine.canUndo(); }
+bool AudioEngine::canRedo() const noexcept { return projectEngine.canRedo(); }
+void AudioEngine::setTimelineView(double pixels, double scroll)
+{
+    projectEngine.setTimelineView(pixels, scroll);
+}
+double AudioEngine::timelinePixelsPerSecond() const noexcept
+{
+    const auto* project = projectEngine.currentProject();
+    return project != nullptr ? project->timelinePixelsPerSecond : 96.0;
+}
+double AudioEngine::timelineScrollSeconds() const noexcept
+{
+    const auto* project = projectEngine.currentProject();
+    return project != nullptr ? project->timelineScrollSeconds : 0.0;
 }
 
 bool AudioEngine::isSupportedAudioFile(const juce::File& file)

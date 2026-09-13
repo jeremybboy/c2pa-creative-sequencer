@@ -68,6 +68,8 @@ juce::var makeProjectDocument(const Project& project)
     object->setProperty("createdAt", project.createdAt);
     object->setProperty("modifiedAt", project.modifiedAt);
     object->setProperty("bpm", project.bpm);
+    object->setProperty("timelinePixelsPerSecond", project.timelinePixelsPerSecond);
+    object->setProperty("timelineScrollSeconds", project.timelineScrollSeconds);
     object->setProperty("applicationVersion", project.applicationVersion);
     object->setProperty("arrangementFile", "arrangement.tracktionedit");
     object->setProperty("provenanceFile", "provenance.json");
@@ -302,6 +304,15 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
     if (auto result = requireNumber(*root, "bpm", loaded.bpm); result.failed()) return result;
     if (loaded.bpm < 40.0 || loaded.bpm > 240.0)
         return juce::Result::fail("Project BPM must be between 40 and 240");
+    if (root->hasProperty("timelinePixelsPerSecond"))
+        if (auto result = requireNumber(*root, "timelinePixelsPerSecond",
+                                        loaded.timelinePixelsPerSecond); result.failed()) return result;
+    if (root->hasProperty("timelineScrollSeconds"))
+        if (auto result = requireNumber(*root, "timelineScrollSeconds",
+                                        loaded.timelineScrollSeconds); result.failed()) return result;
+    loaded.timelinePixelsPerSecond = juce::jlimit(24.0, 640.0,
+                                                   loaded.timelinePixelsPerSecond);
+    loaded.timelineScrollSeconds = std::max(0.0, loaded.timelineScrollSeconds);
     if (auto result = requireString(*root, "applicationVersion", loaded.applicationVersion); result.failed()) return result;
     if (root->getProperty("arrangementFile").toString() != "arrangement.tracktionedit"
         || root->getProperty("provenanceFile").toString() != "provenance.json")
