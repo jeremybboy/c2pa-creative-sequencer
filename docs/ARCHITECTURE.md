@@ -26,3 +26,19 @@ The `transport_foundation` test uses Tracktion's hosted-audio interface at 48 kH
 - Accessibility-driven runtime checks proved Play changed to Pause, position advanced from `00:00.000` to `00:01.024`, Pause held `00:00.757` unchanged, Stop returned it to `00:00.000`, Loop toggled on, and the Audio Device dialog opened.
 - Repeated startup checks exposed and then eliminated a block caused by Tracktion opening persisted SoundFlow MIDI endpoints; system MIDI enumeration is disabled because MIDI is outside this product's scope.
 - A standard application quit event terminated the process.
+
+## PR 003 boundary
+
+`ProjectEngine` coordinates lifecycle without leaking Tracktion types into the project model. `Project`, `ProjectSerializer`, `ProjectPaths`, and `MediaLibrary` use JUCE core types only; `TracktionAdapter` alone creates, saves, and loads `arrangement.tracktionedit`.
+
+The application exposes New, Open, and Save controls for `.c2paseq` bundles. A successful new-project operation creates all four required bundle entries, save synchronises the effective Tracktion BPM into `project.json`, and open validates both JSON documents before replacing the active Tracktion Edit.
+
+Project JSON, Tracktion edit XML, and provenance JSON remain separate because they have different owners and evolution paths. The project test proves schema round-trip and byte-identical media copying with SHA-256; it does not claim playable audio import, waveform generation, or C2PA validation.
+
+## PR 003 verification
+
+- The app and all three test executables build locally with Apple Clang 21.
+- CTest passes `application_skeleton`, `transport_foundation`, and `project_model` (3/3).
+- A live macOS run created a project through the native save panel and produced `project.json`, `arrangement.tracktionedit`, `provenance.json`, and `Media/`.
+- The two JSON documents parsed successfully, and the Tracktion file contained native Edit XML.
+- After saving and quitting, a fresh app process opened the same bundle and restored its project identity.

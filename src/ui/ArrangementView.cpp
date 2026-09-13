@@ -22,6 +22,14 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     status.setFont(juce::FontOptions(13.0f));
     status.setColour(juce::Label::textColourId, juce::Colour::fromRGB(152, 171, 168));
 
+    projectName.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    projectName.setColour(juce::Label::textColourId, juce::Colour::fromRGB(224, 218, 207));
+    projectName.setJustificationType(juce::Justification::centredLeft);
+
+    newProject.onClick = [this] { createProject(); };
+    openProjectButton.onClick = [this] { openProject(); };
+    saveProjectButton.onClick = [this] { saveProject(); };
+
     playPause.onClick = [this]
     {
         if (audioEngine.transportSnapshot().playing)
@@ -76,6 +84,10 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     addAndMakeVisible(title);
     addAndMakeVisible(emptyState);
     addAndMakeVisible(status);
+    addAndMakeVisible(projectName);
+    addAndMakeVisible(newProject);
+    addAndMakeVisible(openProjectButton);
+    addAndMakeVisible(saveProjectButton);
     addAndMakeVisible(audioSettings);
     addAndMakeVisible(playPause);
     addAndMakeVisible(stop);
@@ -116,6 +128,12 @@ void ArrangementView::resized()
     stop.setBounds(transportBar.removeFromLeft(72).reduced(3));
     playPause.setBounds(transportBar.removeFromLeft(82).reduced(3));
 
+    auto projectBar = bounds.removeFromTop(34);
+    newProject.setBounds(projectBar.removeFromLeft(70).reduced(3));
+    openProjectButton.setBounds(projectBar.removeFromLeft(70).reduced(3));
+    saveProjectButton.setBounds(projectBar.removeFromLeft(70).reduced(3));
+    projectName.setBounds(projectBar.reduced(6, 2));
+
     scrubber.setBounds(bounds.removeFromTop(24));
     status.setBounds(bounds.removeFromBottom(28));
     emptyState.setBounds(bounds);
@@ -133,10 +151,73 @@ void ArrangementView::refreshTransport()
     loop.setToggleState(snapshot.looping, juce::dontSendNotification);
     position.setText(transport::formatPosition(snapshot.positionSeconds).c_str(), juce::dontSendNotification);
     bpm.setValue(snapshot.bpm, juce::dontSendNotification);
-    status.setText(audioEngine.status(), juce::dontSendNotification);
+    projectName.setText("Project: " + audioEngine.projectName(), juce::dontSendNotification);
+    saveProjectButton.setEnabled(audioEngine.hasProject());
+    const auto message = projectMessage.isNotEmpty() ? projectMessage + " | " : juce::String();
+    status.setText(message + audioEngine.status(), juce::dontSendNotification);
 
     if (! scrubberIsDragging)
         scrubber.setValue(snapshot.positionSeconds, juce::dontSendNotification);
+}
+
+void ArrangementView::createProject()
+{
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Create Project",
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+            .getChildFile("Untitled Project.c2paseq"),
+        "*.c2paseq");
+
+    const auto flags = juce::FileBrowserComponent::saveMode
+        | juce::FileBrowserComponent::canSelectFiles
+        | juce::FileBrowserComponent::warnAboutOverwriting;
+    fileChooser->launchAsync(flags, [safe = juce::Component::SafePointer<ArrangementView>(this)]
+    (const juce::FileChooser& chooser)
+    {
+        if (safe == nullptr || chooser.getResult() == juce::File())
+            return;
+        auto folder = chooser.getResult();
+        if (! folder.hasFileExtension("c2paseq"))
+            folder = folder.withFileExtension("c2paseq");
+        safe->showProjectResult(
+            safe->audioEngine.createProject(folder, folder.getFileNameWithoutExtension()),
+            "Created " + folder.getFileNameWithoutExtension());
+        safe->fileChooser.reset();
+    });
+}
+
+void ArrangementView::openProject()
+{
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Open Project",
+        juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),
+        "*.c2paseq");
+
+    const auto flags = juce::FileBrowserComponent::openMode
+        | juce::FileBrowserComponent::canSelectDirectories
+        | juce::FileBrowserComponent::canSelectFiles;
+    fileChooser->launchAsync(flags, [safe = juce::Component::SafePointer<ArrangementView>(this)]
+    (const juce::FileChooser& chooser)
+    {
+        if (safe == nullptr || chooser.getResult() == juce::File())
+            return;
+        const auto folder = chooser.getResult();
+        safe->showProjectResult(safe->audioEngine.openProject(folder),
+                                "Opened " + folder.getFileNameWithoutExtension());
+        safe->fileChooser.reset();
+    });
+}
+
+void ArrangementView::saveProject()
+{
+    showProjectResult(audioEngine.saveProject(), "Project saved");
+}
+
+void ArrangementView::showProjectResult(const juce::Result& result,
+                                         const juce::String& successMessage)
+{
+    projectMessage = result.wasOk() ? successMessage : "Project error: " + result.getErrorMessage();
+    refreshTransport();
 }
 
 void ArrangementView::showAudioSettings()

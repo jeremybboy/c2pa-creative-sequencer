@@ -30,8 +30,18 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/app/MainWindow.h
     src/engine/AudioEngine.cpp
     src/engine/AudioEngine.h
+    src/engine/ProjectEngine.cpp
+    src/engine/ProjectEngine.h
     src/engine/TracktionAdapter.cpp
     src/engine/TracktionAdapter.h
+    src/project/MediaLibrary.cpp
+    src/project/MediaLibrary.h
+    src/project/Project.cpp
+    src/project/Project.h
+    src/project/ProjectPaths.cpp
+    src/project/ProjectPaths.h
+    src/project/ProjectSerializer.cpp
+    src/project/ProjectSerializer.h
     src/transport/TransportFormatting.cpp
     src/transport/TransportFormatting.h
     src/ui/ArrangementView.cpp
@@ -52,6 +62,7 @@ target_compile_definitions(C2PACreativeSequencer PRIVATE
 target_link_libraries(C2PACreativeSequencer PRIVATE
     tracktion::tracktion_engine
     juce::juce_audio_utils
+    juce::juce_cryptography
     juce::juce_gui_extra
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
@@ -87,4 +98,22 @@ if(BUILD_TESTING)
         tracktion::tracktion_engine
         juce::juce_recommended_config_flags)
     add_test(NAME transport_foundation COMMAND C2PATransportTests)
+
+    add_executable(C2PAProjectModelTests
+        tests/project/ProjectModelTests.cpp
+        src/app/AppInfo.h
+        src/project/MediaLibrary.cpp
+        src/project/MediaLibrary.h
+        src/project/Project.cpp
+        src/project/Project.h
+        src/project/ProjectPaths.cpp
+        src/project/ProjectPaths.h
+        src/project/ProjectSerializer.cpp
+        src/project/ProjectSerializer.h)
+    target_include_directories(C2PAProjectModelTests PRIVATE src)
+    target_compile_features(C2PAProjectModelTests PRIVATE cxx_std_20)
+    target_link_libraries(C2PAProjectModelTests PRIVATE
+        juce::juce_cryptography
+        juce::juce_recommended_config_flags)
+    add_test(NAME project_model COMMAND C2PAProjectModelTests)
 endif()
