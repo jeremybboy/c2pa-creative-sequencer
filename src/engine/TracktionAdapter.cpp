@@ -22,8 +22,8 @@ juce::String TracktionAdapter::audioDeviceDescription() const
     const auto& deviceManager = engine.getDeviceManager().deviceManager;
 
     if (const auto* device = deviceManager.getCurrentAudioDevice())
-        return "Audio engine ready — " + device->getName();
+        return "Audio engine ready: " + device->getName();
 
-    return "Audio engine ready — no output device selected";
+    return "Audio engine ready: no output device selected";
 }
 }
