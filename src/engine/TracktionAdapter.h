@@ -41,9 +41,14 @@ public:
     void seek(double positionSeconds);
     void setLooping(bool shouldLoop);
     void setBpm(double bpm);
+    [[nodiscard]] bool createProjectEdit(const juce::File& editFile);
+    [[nodiscard]] bool saveProjectEdit(const juce::File& editFile);
+    [[nodiscard]] bool loadProjectEdit(const juce::File& editFile);
+    void closeProjectEdit();
 
 private:
     void configurePreferredAudioSettings();
+    void prepareEdit();
 
     tracktion::engine::Engine engine;
     std::unique_ptr<tracktion::engine::Edit> edit;

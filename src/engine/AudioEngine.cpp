@@ -2,6 +2,11 @@
 
 namespace c2paseq
 {
+AudioEngine::AudioEngine()
+    : projectEngine(tracktion)
+{
+}
+
 bool AudioEngine::isInitialised() const noexcept
 {
     return tracktion.isInitialised();
@@ -55,5 +60,32 @@ void AudioEngine::setLooping(bool shouldLoop)
 void AudioEngine::setBpm(double bpm)
 {
     tracktion.setBpm(bpm);
+    projectEngine.setBpm(bpm);
+}
+
+juce::Result AudioEngine::createProject(const juce::File& projectFolder,
+                                        const juce::String& projectName)
+{
+    return projectEngine.createProject(projectFolder, projectName);
+}
+
+juce::Result AudioEngine::saveProject()
+{
+    return projectEngine.saveProject();
+}
+
+juce::Result AudioEngine::openProject(const juce::File& projectFolder)
+{
+    return projectEngine.openProject(projectFolder);
+}
+
+bool AudioEngine::hasProject() const noexcept
+{
+    return projectEngine.hasProject();
+}
+
+juce::String AudioEngine::projectName() const
+{
+    return projectEngine.displayName();
 }
 }

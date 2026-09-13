@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ProjectEngine.h"
 #include "TracktionAdapter.h"
 
 namespace c2paseq
@@ -7,7 +8,7 @@ namespace c2paseq
 class AudioEngine final
 {
 public:
-    AudioEngine() = default;
+    AudioEngine();
 
     [[nodiscard]] bool isInitialised() const noexcept;
     [[nodiscard]] juce::String status() const;
@@ -22,7 +23,15 @@ public:
     void setLooping(bool shouldLoop);
     void setBpm(double bpm);
 
+    [[nodiscard]] juce::Result createProject(const juce::File& projectFolder,
+                                             const juce::String& projectName);
+    [[nodiscard]] juce::Result saveProject();
+    [[nodiscard]] juce::Result openProject(const juce::File& projectFolder);
+    [[nodiscard]] bool hasProject() const noexcept;
+    [[nodiscard]] juce::String projectName() const;
+
 private:
     TracktionAdapter tracktion;
+    ProjectEngine projectEngine;
 };
 }

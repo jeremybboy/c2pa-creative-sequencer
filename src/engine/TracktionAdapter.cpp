@@ -13,6 +13,11 @@ namespace
 class SequencerEngineBehaviour final : public tracktion::engine::EngineBehaviour
 {
 public:
+    bool autoInitialiseDeviceManager() override
+    {
+        return false;
+    }
+
     bool shouldOpenAudioInputByDefault() override
     {
         return false;
@@ -25,20 +30,36 @@ TracktionAdapter::TracktionAdapter()
 {
     auto& deviceManager = engine.getDeviceManager();
 
-    // An uninitialised hosted interface disables Tracktion's hardware-MIDI path
-    // without replacing the selected CoreAudio device. MIDI is out of scope.
+    // Configure MIDI before the first device scan. The hosted interface prevents
+    // hardware enumeration; disabling its placeholders prevents MIDI ports from
+    // opening. It remains uninitialised, so CoreAudio is still selected.
+    juce::XmlElement disabledMidi("SETTINGS");
+    disabledMidi.setAttribute("enabled", false);
+    auto& settings = engine.getPropertyStorage();
+    settings.setXmlPropertyItem(tracktion::engine::SettingID::midiout,
+                                "MIDI Output", disabledMidi);
+    settings.setXmlPropertyItem(tracktion::engine::SettingID::midiin,
+                                "MIDI Input", disabledMidi);
+    settings.setXmlPropertyItem(tracktion::engine::SettingID::virtualmidiin,
+                                "All MIDI Ins", disabledMidi);
     deviceManager.getHostedAudioDeviceInterface();
     deviceManager.setMidiDeviceScanIntervalSeconds(0);
+    deviceManager.initialise(0, tracktion::engine::DeviceManager::defaultNumChannelsToOpen);
     configurePreferredAudioSettings();
 
     edit = tracktion::engine::createEmptyEdit(engine, {});
+    prepareEdit();
+    initialised = true;
+}
+
+void TracktionAdapter::prepareEdit()
+{
     setBpm(transport::defaultBpm);
     edit->getTransport().setLoopRange({
         tracktion::TimePosition::fromSeconds(0.0),
         tracktion::TimePosition::fromSeconds(transport::defaultLoopEndSeconds)
     });
     edit->getTransport().ensureContextAllocated();
-    initialised = true;
 }
 
 TracktionAdapter::~TracktionAdapter()
@@ -137,6 +158,52 @@ void TracktionAdapter::setBpm(double bpm)
 
     if (auto* tempo = edit->tempoSequence.getTempo(0))
         tempo->setBpm(std::clamp(bpm, transport::minimumBpm, transport::maximumBpm));
+}
+
+bool TracktionAdapter::createProjectEdit(const juce::File& editFile)
+{
+    auto replacement = tracktion::engine::createEmptyEdit(engine, editFile);
+    if (replacement == nullptr)
+        return false;
+
+    if (edit != nullptr)
+        edit->getTransport().stop(false, true);
+    edit = std::move(replacement);
+    prepareEdit();
+    return true;
+}
+
+bool TracktionAdapter::saveProjectEdit(const juce::File& editFile)
+{
+    if (edit == nullptr)
+        return false;
+
+    tracktion::engine::EditFileOperations fileOperations(*edit);
+    return fileOperations.writeToFile(editFile, false);
+}
+
+bool TracktionAdapter::loadProjectEdit(const juce::File& editFile)
+{
+    if (! editFile.existsAsFile())
+        return false;
+
+    auto replacement = tracktion::engine::loadEditFromFile(engine, editFile);
+    if (replacement == nullptr)
+        return false;
+
+    if (edit != nullptr)
+        edit->getTransport().stop(false, true);
+    edit = std::move(replacement);
+    edit->getTransport().ensureContextAllocated();
+    return true;
+}
+
+void TracktionAdapter::closeProjectEdit()
+{
+    if (edit != nullptr)
+        edit->getTransport().stop(false, true);
+    edit = tracktion::engine::createEmptyEdit(engine, {});
+    prepareEdit();
 }
 
 void TracktionAdapter::configurePreferredAudioSettings()
