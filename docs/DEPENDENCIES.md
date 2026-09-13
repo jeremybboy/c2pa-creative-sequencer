@@ -13,13 +13,15 @@ Verified on 2026-09-11 on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xco
 
 ## Architecture consequences
 
-1. Keep Tracktion Engine behind `TracktionAdapter`; its GPL/commercial terms and API surface must not dictate the rest of the application.
+1. Keep Tracktion Engine behind `TracktionAdapter`; its API surface must not dictate the rest of the application.
 2. PR 001 uses the exact JUCE commit pinned by Tracktion Engine v3.2.0. JUCE 9.0.2 is newer, but compatibility with the stable Tracktion release was not established and is not required for the POC scaffold.
 3. Keep every C2PA call inside `src/provenance`. The current API is context-oriented: use `c2pa::Context`, `c2pa::Reader`, `c2pa::Builder`, and `c2pa::Signer`; context-free reader/builder constructors compile but are deprecated.
 4. Use JUCE/Tracktion plug-in hosting rather than coupling application code directly to Steinberg interfaces. When PR 013 adds the SDK, test JUCE's custom-SDK path against the pinned MIT SDK rather than relying silently on JUCE 8's older bundled copy.
 5. Set the POC deployment target to macOS 13.3 because `c2pa-cpp` v0.26.9 sets that minimum and distributes an `aarch64-apple-darwin` prebuilt runtime.
 
-## Licensing checkpoint
+## Deferred distribution checkpoint
+
+This checkpoint is deliberately deferred while the software remains a private, local evaluation POC. It is not a blocker for implementation and should be reopened only before distribution, publication, or third-party use.
 
 - A closed-source distributable requires appropriate commercial JUCE and Tracktion Engine licenses; they are separate products and one license does not cover the other.
 - An open-source route would have to satisfy JUCE's AGPLv3 terms and Tracktion Engine's GPLv3-or-later terms together with every bundled/transitive notice. Do not choose this route casually.
@@ -51,7 +53,7 @@ Verified on 2026-09-11 on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xco
 - The application and test executable built successfully as C++20; the app bundle contains a native arm64 Mach-O executable.
 - CTest passed `application_skeleton` (1/1).
 - The app launched as a persistent process, exposed a window titled `C2PA Creative Sequencer`, and exited cleanly after a standard application quit event.
-- The Xcode generator could not be tested inside the Codex filesystem sandbox because `xcodebuild` attempted to write compiler-identification DerivedData under `~/Library`. This was an environment permission failure before project configuration; CI retains an Xcode-generator build on an unsandboxed macOS runner.
+- GitHub Actions subsequently built and tested PR 001 successfully with the Xcode generator on its hosted macOS runner.
 
 ## Primary sources
 

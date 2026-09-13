@@ -9,7 +9,7 @@ class AudioEngine;
 class MainWindow final : public juce::DocumentWindow
 {
 public:
-    explicit MainWindow(const AudioEngine& audioEngine);
+    explicit MainWindow(AudioEngine& audioEngine);
     void closeButtonPressed() override;
 };
 }
