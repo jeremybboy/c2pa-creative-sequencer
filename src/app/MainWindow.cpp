@@ -13,7 +13,7 @@ MainWindow::MainWindow(AudioEngine& audioEngine)
 {
     setUsingNativeTitleBar(true);
     setResizable(true, true);
-    setResizeLimits(760, 480, 3840, 2160);
+    setResizeLimits(1040, 600, 3840, 2160);
     setContentOwned(new ArrangementView(audioEngine), true);
     centreWithSize(appInfo::defaultWindowWidth, appInfo::defaultWindowHeight);
     setVisible(true);

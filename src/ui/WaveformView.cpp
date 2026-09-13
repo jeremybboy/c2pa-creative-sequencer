@@ -5,10 +5,22 @@ namespace c2paseq
 WaveformView::WaveformView(juce::AudioFormatManager& formatManager,
                            juce::AudioThumbnailCache& thumbnailCache,
                            juce::File audioFile,
-                           juce::String clipName)
+                           juce::String clipName,
+                           juce::String clipId,
+                           int trackIndex,
+                           double startSeconds,
+                           double sourceOffsetSeconds,
+                           double lengthSeconds,
+                           juce::Colour colour)
     : thumbnail(256, formatManager, thumbnailCache),
       file(std::move(audioFile)),
-      name(std::move(clipName))
+      name(std::move(clipName)),
+      identifier(std::move(clipId)),
+      trackNumber(trackIndex),
+      timelineStart(startSeconds),
+      sourceOffset(sourceOffsetSeconds),
+      duration(lengthSeconds),
+      clipColour(colour)
 {
     thumbnail.addChangeListener(this);
     thumbnail.setSource(new juce::FileInputSource(file));
@@ -17,16 +29,17 @@ WaveformView::WaveformView(juce::AudioFormatManager& formatManager,
 void WaveformView::paint(juce::Graphics& graphics)
 {
     auto bounds = getLocalBounds().toFloat();
-    graphics.setColour(juce::Colour::fromRGB(50, 75, 72));
-    graphics.fillRoundedRectangle(bounds, 4.0f);
-    graphics.setColour(juce::Colour::fromRGB(242, 193, 78));
-    graphics.drawRoundedRectangle(bounds.reduced(0.5f), 4.0f, 1.0f);
+    graphics.setColour(clipColour.withAlpha(0.82f));
+    graphics.fillRect(bounds);
+    graphics.setColour(selected ? juce::Colour::fromRGB(255, 213, 92)
+                                : clipColour.brighter(0.35f));
+    graphics.drawRect(bounds.reduced(0.5f), selected ? 2.0f : 1.0f);
 
     auto waveformBounds = bounds.reduced(8.0f).withTrimmedTop(18.0f);
     graphics.setColour(juce::Colour::fromRGB(224, 218, 207));
     if (thumbnail.getTotalLength() > 0.0)
-        thumbnail.drawChannels(graphics, waveformBounds.toNearestInt(), 0.0,
-                               thumbnail.getTotalLength(), 1.0f);
+        thumbnail.drawChannels(graphics, waveformBounds.toNearestInt(), sourceOffset,
+                               sourceOffset + duration, 1.0f);
     else
         graphics.drawText("Building waveform...", waveformBounds,
                           juce::Justification::centred);
@@ -34,6 +47,46 @@ void WaveformView::paint(juce::Graphics& graphics)
     graphics.setFont(juce::FontOptions(12.0f, juce::Font::bold));
     graphics.drawFittedText(name, getLocalBounds().reduced(8).removeFromTop(16),
                             juce::Justification::centredLeft, 1);
+}
+
+void WaveformView::mouseDown(const juce::MouseEvent& event)
+{
+    dragStartBounds = getBounds();
+    if (event.x <= 7)
+        dragMode = DragMode::trimStart;
+    else if (event.x >= getWidth() - 7)
+        dragMode = DragMode::trimEnd;
+    else
+        dragMode = DragMode::move;
+    if (onSelected)
+        onSelected(*this);
+}
+
+void WaveformView::mouseDrag(const juce::MouseEvent& event)
+{
+    if (onGesture)
+        onGesture(*this, dragMode, event.getDistanceFromDragStartX(),
+                  event.getDistanceFromDragStartY(), false, event.mods.isAltDown());
+}
+
+void WaveformView::mouseUp(const juce::MouseEvent& event)
+{
+    if (event.mouseWasDraggedSinceMouseDown() && onGesture)
+        onGesture(*this, dragMode, event.getDistanceFromDragStartX(),
+                  event.getDistanceFromDragStartY(), true, event.mods.isAltDown());
+}
+
+void WaveformView::mouseMove(const juce::MouseEvent& event)
+{
+    setMouseCursor(event.x <= 7 || event.x >= getWidth() - 7
+        ? juce::MouseCursor::LeftRightResizeCursor
+        : juce::MouseCursor::DraggingHandCursor);
+}
+
+void WaveformView::setSelected(bool shouldBeSelected)
+{
+    selected = shouldBeSelected;
+    repaint();
 }
 
 void WaveformView::changeListenerCallback(juce::ChangeBroadcaster*)

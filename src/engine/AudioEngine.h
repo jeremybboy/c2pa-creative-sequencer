@@ -23,7 +23,26 @@ public:
     void setLooping(bool shouldLoop);
     void setBpm(double bpm);
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
+                                           int trackIndex,
                                            double startSeconds);
+    [[nodiscard]] juce::Result moveClip(const juce::String&, int trackIndex, double startSeconds);
+    [[nodiscard]] juce::Result trimClip(const juce::String&, double startSeconds,
+                                        double sourceOffsetSeconds, double lengthSeconds);
+    [[nodiscard]] juce::Result deleteClip(const juce::String&);
+    [[nodiscard]] juce::Result duplicateClip(const juce::String&);
+    [[nodiscard]] juce::Result splitClip(const juce::String&, double positionSeconds);
+    [[nodiscard]] juce::Result setTrackName(int, const juce::String&);
+    [[nodiscard]] juce::Result setTrackMute(int, bool);
+    [[nodiscard]] juce::Result setTrackSolo(int, bool);
+    [[nodiscard]] juce::Result setTrackGain(int, double);
+    [[nodiscard]] juce::Result setTrackPan(int, double);
+    [[nodiscard]] bool undo();
+    [[nodiscard]] bool redo();
+    [[nodiscard]] bool canUndo() const noexcept;
+    [[nodiscard]] bool canRedo() const noexcept;
+    void setTimelineView(double pixelsPerSecond, double scrollSeconds);
+    [[nodiscard]] double timelinePixelsPerSecond() const noexcept;
+    [[nodiscard]] double timelineScrollSeconds() const noexcept;
     [[nodiscard]] static bool isSupportedAudioFile(const juce::File& file);
     [[nodiscard]] std::vector<ArrangementTrackSnapshot> arrangementSnapshot() const;
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;

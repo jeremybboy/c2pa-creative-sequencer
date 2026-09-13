@@ -44,6 +44,8 @@ int main()
 
     auto project = c2paseq::Project::create("Round Trip");
     project.bpm = 127.5;
+    project.timelinePixelsPerSecond = 144.0;
+    project.timelineScrollSeconds = 9.5;
 
     c2paseq::TrackModel track;
     track.id = juce::Uuid().toString();
@@ -101,6 +103,8 @@ int main()
         return fail(6, result.getErrorMessage());
 
     if (project.id != originalId || project.name != "Round Trip" || project.bpm != 127.5
+        || project.timelinePixelsPerSecond != 144.0
+        || project.timelineScrollSeconds != 9.5
         || project.createdAt.isEmpty() || project.modifiedAt.isEmpty()
         || project.applicationVersion.isEmpty() || project.tracks.size() != 1
         || project.media.size() != 1 || project.plugins.size() != 1)

@@ -54,7 +54,14 @@ public:
                                                const juce::String& name,
                                                int trackIndex,
                                                double startSeconds,
+                                               double sourceOffsetSeconds,
                                                double lengthSeconds);
+    [[nodiscard]] juce::Result setTrackProperties(int trackIndex,
+                                                   const juce::String& name,
+                                                   double gainDb,
+                                                   double pan,
+                                                   bool muted,
+                                                   bool soloed);
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
     [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
     [[nodiscard]] bool createProjectEdit(const juce::File& editFile);

@@ -64,3 +64,39 @@ POC intentionally has no time-stretch backend enabled. The regression test now
 creates a synthetic loop-tagged WAV that triggers the same state, applies the
 native playback policy, checks that the original duration is restored, and proves
 that the hosted output has a non-zero peak.
+
+## PR 005 boundary
+
+PR 005 keeps seconds as the canonical saved and playback coordinate. `TimelineGeometry`
+is the only conversion layer between seconds and pixels; it also derives beat/bar
+spacing from BPM, performs beat snapping, and preserves the time beneath the zoom
+anchor. The ruler, grid, clips, playhead, seek gestures, and scroll range all consume
+that same geometry, so no independent fixed-card or decorative timeline coordinate
+exists.
+
+`Project` remains the application-owned creative source of truth. Every clip command
+updates its track assignment, start, source offset, or duration in that model;
+`ProjectEngine` then rebuilds the Tracktion Edit, reapplies `NativeAudioClipPolicy`,
+saves both representations, and records the prior project snapshot for undo. A failed
+rebuild or save restores the prior model and Edit. Tracktion owns audio execution,
+not the user-facing arrangement identity.
+
+`PlacesStore` persists multiple absolute sample-folder roots in the user's application
+data directory. `PlacesBrowser` reads folders lazily, displays only directories and
+supported audio files, and emits file references for drag placement; it never writes
+to or deletes from the source tree. Places are intentionally machine-local and do not
+enter the portable project bundle.
+
+## PR 005 verification
+
+- Timeline tests prove seconds/pixel round trips, beat/bar duration, snap behavior,
+  zoom-anchor stability, and Places add/deduplicate/reload/remove persistence.
+- Project-model tests prove track state, clip placement/source offset/duration, and
+  timeline zoom/scroll survive JSON save and load.
+- The production-engine integration test proves import to an existing track, horizontal
+  move, vertical reassignment, two-edge trim state, duplicate, split, delete, track
+  controls, undo/redo, and exact save/reopen restoration.
+- The existing hosted playback regression still proves loop-tagged audio retains native
+  duration/pitch and generates non-zero output.
+- The remaining mouse-feel, visual, and listening workflow is explicitly manual and must
+  be completed before merge; a successful build does not substitute for that acceptance.

@@ -44,10 +44,18 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/project/ProjectPaths.h
     src/project/ProjectSerializer.cpp
     src/project/ProjectSerializer.h
+    src/timeline/TimelineGeometry.cpp
+    src/timeline/TimelineGeometry.h
     src/transport/TransportFormatting.cpp
     src/transport/TransportFormatting.h
     src/ui/ArrangementView.cpp
     src/ui/ArrangementView.h
+    src/ui/PlacesBrowser.cpp
+    src/ui/PlacesBrowser.h
+    src/ui/PlacesStore.cpp
+    src/ui/PlacesStore.h
+    src/ui/TrackHeaderView.cpp
+    src/ui/TrackHeaderView.h
     src/ui/WaveformView.cpp
     src/ui/WaveformView.h)
 
@@ -124,4 +132,56 @@ if(BUILD_TESTING)
         juce::juce_cryptography
         juce::juce_recommended_config_flags)
     add_test(NAME project_model COMMAND C2PAProjectModelTests)
+
+    add_executable(C2PATimelineTests
+        tests/timeline/TimelineGeometryTests.cpp
+        src/timeline/TimelineGeometry.cpp
+        src/timeline/TimelineGeometry.h
+        src/ui/PlacesStore.cpp
+        src/ui/PlacesStore.h)
+    target_include_directories(C2PATimelineTests PRIVATE src)
+    target_compile_features(C2PATimelineTests PRIVATE cxx_std_20)
+    target_link_libraries(C2PATimelineTests PRIVATE
+        juce::juce_gui_basics
+        juce::juce_recommended_config_flags)
+    add_test(NAME timeline_geometry COMMAND C2PATimelineTests)
+
+    add_executable(C2PAArrangementEditingTests
+        tests/engine/ArrangementEditingTests.cpp
+        src/app/AppInfo.h
+        src/engine/AudioEngine.cpp
+        src/engine/AudioEngine.h
+        src/engine/NativeAudioClipPolicy.cpp
+        src/engine/NativeAudioClipPolicy.h
+        src/engine/ProjectEngine.cpp
+        src/engine/ProjectEngine.h
+        src/engine/TracktionAdapter.cpp
+        src/engine/TracktionAdapter.h
+        src/project/MediaLibrary.cpp
+        src/project/MediaLibrary.h
+        src/project/Project.cpp
+        src/project/Project.h
+        src/project/ProjectPaths.cpp
+        src/project/ProjectPaths.h
+        src/project/ProjectSerializer.cpp
+        src/project/ProjectSerializer.h
+        src/transport/TransportFormatting.cpp
+        src/transport/TransportFormatting.h)
+    target_include_directories(C2PAArrangementEditingTests PRIVATE src)
+    target_compile_definitions(C2PAArrangementEditingTests PRIVATE
+        JUCE_PLUGINHOST_AU=0
+        JUCE_PLUGINHOST_VST3=0
+        JUCE_USE_MP3AUDIOFORMAT=1
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        TRACKTION_ENABLE_ARA=0
+        TRACKTION_ENABLE_CMAJOR=0
+        TRACKTION_ENABLE_CONTROL_SURFACES=0
+        TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=0)
+    target_link_libraries(C2PAArrangementEditingTests PRIVATE
+        tracktion::tracktion_engine
+        juce::juce_audio_utils
+        juce::juce_cryptography
+        juce::juce_recommended_config_flags)
+    add_test(NAME arrangement_editing COMMAND C2PAArrangementEditingTests)
 endif()
