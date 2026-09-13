@@ -8,7 +8,7 @@ The creative path remains primary: imported stems become a non-destructive arran
 
 ## Status
 
-The repository is in version 0.1 proof-of-concept development. Dependency verification is complete; PR 001 establishes the native macOS application shell and Tracktion Engine boundary. Audio import, editing, VST3 hosting, rendering, and C2PA integration remain planned work and must not be described as implemented yet.
+The repository is in version 0.1 proof-of-concept development. PR 001 provides a native macOS application shell, an empty arrangement view, and a narrow Tracktion Engine adapter. Audio import, editing, VST3 hosting, rendering, and C2PA integration remain planned work and must not be described as implemented yet.
 
 ## Product boundary
 
@@ -22,8 +22,17 @@ See [dependency verification](docs/DEPENDENCIES.md) and [architecture notes](doc
 
 ## Build
 
-The supported POC target is Apple-silicon macOS 13.3 or newer with Xcode 16 or newer and CMake 3.27 or newer. Exact build commands are added and verified in PR 001.
+The supported POC target is Apple-silicon macOS 13.3 or newer with Xcode 16 or newer and CMake 3.27 or newer.
+
+```sh
+cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+cmake --build build --parallel 4
+ctest --test-dir build --output-on-failure
+open "build/C2PACreativeSequencer_artefacts/Debug/C2PA Creative Sequencer.app"
+```
+
+The first configure downloads the exact JUCE and Tracktion Engine revisions recorded in [dependency verification](docs/DEPENDENCIES.md). The CI workflow uses the Xcode generator on GitHub's macOS runner.
 
 ## Known limitations
 
-No creative audio workflow is implemented in the bootstrap. Commercial distribution requires licensing decisions for both JUCE and Tracktion Engine; this repository is not legal advice.
+No creative audio workflow is implemented in PR 001. Commercial distribution requires licensing decisions for both JUCE and Tracktion Engine; this repository is not legal advice.

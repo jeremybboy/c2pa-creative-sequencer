@@ -44,6 +44,15 @@ Verified on 2026-09-11 on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xco
 - A separate local smoke test signed `sample1.wav` without a timestamp authority, embedded a manifest, reopened it with `c2pa::Reader`, confirmed a non-empty manifest, confirmed `audio/wav` in `Builder::supported_mime_types()`, and confirmed the result remained a normal RIFF/WAVE PCM file.
 - The full upstream CTest run was not a valid offline pass: 195 of 369 C++ tests passed, 174 tests attempted public timestamp or remote-manifest URLs and failed because network resolution was unavailable, and the separate C test executable had not been built. These failures do not contradict the isolated offline WAV result, but CI must split offline tests from explicit network tests.
 
+## PR 001 build evidence
+
+- CMake configured the selected Tracktion Engine v3.2.0/JUCE 8.0.6 pair with Apple Clang 21 using the Unix Makefiles generator.
+- A second clean configure fetched immutable GitHub commit archives, verified their SHA-256 values, and reproduced the audited source files without using Tracktion's SSH submodule URL.
+- The application and test executable built successfully as C++20; the app bundle contains a native arm64 Mach-O executable.
+- CTest passed `application_skeleton` (1/1).
+- The app launched as a persistent process, exposed a window titled `C2PA Creative Sequencer`, and exited cleanly after a standard application quit event.
+- The Xcode generator could not be tested inside the Codex filesystem sandbox because `xcodebuild` attempted to write compiler-identification DerivedData under `~/Library`. This was an environment permission failure before project configuration; CI retains an Xcode-generator build on an unsandboxed macOS runner.
+
 ## Primary sources
 
 - [JUCE releases](https://github.com/juce-framework/JUCE/releases)
