@@ -8,7 +8,7 @@ Verified on 2026-09-11 on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xco
 |---|---|---|---|---|
 | JUCE | 9.0.2 (`72782788`) | Tracktion's pinned JUCE 8.0.6 commit (`19edd538`) | AGPLv3 or commercial JUCE license | Tracktion Engine v3.2.0 pins this exact JUCE 8.0.6 commit; use the tested pair for PR 001 rather than assert unverified JUCE 9 compatibility |
 | Tracktion Engine | v3.2.0 release (`0a5f4e6a`); `develop` reports 3.5.0 | v3.2.0 | GPLv3-or-later or commercial Tracktion license | Requires C++20 and supports macOS; its module API supplies `Engine`, device management, plug-in management, timeline/edit state, and rendering |
-| VST 3 SDK | 3.8.1 build 84 (`3cdf9ca5`) | Integration deferred to PR 013; pin 3.8.1 build 84 when added | MIT; Steinberg trademark/compatibility usage guidelines still apply | Upstream lists Apple silicon, macOS 10.14–26, and Xcode 10–26.5; JUCE exposes VST3 host discovery and native editor APIs |
+| VST 3 SDK | 3.8.1 build 84 (`3cdf9ca5`) | JUCE 8.0.6 bundled VST3 host interfaces in PR 008; standalone SDK integration remains deferred | MIT; Steinberg trademark/compatibility usage guidelines still apply | JUCE discovery, instantiation, editor, state, realtime processing, and offline render pass on Apple silicon with a deterministic VST3 fixture |
 | `c2pa-cpp` | v0.26.9 (`26f7c8cd`), backed by `c2pa-rs` 0.90.15 | Integrated in PR 006 at v0.26.9 | MIT or Apache-2.0; transitive components require their own notices | Built on macOS arm64; WAV read, ingredient, ES256 sign/embed, reopen, validation, and tamper detection pass locally |
 
 ## Architecture consequences
@@ -16,7 +16,7 @@ Verified on 2026-09-11 on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xco
 1. Keep Tracktion Engine behind `TracktionAdapter`; its API surface must not dictate the rest of the application.
 2. PR 001 uses the exact JUCE commit pinned by Tracktion Engine v3.2.0. JUCE 9.0.2 is newer, but compatibility with the stable Tracktion release was not established and is not required for the POC scaffold.
 3. Keep every C2PA call inside `src/provenance`. The current API is context-oriented: use `c2pa::Context`, `c2pa::Reader`, `c2pa::Builder`, and `c2pa::Signer`; context-free reader/builder constructors compile but are deprecated.
-4. Use JUCE/Tracktion plug-in hosting rather than coupling application code directly to Steinberg interfaces. When PR 013 adds the SDK, test JUCE's custom-SDK path against the pinned MIT SDK rather than relying silently on JUCE 8's older bundled copy.
+4. Use JUCE/Tracktion plug-in hosting rather than coupling application code directly to Steinberg interfaces. PR 008 uses the VST3 interfaces bundled by the pinned JUCE 8.0.6 dependency; if a later distribution build adds the standalone SDK, test JUCE's custom-SDK path against the pinned MIT SDK.
 5. Set the POC deployment target to macOS 13.3 because `c2pa-cpp` v0.26.9 sets that minimum and distributes an `aarch64-apple-darwin` prebuilt runtime.
 
 ## Deferred distribution checkpoint
@@ -37,6 +37,9 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - The v3.2.0 tag pins JUCE commit `19edd538429c93d277bf95b55aaa7e3eb545f951`; that checkout declares JUCE 8.0.6.
 - `tracktion::engine::Engine` constructs the project, device, render, audio-file, plug-in, and edit services and initializes the device manager through its behavior policy.
 - JUCE's `VST3PluginFormat`, `AudioPluginFormatManager`, `AudioPluginInstance`, and editor APIs provide the required discovery, instantiation, state, processing, and UI-hosting surface for later VST slices.
+- PR 008 enables that JUCE VST3 host surface behind `src/plugins`, while Tracktion Engine owns the one-effect-per-track execution node used by realtime playback and offline rendering. Application code does not include Steinberg interfaces directly.
+- A deterministic arm64 test VST3 proves descriptor discovery, instantiation, parameter-state serialization/restoration, realtime signal change, Tracktion insertion/bypass/removal, missing-plug-in recovery, offline signal change, and C2PA-valid export without requiring third-party software in CI.
+- The inspected `c2pa-audio-reference-product` revision `f8f88f3dbfa777e58137b77ab39dea60f50027f6` is a Swift/SwiftUI macOS 14 standalone app. Its own README explicitly says there are no VST3, Audio Unit, or CLAP targets yet and places VST3/AU integration on its future V3 roadmap, so it supplies no bundle that PR 008 can host.
 - Upstream inconsistency: Tracktion's v3.2.0 files still expose some internal version strings as 3.1.0. Dependency reporting must use the pinned Git tag/commit rather than `Engine::getVersion()` until upstream resolves that mismatch.
 - Tracktion v3.2.0 registers WAV and AIFF readers unconditionally. Its MP3 reader is present only when JUCE's `JUCE_USE_MP3AUDIOFORMAT` compile flag is enabled; PR 004 sets that flag to `1` and the engine test decodes an embedded MP3 fixture.
 - Tracktion automatically enables tempo and pitch following for loop-tagged audio. This POC has no time-stretch backend enabled, so PR 004 explicitly normalises imported stems to native-speed, absolute-time playback; tempo matching remains out of scope.

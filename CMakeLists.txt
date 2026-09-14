@@ -44,6 +44,14 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/export/ExportResult.h
     src/export/RenderService.cpp
     src/export/RenderService.h
+    src/plugins/PluginDescriptor.cpp
+    src/plugins/PluginDescriptor.h
+    src/plugins/PluginHost.cpp
+    src/plugins/PluginHost.h
+    src/plugins/PluginScanner.cpp
+    src/plugins/PluginScanner.h
+    src/plugins/PluginWindow.cpp
+    src/plugins/PluginWindow.h
     src/provenance/ProvenanceModel.cpp
     src/provenance/ProvenanceModel.h
     src/provenance/ProvenanceService.cpp
@@ -79,7 +87,7 @@ target_include_directories(C2PACreativeSequencer PRIVATE src)
 
 target_compile_definitions(C2PACreativeSequencer PRIVATE
     JUCE_PLUGINHOST_AU=0
-    JUCE_PLUGINHOST_VST3=0
+    JUCE_PLUGINHOST_VST3=1
     JUCE_USE_MP3AUDIOFORMAT=1
     JUCE_USE_CURL=0
     JUCE_WEB_BROWSER=0
@@ -104,6 +112,23 @@ set_target_properties(C2PACreativeSequencer PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES)
 
 if(BUILD_TESTING)
+    juce_add_plugin(C2PATestGainVST3
+        COMPANY_NAME "C2PA Test"
+        BUNDLE_ID "app.c2paseq.TestGain"
+        PLUGIN_MANUFACTURER_CODE C2PA
+        PLUGIN_CODE TGa1
+        FORMATS VST3
+        PRODUCT_NAME "C2PA Test Gain"
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_OUTPUT FALSE
+        COPY_PLUGIN_AFTER_BUILD FALSE)
+    juce_generate_juce_header(C2PATestGainVST3)
+    target_sources(C2PATestGainVST3 PRIVATE tests/plugins/TestGainPlugin.cpp)
+    target_link_libraries(C2PATestGainVST3 PRIVATE
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags)
+
     add_executable(C2PACreativeSequencerTests
         tests/app/ApplicationSkeletonTests.cpp
         src/app/AppInfo.h)
@@ -198,6 +223,14 @@ if(BUILD_TESTING)
         src/export/ExportResult.h
         src/export/RenderService.cpp
         src/export/RenderService.h
+        src/plugins/PluginDescriptor.cpp
+        src/plugins/PluginDescriptor.h
+        src/plugins/PluginHost.cpp
+        src/plugins/PluginHost.h
+        src/plugins/PluginScanner.cpp
+        src/plugins/PluginScanner.h
+        src/plugins/PluginWindow.cpp
+        src/plugins/PluginWindow.h
         src/provenance/ProvenanceModel.cpp
         src/provenance/ProvenanceModel.h
         src/provenance/ProvenanceService.cpp
@@ -217,7 +250,7 @@ if(BUILD_TESTING)
     target_include_directories(C2PAArrangementEditingTests PRIVATE src)
     target_compile_definitions(C2PAArrangementEditingTests PRIVATE
         JUCE_PLUGINHOST_AU=0
-        JUCE_PLUGINHOST_VST3=0
+        JUCE_PLUGINHOST_VST3=1
         JUCE_USE_MP3AUDIOFORMAT=1
         JUCE_USE_CURL=0
         JUCE_WEB_BROWSER=0
@@ -229,6 +262,7 @@ if(BUILD_TESTING)
         tracktion::tracktion_engine
         juce::juce_audio_utils
         juce::juce_cryptography
+        juce::juce_gui_extra
         juce::juce_recommended_config_flags)
     c2paseq_enable_c2pa(C2PAArrangementEditingTests)
     add_test(NAME arrangement_editing COMMAND C2PAArrangementEditingTests)
@@ -273,6 +307,14 @@ if(BUILD_TESTING)
         src/export/ExportResult.h
         src/export/RenderService.cpp
         src/export/RenderService.h
+        src/plugins/PluginDescriptor.cpp
+        src/plugins/PluginDescriptor.h
+        src/plugins/PluginHost.cpp
+        src/plugins/PluginHost.h
+        src/plugins/PluginScanner.cpp
+        src/plugins/PluginScanner.h
+        src/plugins/PluginWindow.cpp
+        src/plugins/PluginWindow.h
         src/project/MediaLibrary.cpp
         src/project/MediaLibrary.h
         src/project/Project.cpp
@@ -292,7 +334,7 @@ if(BUILD_TESTING)
     target_include_directories(C2PAExportPipelineTests PRIVATE src)
     target_compile_definitions(C2PAExportPipelineTests PRIVATE
         JUCE_PLUGINHOST_AU=0
-        JUCE_PLUGINHOST_VST3=0
+        JUCE_PLUGINHOST_VST3=1
         JUCE_USE_MP3AUDIOFORMAT=1
         JUCE_USE_CURL=0
         JUCE_WEB_BROWSER=0
@@ -302,12 +344,79 @@ if(BUILD_TESTING)
         TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=0
         C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav"
         C2PA_TEST_CERTIFICATE_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_certs.pem"
-        C2PA_TEST_PRIVATE_KEY_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_private.key")
+        C2PA_TEST_PRIVATE_KEY_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_private.key"
+        C2PASEQ_TEST_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestGainVST3_VST3>")
     target_link_libraries(C2PAExportPipelineTests PRIVATE
         tracktion::tracktion_engine
         juce::juce_audio_utils
         juce::juce_cryptography
+        juce::juce_gui_extra
         juce::juce_recommended_config_flags)
+    add_dependencies(C2PAExportPipelineTests C2PATestGainVST3_VST3)
     c2paseq_enable_c2pa(C2PAExportPipelineTests)
     add_test(NAME export_pipeline COMMAND C2PAExportPipelineTests)
+
+    add_executable(C2PAPluginHostingTests
+        tests/plugins/PluginHostingTests.cpp
+        src/app/AppInfo.h
+        src/engine/AudioEngine.cpp
+        src/engine/AudioEngine.h
+        src/engine/ClipOcclusion.cpp
+        src/engine/ClipOcclusion.h
+        src/engine/NativeAudioClipPolicy.cpp
+        src/engine/NativeAudioClipPolicy.h
+        src/engine/ProjectEngine.cpp
+        src/engine/ProjectEngine.h
+        src/engine/TracktionAdapter.cpp
+        src/engine/TracktionAdapter.h
+        src/export/ExportController.cpp
+        src/export/ExportController.h
+        src/export/ExportResult.h
+        src/export/RenderService.cpp
+        src/export/RenderService.h
+        src/plugins/PluginDescriptor.cpp
+        src/plugins/PluginDescriptor.h
+        src/plugins/PluginHost.cpp
+        src/plugins/PluginHost.h
+        src/plugins/PluginScanner.cpp
+        src/plugins/PluginScanner.h
+        src/plugins/PluginWindow.cpp
+        src/plugins/PluginWindow.h
+        src/project/MediaLibrary.cpp
+        src/project/MediaLibrary.h
+        src/project/Project.cpp
+        src/project/Project.h
+        src/project/ProjectPaths.cpp
+        src/project/ProjectPaths.h
+        src/project/ProjectSerializer.cpp
+        src/project/ProjectSerializer.h
+        src/provenance/ProvenanceModel.cpp
+        src/provenance/ProvenanceModel.h
+        src/provenance/ProvenanceService.cpp
+        src/provenance/ProvenanceService.h
+        src/provenance/SigningProvider.cpp
+        src/provenance/SigningProvider.h
+        src/transport/TransportFormatting.cpp
+        src/transport/TransportFormatting.h)
+    target_include_directories(C2PAPluginHostingTests PRIVATE src)
+    target_compile_definitions(C2PAPluginHostingTests PRIVATE
+        JUCE_PLUGINHOST_AU=0
+        JUCE_PLUGINHOST_VST3=1
+        JUCE_USE_MP3AUDIOFORMAT=1
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        TRACKTION_ENABLE_ARA=0
+        TRACKTION_ENABLE_CMAJOR=0
+        TRACKTION_ENABLE_CONTROL_SURFACES=0
+        TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=0
+        C2PASEQ_TEST_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestGainVST3_VST3>")
+    target_link_libraries(C2PAPluginHostingTests PRIVATE
+        tracktion::tracktion_engine
+        juce::juce_audio_utils
+        juce::juce_cryptography
+        juce::juce_gui_extra
+        juce::juce_recommended_config_flags)
+    add_dependencies(C2PAPluginHostingTests C2PATestGainVST3_VST3)
+    c2paseq_enable_c2pa(C2PAPluginHostingTests)
+    add_test(NAME plugin_hosting COMMAND C2PAPluginHostingTests)
 endif()

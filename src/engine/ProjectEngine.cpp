@@ -4,6 +4,7 @@
 #include "TracktionAdapter.h"
 #include "project/MediaLibrary.h"
 #include "project/ProjectSerializer.h"
+#include "plugins/PluginDescriptor.h"
 #include "provenance/ProvenanceService.h"
 #include "transport/TransportFormatting.h"
 
@@ -60,6 +61,24 @@ juce::Result ProjectEngine::saveProject()
     if (! project.has_value() || ! paths.has_value())
         return juce::Result::fail("No project is open");
 
+    for (auto& plugin : project->plugins)
+    {
+        const auto track = std::find_if(project->tracks.begin(), project->tracks.end(),
+            [&](const auto& candidate) { return candidate.id == plugin.ownerId; });
+        if (track == project->tracks.end())
+            continue;
+        const auto index = static_cast<int>(std::distance(project->tracks.begin(), track));
+        juce::String state;
+        bool bypassed = plugin.bypassed;
+        bool missing = plugin.missing;
+        if (tracktion.captureTrackPluginState(index, state, bypassed, missing).wasOk())
+        {
+            plugin.stateBase64 = state;
+            plugin.bypassed = bypassed;
+            plugin.missing = missing;
+        }
+    }
+
     project->modifiedAt = juce::Time::getCurrentTime().toISO8601(true);
     project->bpm = tracktion.transportSnapshot().bpm;
     if (! tracktion.saveProjectEdit(paths->arrangementEdit()))
@@ -73,14 +92,15 @@ juce::Result ProjectEngine::openProject(const juce::File& projectFolder)
     Project loaded;
     if (auto result = ProjectSerializer::load(newPaths, loaded); result.failed())
         return result;
-    if (! tracktion.loadProjectEdit(newPaths.arrangementEdit()))
-        return juce::Result::fail("Could not load arrangement.tracktionedit");
-
     project = std::move(loaded);
     paths = std::move(newPaths);
     undoHistory.clear();
     redoHistory.clear();
-    tracktion.setBpm(project->bpm);
+    if (auto result = rebuildEditFromProject(); result.failed())
+    {
+        closeProject();
+        return result;
+    }
     return juce::Result::ok();
 }
 
@@ -303,6 +323,101 @@ juce::Result ProjectEngine::setTrackPan(int trackIndex, double pan)
     });
 }
 
+juce::Result ProjectEngine::setTrackPlugin(int trackIndex,
+                                            const PluginDescriptor& descriptor)
+{
+    if (! project.has_value()
+        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size()))
+        || descriptor.format != "VST3" || descriptor.isInstrument)
+        return juce::Result::fail("Invalid track VST3 audio effect");
+
+    const auto previous = *project;
+    if (auto result = tracktion.setTrackPlugin(trackIndex, descriptor.toJuce(), {}, false);
+        result.failed())
+    {
+        (void) rebuildEditFromProject();
+        return result;
+    }
+
+    PluginState state;
+    state.ownerId = project->tracks[static_cast<std::size_t>(trackIndex)].id;
+    state.pluginIdentifier = descriptor.identifier;
+    state.name = descriptor.name;
+    state.vendor = descriptor.vendor;
+    state.version = descriptor.version;
+    state.format = descriptor.format;
+    state.category = descriptor.category;
+    state.fileOrIdentifier = descriptor.fileOrIdentifier;
+    state.uniqueId = descriptor.uniqueId;
+    state.deprecatedUid = descriptor.deprecatedUid;
+    state.isInstrument = descriptor.isInstrument;
+    std::erase_if(project->plugins, [&](const auto& plugin) { return plugin.ownerId == state.ownerId; });
+    project->plugins.push_back(std::move(state));
+
+    if (auto result = saveProject(); result.failed())
+    {
+        *project = previous;
+        (void) rebuildEditFromProject();
+        return result;
+    }
+    undoHistory.push_back(previous);
+    redoHistory.clear();
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::setTrackPluginBypassed(int trackIndex, bool bypassed)
+{
+    auto* plugin = pluginForTrack(trackIndex);
+    if (plugin == nullptr)
+        return juce::Result::fail("Track has no VST3");
+    if (plugin->missing)
+    {
+        plugin->bypassed = true;
+        return juce::Result::ok();
+    }
+
+    const auto previous = *project;
+    if (auto result = tracktion.setTrackPluginBypassed(trackIndex, bypassed); result.failed())
+        return result;
+    plugin->bypassed = bypassed;
+    if (auto result = saveProject(); result.failed())
+    {
+        *project = previous;
+        (void) tracktion.setTrackPluginBypassed(trackIndex, ! bypassed);
+        return result;
+    }
+    undoHistory.push_back(previous);
+    redoHistory.clear();
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::removeTrackPlugin(int trackIndex)
+{
+    if (! project.has_value()
+        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
+        return juce::Result::fail("Invalid track");
+    const auto owner = project->tracks[static_cast<std::size_t>(trackIndex)].id;
+    const auto found = std::find_if(project->plugins.begin(), project->plugins.end(),
+        [&](const auto& plugin) { return plugin.ownerId == owner; });
+    if (found == project->plugins.end())
+        return juce::Result::fail("Track has no VST3");
+
+    const auto previous = *project;
+    if (! found->missing)
+        if (auto result = tracktion.removeTrackPlugin(trackIndex); result.failed())
+            return result;
+    std::erase_if(project->plugins, [&](const auto& plugin) { return plugin.ownerId == owner; });
+    if (auto result = saveProject(); result.failed())
+    {
+        *project = previous;
+        (void) rebuildEditFromProject();
+        return result;
+    }
+    undoHistory.push_back(previous);
+    redoHistory.clear();
+    return juce::Result::ok();
+}
+
 bool ProjectEngine::undo()
 {
     if (! project.has_value() || undoHistory.empty())
@@ -383,6 +498,11 @@ std::vector<ArrangementTrackSnapshot> ProjectEngine::arrangementSnapshot() const
         trackSnapshot.pan = track.pan;
         trackSnapshot.muted = track.muted;
         trackSnapshot.soloed = track.soloed;
+        if (const auto* plugin = pluginForTrack(static_cast<int>(snapshot.size())))
+            trackSnapshot.plugin = TrackPluginSnapshot {
+                plugin->pluginIdentifier, plugin->name, plugin->vendor,
+                plugin->bypassed, plugin->missing
+            };
         for (const auto& clip : track.clips)
         {
             const auto media = std::find_if(project->media.begin(), project->media.end(),
@@ -415,7 +535,7 @@ juce::Result ProjectEngine::rebuildEditFromProject()
 
     for (std::size_t trackIndex = 0; trackIndex < project->tracks.size(); ++trackIndex)
     {
-        const auto& track = project->tracks[trackIndex];
+        auto& track = project->tracks[trackIndex];
         if (auto result = tracktion.setTrackProperties(static_cast<int>(trackIndex), track.name,
                 track.gainDb, track.pan, track.muted, track.soloed); result.failed())
             return result;
@@ -431,6 +551,26 @@ juce::Result ProjectEngine::rebuildEditFromProject()
                     static_cast<int>(trackIndex), segment.startSeconds,
                     segment.sourceOffsetSeconds, segment.lengthSeconds); result.failed())
                 return result;
+        }
+
+        if (auto* plugin = pluginForTrack(static_cast<int>(trackIndex)))
+        {
+            juce::PluginDescription description;
+            description.name = plugin->name;
+            description.descriptiveName = plugin->name;
+            description.manufacturerName = plugin->vendor;
+            description.version = plugin->version;
+            description.pluginFormatName = plugin->format;
+            description.category = plugin->category;
+            description.fileOrIdentifier = plugin->fileOrIdentifier;
+            description.uniqueId = plugin->uniqueId;
+            description.deprecatedUid = plugin->deprecatedUid;
+            description.isInstrument = plugin->isInstrument;
+            const auto result = tracktion.setTrackPlugin(static_cast<int>(trackIndex),
+                description, plugin->stateBase64, plugin->bypassed);
+            plugin->missing = result.failed();
+            if (plugin->missing)
+                plugin->bypassed = true;
         }
     }
     return juce::Result::ok();
@@ -506,5 +646,27 @@ void ProjectEngine::ensureTrackCount(int count)
         track.name = "Audio " + juce::String(project->tracks.size() + 1);
         project->tracks.push_back(std::move(track));
     }
+}
+
+PluginState* ProjectEngine::pluginForTrack(int trackIndex)
+{
+    if (! project.has_value()
+        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
+        return nullptr;
+    const auto owner = project->tracks[static_cast<std::size_t>(trackIndex)].id;
+    const auto found = std::find_if(project->plugins.begin(), project->plugins.end(),
+        [&](const auto& plugin) { return plugin.ownerId == owner; });
+    return found != project->plugins.end() ? &*found : nullptr;
+}
+
+const PluginState* ProjectEngine::pluginForTrack(int trackIndex) const
+{
+    if (! project.has_value()
+        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
+        return nullptr;
+    const auto owner = project->tracks[static_cast<std::size_t>(trackIndex)].id;
+    const auto found = std::find_if(project->plugins.begin(), project->plugins.end(),
+        [&](const auto& plugin) { return plugin.ownerId == owner; });
+    return found != project->plugins.end() ? &*found : nullptr;
 }
 }

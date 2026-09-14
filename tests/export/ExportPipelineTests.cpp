@@ -135,9 +135,19 @@ int main()
     if (! writeTestSigningBundle(testBundle))
         return fail(2, "could not assemble upstream test signing fixture");
 
+    const auto pluginCache = temporary.root.getChildFile("vst3-cache.xml");
     c2paseq::AudioEngine engine(
         std::make_unique<c2paseq::ConformanceTestSigningProvider>(
-            signingConfiguration, false));
+            signingConfiguration, false), pluginCache);
+    juce::FileSearchPath pluginPaths;
+    pluginPaths.add(juce::File(C2PASEQ_TEST_VST3_BUNDLE).getParentDirectory());
+    if (engine.scanVst3Plugins(pluginPaths).failed())
+        return fail(2, "could not scan deterministic VST3 fixture");
+    const auto fixture = std::find_if(engine.availableVst3Plugins().begin(),
+        engine.availableVst3Plugins().end(), [](const auto& plugin)
+        { return plugin.name == "C2PA Test Gain"; });
+    if (fixture == engine.availableVst3Plugins().end())
+        return fail(2, "deterministic VST3 fixture was not discovered");
     const auto projectFolder = temporary.root.getChildFile("Export Test.c2paseq");
     if (const auto result = engine.createProject(projectFolder, "Export Test"); result.failed())
         return fail(3, result.getErrorMessage());
@@ -186,6 +196,27 @@ int main()
     if (silence > 0.0001 || aBefore < 0.02 || bPriority < aBefore * 1.75
         || bPriority > aBefore * 2.25 || ! approximately(aAfter / aBefore, 1.0, 0.08))
         return fail(9, "timing or same-track occlusion was incorrect in the rendered audio");
+
+    if (engine.loadTrackPlugin(0, fixture->identifier).failed())
+        return fail(9, "could not attach deterministic VST3 to export track");
+    const auto processedFile = temporary.root.getChildFile("plugin-processed.wav");
+    const auto processed = engine.exportMix(processedFile);
+    WavReadback processedAudio;
+    if (processed.result.failed() || ! processed.credentialsValidated
+        || ! readWav(processedFile, processedAudio)
+        || ! approximately(rmsAt(processedAudio, 1.25) / aBefore, 0.25, 0.04))
+        return fail(9, "C2PA export did not contain the hosted VST3 processing result");
+    const auto processedCredentials = engine.inspectProvenance(processedFile);
+    if (! processedCredentials.c2paPresent || ! processedCredentials.assetIntact)
+        return fail(9, "VST3-processed export lost valid Content Credentials");
+    if (engine.saveProject().failed() || engine.openProject(projectFolder).failed())
+        return fail(9, "hosted VST3 did not survive project reopen");
+    const auto restoredTracks = engine.arrangementSnapshot();
+    if (restoredTracks.empty() || ! restoredTracks[0].plugin.has_value()
+        || restoredTracks[0].plugin->missing || restoredTracks[0].plugin->bypassed)
+        return fail(9, "hosted VST3 identity/state did not restore");
+    if (engine.removeTrackPlugin(0).failed())
+        return fail(9, "could not remove deterministic VST3 after export regression test");
 
     if (engine.importAudio(sourceC, 1, 1.5).failed()
         || engine.importAudio(unused, 2, 1.5).failed()

@@ -95,7 +95,21 @@ int main()
     track.clips.push_back(clip);
     project.tracks.push_back(track);
 
-    project.plugins.push_back({ track.id, "example.vst3", "AQID" });
+    c2paseq::PluginState plugin;
+    plugin.ownerId = track.id;
+    plugin.pluginIdentifier = "VST3-example";
+    plugin.name = "Example Gain";
+    plugin.vendor = "Example Vendor";
+    plugin.version = "1.2.3";
+    plugin.format = "VST3";
+    plugin.category = "Fx";
+    plugin.fileOrIdentifier = "/Library/Audio/Plug-Ins/VST3/Example.vst3";
+    plugin.uniqueId = 1234;
+    plugin.deprecatedUid = 5678;
+    plugin.bypassed = true;
+    plugin.missing = true;
+    plugin.stateBase64 = "AQID";
+    project.plugins.push_back(plugin);
     project.provenance.ingredientManifestIds.push_back("urn:c2pa:ingredient:test");
     project.provenance.actionIds.push_back("c2pa.edited");
 
@@ -135,7 +149,16 @@ int main()
         return fail(9, "clip state did not round-trip");
 
     if (project.plugins.front().ownerId != track.id
-        || project.plugins.front().pluginIdentifier != "example.vst3"
+        || project.plugins.front().pluginIdentifier != plugin.pluginIdentifier
+        || project.plugins.front().name != plugin.name
+        || project.plugins.front().vendor != plugin.vendor
+        || project.plugins.front().version != plugin.version
+        || project.plugins.front().format != "VST3"
+        || project.plugins.front().category != plugin.category
+        || project.plugins.front().fileOrIdentifier != plugin.fileOrIdentifier
+        || project.plugins.front().uniqueId != plugin.uniqueId
+        || project.plugins.front().deprecatedUid != plugin.deprecatedUid
+        || ! project.plugins.front().bypassed || ! project.plugins.front().missing
         || project.plugins.front().stateBase64 != "AQID"
         || project.provenance.ingredientManifestIds
             != std::vector<juce::String> { "urn:c2pa:ingredient:test" }

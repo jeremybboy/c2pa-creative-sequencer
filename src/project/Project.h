@@ -45,6 +45,17 @@ struct PluginState
 {
     juce::String ownerId;
     juce::String pluginIdentifier;
+    juce::String name;
+    juce::String vendor;
+    juce::String version;
+    juce::String format;
+    juce::String category;
+    juce::String fileOrIdentifier;
+    int uniqueId = 0;
+    int deprecatedUid = 0;
+    bool isInstrument = false;
+    bool bypassed = false;
+    bool missing = false;
     juce::String stateBase64;
 };
 
