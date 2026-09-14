@@ -183,6 +183,27 @@ std::string extractPemBlock(const juce::String& bundle,
     return bundle.substring(start, end + endMarker.length()).toStdString() + "\n";
 }
 
+std::string extractPemBlocks(const juce::String& bundle,
+                             const juce::String& beginMarker,
+                             const juce::String& endMarker)
+{
+    std::string blocks;
+    int searchFrom = 0;
+    while (searchFrom < bundle.length())
+    {
+        const auto start = bundle.indexOf(searchFrom, beginMarker);
+        if (start < 0)
+            break;
+        const auto end = bundle.indexOf(start, endMarker);
+        if (end < 0)
+            break;
+        const auto afterEnd = end + endMarker.length();
+        blocks += bundle.substring(start, afterEnd).toStdString() + "\n";
+        searchFrom = afterEnd;
+    }
+    return blocks;
+}
+
 void appendDerLength(std::vector<std::uint8_t>& output, std::size_t length)
 {
     if (length < 128)
@@ -248,10 +269,50 @@ struct SensitiveString
     ~SensitiveString() { std::fill(value.begin(), value.end(), '\0'); }
     std::string value;
 };
+
+juce::Result constructSigner(const juce::File& credential,
+                             std::unique_ptr<c2pa::Signer>& signer)
+{
+    if (! credential.existsAsFile())
+        return juce::Result::fail("PEM file is not readable.");
+
+    const auto pem = credential.loadFileAsString();
+    if (pem.isEmpty())
+        return juce::Result::fail("PEM file is empty or unreadable.");
+
+    const auto certificates = extractPemBlocks(
+        pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----");
+    SensitiveString privateKey;
+    privateKey.value = extractPemBlock(
+        pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
+    if (privateKey.value.empty())
+    {
+        const auto sec1 = juce::String::fromUTF8(extractPemBlock(
+            pem, "-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----").c_str());
+        if (sec1.isNotEmpty())
+            privateKey.value = sec1EcKeyToPkcs8(sec1);
+    }
+    if (certificates.empty())
+        return juce::Result::fail("PEM does not contain certificate material.");
+    if (privateKey.value.empty())
+        return juce::Result::fail("PEM does not contain supported private-key material.");
+
+    try
+    {
+        signer = std::make_unique<c2pa::Signer>("es256", certificates, privateKey.value);
+    }
+    catch (const std::exception& error)
+    {
+        return juce::Result::fail("c2pa-cpp could not construct the signer: "
+                                  + juce::String::fromUTF8(error.what()));
+    }
+    return juce::Result::ok();
+}
 }
 
-ProvenanceService::ProvenanceService()
-    : signingProvider(std::make_unique<ConformanceTestSigningProvider>())
+ProvenanceService::ProvenanceService(std::unique_ptr<SigningProvider> provider)
+    : signingProvider(provider != nullptr
+        ? std::move(provider) : std::make_unique<ConformanceTestSigningProvider>())
 {
 }
 
@@ -287,12 +348,54 @@ IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
 
 bool ProvenanceService::signingConfigured() const
 {
-    return signingProvider->configurationError().isEmpty();
+    return signingConfigurationError().isEmpty();
 }
 
 juce::String ProvenanceService::signingConfigurationError() const
 {
-    return signingProvider->configurationError();
+    if (const auto error = signingProvider->configurationError(); error.isNotEmpty())
+        return error;
+    std::unique_ptr<c2pa::Signer> signer;
+    if (const auto validation = constructSigner(signingProvider->credentialFile(), signer);
+        validation.failed())
+        return "Configured C2PA signing credential is invalid: "
+            + validation.getErrorMessage();
+    return {};
+}
+
+juce::String ProvenanceService::signingCredentialStatus() const
+{
+    if (const auto error = signingConfigurationError(); error.isNotEmpty())
+        return "Not configured\n" + error;
+    return signingProvider->statusDescription();
+}
+
+juce::Result ProvenanceService::validateSigningCredential(const juce::File& credential) const
+{
+    std::unique_ptr<c2pa::Signer> signer;
+    if (const auto result = constructSigner(credential, signer); result.failed())
+        return juce::Result::fail("Selected signing credential is invalid: "
+                                  + result.getErrorMessage());
+    return juce::Result::ok();
+}
+
+juce::Result ProvenanceService::configureSigningCredential(const juce::File& credential)
+{
+    if (const auto result = validateSigningCredential(credential); result.failed())
+        return result;
+    if (const auto result = signingProvider->installCredential(credential); result.failed())
+        return result;
+    if (! signingProvider->isDeveloperOverrideActive())
+        if (const auto result = validateSigningCredential(signingProvider->credentialFile());
+            result.failed())
+            return juce::Result::fail("Stored signing credential failed validation: "
+                                      + result.getErrorMessage());
+    return juce::Result::ok();
+}
+
+juce::Result ProvenanceService::removeSigningCredential()
+{
+    return signingProvider->removeCredential();
 }
 
 juce::Result ProvenanceService::signWav(
@@ -307,32 +410,12 @@ juce::Result ProvenanceService::signWav(
     if (! unsignedWav.existsAsFile())
         return juce::Result::fail("Unsigned render is missing");
 
-    const auto pem = signingProvider->credentialFile().loadFileAsString();
-    const auto certificate = extractPemBlock(
-        pem, "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----");
-    SensitiveString privateKey;
-    privateKey.value = extractPemBlock(
-        pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
-    if (privateKey.value.empty())
-    {
-        const auto sec1 = juce::String::fromUTF8(extractPemBlock(
-            pem, "-----BEGIN EC PRIVATE KEY-----", "-----END EC PRIVATE KEY-----").c_str());
-        if (sec1.isNotEmpty())
-            privateKey.value = sec1EcKeyToPkcs8(sec1);
-    }
-    if (certificate.empty() || privateKey.value.empty())
-        return juce::Result::fail("C2PA signing failed: credential bundle is incomplete");
-
     std::unique_ptr<c2pa::Signer> signer;
-    try
-    {
-        signer = std::make_unique<c2pa::Signer>("es256", certificate, privateKey.value);
-    }
-    catch (const std::exception& error)
-    {
-        return juce::Result::fail("C2PA signing failed: "
-                                  + juce::String::fromUTF8(error.what()));
-    }
+    if (const auto signerResult = constructSigner(signingProvider->credentialFile(), signer);
+        signerResult.failed())
+        return juce::Result::fail(
+            "Audio rendered successfully, but the C2PA claim could not be signed. "
+            + signerResult.getErrorMessage());
 
     std::unique_ptr<c2pa::Builder> builder;
     try
@@ -345,7 +428,7 @@ juce::Result ProvenanceService::signWav(
     }
     catch (const std::exception& error)
     {
-        return juce::Result::fail("C2PA manifest creation failed: "
+        return juce::Result::fail("C2PA manifest could not be created: "
                                   + juce::String::fromUTF8(error.what()));
     }
 
@@ -357,14 +440,14 @@ juce::Result ProvenanceService::signWav(
     }
     catch (const std::exception& error)
     {
-        return juce::Result::fail("C2PA embedding failed: "
+        return juce::Result::fail("C2PA manifest could not be signed and embedded: "
                                   + juce::String::fromUTF8(error.what()));
     }
 
     validation = inspect(destination);
     if (! validation.c2paPresent || ! validation.assetIntact)
         return juce::Result::fail(
-            "Final C2PA validation failed to confirm intact asset data");
+            "Exported Content Credentials failed post-export validation.");
     return juce::Result::ok();
 }
 }

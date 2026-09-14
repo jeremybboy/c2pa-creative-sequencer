@@ -152,6 +152,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     saveProjectButton.onClick = [this] { saveProject(); };
     exportButton.onClick = [this] { exportProject(); };
     credentialsButton.onClick = [this] { showSelectedCredentials(); };
+    signingButton.onClick = [this] { showSigningSettings(); };
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     playPause.onClick = [this] { togglePlayback(); };
@@ -182,7 +183,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     };
 
     for (auto* button : { &newProject, &openProjectButton, &saveProjectButton,
-                          &exportButton, &credentialsButton,
+                          &exportButton, &credentialsButton, &signingButton,
                           &undoButton, &redoButton, &playPause, &stop, &loop,
                           &zoomOut, &zoomIn, &audioSettings })
     {
@@ -240,6 +241,7 @@ void ArrangementView::resized()
     };
     placeButton(newProject, 45); placeButton(openProjectButton, 48); placeButton(saveProjectButton, 46);
     placeButton(exportButton, 56); placeButton(credentialsButton, 82);
+    placeButton(signingButton, 62);
     top.removeFromLeft(6);
     placeButton(undoButton, 48); placeButton(redoButton, 48);
     top.removeFromLeft(10);
@@ -405,6 +407,32 @@ void ArrangementView::saveProject()
 
 void ArrangementView::exportProject()
 {
+    if (! audioEngine.signingConfigured())
+    {
+        const auto options = juce::MessageBoxOptions()
+            .withIconType(juce::MessageBoxIconType::WarningIcon)
+            .withTitle("Signing Credential Required")
+            .withMessage("A C2PA signing credential is required to generate Content Credentials.")
+            .withButton("Choose Credential")
+            .withButton("Cancel")
+            .withAssociatedComponent(this);
+        juce::NativeMessageBox::showAsync(options,
+            [safe = juce::Component::SafePointer<ArrangementView>(this)](int result)
+            {
+                if (safe != nullptr && result == 0)
+                    safe->chooseSigningCredential([safe]
+                    {
+                        if (safe != nullptr)
+                            safe->beginExportWithConfiguredSigner();
+                    });
+            });
+        return;
+    }
+    beginExportWithConfiguredSigner();
+}
+
+void ArrangementView::beginExportWithConfiguredSigner()
+{
     fileChooser = std::make_unique<juce::FileChooser>("Export WAV",
         juce::File::getSpecialLocation(juce::File::userMusicDirectory)
             .getChildFile(audioEngine.projectName() + " Export.wav"), "*.wav");
@@ -417,18 +445,126 @@ void ArrangementView::exportProject()
             auto destination = c.getResult();
             if (! destination.hasFileExtension("wav"))
                 destination = destination.withFileExtension("wav");
-            const auto result = safe->audioEngine.exportMix(destination);
-            if (result.result.failed())
-                safe->projectMessage = "Export failed: " + result.result.getErrorMessage();
-            else if (result.unsignedBecauseNotConfigured)
-                safe->projectMessage = "Unsigned WAV exported; test signing is not configured";
-            else if (result.externallyTrusted)
-                safe->projectMessage = "Export complete | Content Credentials attached and validated";
-            else
-                safe->projectMessage = "Export complete | Content Credentials attached | Asset integrity validated | External trust issue";
-            safe->refreshTransport();
             safe->fileChooser.reset();
+            safe->projectMessage = "Rendering mix... Creating Content Credentials... Signing... Embedding... Validating...";
+            safe->refreshTransport();
+            juce::MessageManager::callAsync([safe, destination]
+            {
+                if (safe == nullptr) return;
+                auto result = safe->audioEngine.exportMix(destination);
+                if (result.result.failed())
+                {
+                    safe->lastExport.reset();
+                    safe->projectMessage = "Export failed: " + result.result.getErrorMessage();
+                    safe->refreshTransport();
+                    juce::AlertWindow::showMessageBoxAsync(
+                        juce::MessageBoxIconType::WarningIcon, "Export Failed",
+                        result.result.getErrorMessage(), "OK", safe.getComponent());
+                    return;
+                }
+                safe->lastExport = std::move(result);
+                safe->projectMessage = safe->lastExport->externallyTrusted
+                    ? "Export complete | Content Credentials attached | Validation successful"
+                    : "Export complete | Content Credentials attached | Asset integrity validated | External trust issue";
+                safe->refreshTransport();
+                safe->showExportCompletion();
+            });
         });
+}
+
+void ArrangementView::chooseSigningCredential(std::function<void()> continuation)
+{
+    fileChooser = std::make_unique<juce::FileChooser>("Choose C2PA Signing Credential",
+        juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+            .getChildFile("Downloads"), "*.pem");
+    fileChooser->launchAsync(juce::FileBrowserComponent::openMode
+                               | juce::FileBrowserComponent::canSelectFiles,
+        [safe = juce::Component::SafePointer<ArrangementView>(this),
+         afterConfigured = std::move(continuation)](const juce::FileChooser& chooser) mutable
+        {
+            if (safe == nullptr || chooser.getResult() == juce::File()) return;
+            const auto credential = chooser.getResult();
+            safe->fileChooser.reset();
+            const auto result = safe->audioEngine.configureSigningCredential(credential);
+            if (result.failed())
+            {
+                safe->projectMessage = result.getErrorMessage();
+                safe->refreshTransport();
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::MessageBoxIconType::WarningIcon, "Invalid Signing Credential",
+                    result.getErrorMessage(), "OK", safe.getComponent());
+                return;
+            }
+            safe->projectMessage = "C2PA signing credential configured";
+            safe->refreshTransport();
+            if (afterConfigured) afterConfigured();
+        });
+}
+
+void ArrangementView::showSigningSettings()
+{
+    juce::AlertWindow::showYesNoCancelBox(
+        juce::MessageBoxIconType::InfoIcon, "Signing Credential",
+        audioEngine.signingCredentialStatus()
+            + "\n\nThe private key is never stored in projects or shown here.",
+        "Replace", "Remove", "Done", this,
+        juce::ModalCallbackFunction::create(
+            [safe = juce::Component::SafePointer<ArrangementView>(this)](int result)
+            {
+                if (safe == nullptr) return;
+                if (result == 1)
+                {
+                    safe->chooseSigningCredential();
+                    return;
+                }
+                if (result == 2)
+                {
+                    const auto removal = safe->audioEngine.removeSigningCredential();
+                    safe->projectMessage = removal.wasOk()
+                        ? "Machine-local signing credential removed"
+                        : removal.getErrorMessage();
+                    safe->refreshTransport();
+                }
+            }));
+}
+
+void ArrangementView::showExportCompletion()
+{
+    if (! lastExport.has_value()) return;
+    const auto trustSummary = lastExport->externallyTrusted
+        ? juce::String("\nExternal trust: recognized")
+        : juce::String("\nExternal trust: validation issue (see credentials)");
+    juce::AlertWindow::showYesNoCancelBox(
+        juce::MessageBoxIconType::InfoIcon, "Export Complete",
+        "Content Credentials attached\nAsset integrity validation successful"
+            + trustSummary + "\n\n"
+            + lastExport->outputFile.getFullPathName(),
+        "View Credentials", "Reveal File", "Done", this,
+        juce::ModalCallbackFunction::create(
+            [safe = juce::Component::SafePointer<ArrangementView>(this)](int result)
+            {
+                if (safe == nullptr || ! safe->lastExport.has_value()) return;
+                if (result == 1) safe->showExportCredentials();
+                if (result == 2) safe->lastExport->outputFile.revealToUser();
+            }));
+}
+
+void ArrangementView::showExportCredentials()
+{
+    if (! lastExport.has_value()) return;
+    const auto& result = *lastExport;
+    auto details = "File: " + result.outputFile.getFileName()
+        + "\nClaim generator: " + result.outputProvenance.claimGenerator
+        + "\nStatus: " + provenanceStatusLabel(result.outputProvenance.status)
+        + "\nValidation: " + result.outputProvenance.validationSummary
+        + "\nIngredients: " + juce::String(result.ingredients.size());
+    if (result.outputProvenance.activeManifest.isNotEmpty())
+        details += "\nManifest: " + result.outputProvenance.activeManifest;
+    for (const auto& ingredient : result.ingredients)
+        details += "\n- " + ingredient.title + ": "
+            + provenanceStatusLabel(ingredient.provenance.status);
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
+        "Exported Content Credentials", details, "OK", this);
 }
 
 void ArrangementView::showSelectedCredentials()

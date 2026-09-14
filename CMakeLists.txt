@@ -244,7 +244,9 @@ if(BUILD_TESTING)
     target_include_directories(C2PAProvenanceTests PRIVATE src)
     target_compile_features(C2PAProvenanceTests PRIVATE cxx_std_20)
     target_compile_definitions(C2PAProvenanceTests PRIVATE
-        C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav")
+        C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav"
+        C2PA_TEST_CERTIFICATE_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_certs.pem"
+        C2PA_TEST_PRIVATE_KEY_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_private.key")
     target_link_libraries(C2PAProvenanceTests PRIVATE
         juce::juce_audio_formats
         juce::juce_cryptography
@@ -297,7 +299,9 @@ if(BUILD_TESTING)
         TRACKTION_ENABLE_CMAJOR=0
         TRACKTION_ENABLE_CONTROL_SURFACES=0
         TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=0
-        C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav")
+        C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav"
+        C2PA_TEST_CERTIFICATE_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_certs.pem"
+        C2PA_TEST_PRIVATE_KEY_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_private.key")
     target_link_libraries(C2PAExportPipelineTests PRIVATE
         tracktion::tracktion_engine
         juce::juce_audio_utils

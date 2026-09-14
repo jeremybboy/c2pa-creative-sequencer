@@ -4,8 +4,8 @@
 
 namespace c2paseq
 {
-AudioEngine::AudioEngine()
-    : projectEngine(tracktion, provenance)
+AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider)
+    : provenance(std::move(signingProvider)), projectEngine(tracktion, provenance)
 {
 }
 
@@ -136,6 +136,26 @@ juce::AudioThumbnailCache& AudioEngine::audioThumbnailCache() noexcept
 IngredientInfo AudioEngine::inspectProvenance(const juce::File& file) const
 {
     return provenance.inspect(file);
+}
+
+bool AudioEngine::signingConfigured() const
+{
+    return provenance.signingConfigured();
+}
+
+juce::String AudioEngine::signingCredentialStatus() const
+{
+    return provenance.signingCredentialStatus();
+}
+
+juce::Result AudioEngine::configureSigningCredential(const juce::File& file)
+{
+    return provenance.configureSigningCredential(file);
+}
+
+juce::Result AudioEngine::removeSigningCredential()
+{
+    return provenance.removeSigningCredential();
 }
 
 ExportResult AudioEngine::exportMix(const juce::File& destination)

@@ -109,6 +109,7 @@ juce::Result ProjectEngine::importAudio(const juce::File& source,
     AudioFileMetadata metadata;
     if (auto result = tracktion.inspectAudioFile(source, metadata); result.failed())
         return result;
+    const auto sourceProvenance = provenance.inspect(source);
 
     const auto previous = *project;
     MediaReference media;
@@ -119,7 +120,7 @@ juce::Result ProjectEngine::importAudio(const juce::File& source,
         return result;
 
     const auto copiedFile = paths->root().getChildFile(media.relativePath);
-    media.provenance = provenance.inspect(copiedFile);
+    media.provenance = sourceProvenance;
     const auto registered = std::find_if(project->media.begin(), project->media.end(),
         [&](const auto& item) { return item.id == media.id; });
     if (registered != project->media.end())

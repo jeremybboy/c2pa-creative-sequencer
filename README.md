@@ -3,13 +3,15 @@
 
 A minimal music sequencer for arranging, processing and remixing audio stems while preserving and exporting verifiable C2PA provenance.
 
+**C2PA Creative Sequencer acts as a C2PA Claim Validator when media enters the creative workflow and a C2PA Claim Generator when the final mix is exported.**
+
 ![Overview of stems moving through arrangement and VST processing into a signed, verified WAV](docs/assets/repository-overview.svg)
 
 The creative path remains primary: imported stems become a non-destructive arrangement, optional track processing contributes to a stereo mix, and a separate provenance layer describes meaningful ingredients and operations before C2PA signing and verification.
 
 ## Status
 
-The repository is in version 0.1 proof-of-concept development. PRs 001–005 provide the native macOS shell, audio transport, project bundles, stem import/playback, and focused Arrangement editing. PR 006 adds offline stereo 24-bit WAV export, source Content Credentials inspection, exact contributing-ingredient selection, and optional signed C2PA WAV export followed by immediate validation. VST3 hosting and detailed edit provenance remain future work.
+The repository is in version 0.1 proof-of-concept development. PRs 001–005 provide the native macOS shell, audio transport, project bundles, stem import/playback, and focused Arrangement editing. PR 006 makes source Content Credentials validation automatic on import and makes normal Export a mandatory render → claim → sign → embed → reopen → validate pipeline for stereo 24-bit WAV. VST3 hosting and detailed edit provenance remain future work.
 
 ## Product boundary
 
@@ -38,8 +40,8 @@ The first configure downloads the exact JUCE, Tracktion Engine, `c2pa-cpp`, and 
 
 Add sample roots with **Places → Add Folder…**, expand their folders, and drag supported audio directly to a track and musical position. Clips snap to beats by default; hold **Option** while dragging to bypass snap. **Space** toggles play/pause at the current playhead, **Command-S** saves, and **Command-Z** / **Shift-Command-Z** undo and redo. Use **Delete**, **Command-D**, and **Command-E** for delete, duplicate, and split-at-playhead; use the **−/+** buttons or Command-scroll to zoom, Shift-scroll to move horizontally, and ordinary scroll to move vertically.
 
-Select a clip and click **Credentials** to inspect its import-time C2PA status. Click **Export** for a stereo 24-bit WAV ending at the last audible clip. Without `C2PASEQ_SIGNING_BUNDLE_PEM`, export deliberately produces a clearly reported unsigned WAV; set that variable to the external Conformance test bundle PEM to enable test-signed export.
+Imported files are inspected automatically and clips show **CC**, **No CC**, or **CC ?**; select a clip and click **Credentials** for the validation summary. The first **Export** asks for a PEM signing bundle, validates it with `c2pa-cpp`, stores a machine-local copy with restrictive permissions, and continues automatically. Later Finder launches reuse that credential; **Signing** shows configured state and provides replace/remove actions. Normal Export never silently falls back to unsigned WAV, while `C2PASEQ_SIGNING_BUNDLE_PEM` remains a developer-only override.
 
 ## Known limitations
 
-The POC still has no recording, MIDI, warping, time stretching, plug-in UI, automation, advanced routing, or detailed edit provenance. The supplied Conformance certificate proves test signing and asset integrity but is not a production identity; external trust recognition depends on the verifier's trust configuration. Added Places are machine-local, imported media is copied byte-for-byte into `Media/`, and editing remains non-destructive. On one track, a later clip has priority in overlaps; different tracks mix normally, and export uses that same arrangement.
+The POC still has no recording, MIDI, warping, time stretching, plug-in UI, automation, advanced routing, or detailed edit provenance. The supplied C2PA Conformance credential is a **test credential only**, not the future production identity; external trust recognition depends on the verifier's trust configuration. The private PEM is stored outside projects and Git at `~/Library/Application Support/C2PA Creative Sequencer/Signing/signing-bundle.pem` with mode `0600` inside a `0700` directory. Added Places are machine-local, imported media is copied byte-for-byte into `Media/`, and editing remains non-destructive. On one track, a later clip has priority in overlaps; different tracks mix normally, and export uses that same arrangement.

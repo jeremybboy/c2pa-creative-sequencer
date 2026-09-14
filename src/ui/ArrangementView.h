@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/ProjectEngine.h"
+#include "export/ExportResult.h"
 #include "timeline/TimelineGeometry.h"
 #include "ui/PlacesBrowser.h"
 #include "ui/PlacesStore.h"
@@ -10,6 +11,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace c2paseq
@@ -46,6 +48,11 @@ private:
     void openProject();
     void saveProject();
     void exportProject();
+    void beginExportWithConfiguredSigner();
+    void chooseSigningCredential(std::function<void()> continuation = {});
+    void showSigningSettings();
+    void showExportCompletion();
+    void showExportCredentials();
     void showSelectedCredentials();
     void togglePlayback();
     void undoEdit();
@@ -85,6 +92,7 @@ private:
     juce::TextButton saveProjectButton { "Save" };
     juce::TextButton exportButton { "Export" };
     juce::TextButton credentialsButton { "Credentials" };
+    juce::TextButton signingButton { "Signing" };
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
     juce::TextButton playPause { "Play" };
@@ -101,6 +109,7 @@ private:
     juce::String selectedClipId;
     juce::String projectMessage;
     std::unique_ptr<juce::FileChooser> fileChooser;
+    std::optional<ExportResult> lastExport;
     std::vector<ArrangementTrackSnapshot> snapshots;
     std::vector<std::unique_ptr<WaveformView>> waveformViews;
     std::vector<std::unique_ptr<TrackHeaderView>> trackHeaders;

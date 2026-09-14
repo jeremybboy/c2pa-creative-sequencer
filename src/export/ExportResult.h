@@ -24,7 +24,6 @@ struct ExportResult
     bool credentialsAttached = false;
     bool credentialsValidated = false;
     bool externallyTrusted = false;
-    bool unsignedBecauseNotConfigured = false;
     IngredientInfo outputProvenance;
     std::vector<ContributingIngredient> ingredients;
 };

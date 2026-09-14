@@ -21,26 +21,19 @@ ExportResult ExportController::exportMix(const Project& project,
         return output;
     output.ingredients = plan.ingredients;
 
+    if (! provenance.signingConfigured())
+    {
+        output.stage = ExportStage::signingConfiguration;
+        output.result = juce::Result::fail(provenance.signingConfigurationError());
+        return output;
+    }
+
     juce::TemporaryFile unsignedRender(destination);
     output.stage = ExportStage::audioRender;
     output.result = RenderService::render(tracktion, plan, unsignedRender.getFile());
     if (output.result.failed())
         return output;
     output.audioRendered = true;
-
-    if (! provenance.signingConfigured())
-    {
-        output.stage = ExportStage::signingConfiguration;
-        if (! unsignedRender.overwriteTargetFileWithTemporary())
-        {
-            output.stage = ExportStage::fileCommit;
-            output.result = juce::Result::fail("Could not commit unsigned WAV export");
-            return output;
-        }
-        output.unsignedBecauseNotConfigured = true;
-        output.result = juce::Result::ok();
-        return output;
-    }
 
     juce::TemporaryFile signedRender(destination);
     output.stage = ExportStage::signingAndEmbedding;

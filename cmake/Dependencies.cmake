@@ -60,6 +60,7 @@ configure_file("${C2PASEQ_C2PA_C_LIBRARY_SOURCE}"
                "${C2PASEQ_C2PA_C_LIBRARY}" COPYONLY)
 
 find_program(C2PASEQ_INSTALL_NAME_TOOL install_name_tool REQUIRED)
+find_program(C2PASEQ_CODESIGN codesign REQUIRED)
 execute_process(
     COMMAND "${C2PASEQ_INSTALL_NAME_TOOL}" -id @rpath/libc2pa_c.dylib "${C2PASEQ_C2PA_C_LIBRARY}"
     RESULT_VARIABLE C2PASEQ_INSTALL_NAME_RESULT
@@ -89,4 +90,13 @@ function(c2paseq_enable_c2pa target)
             "${C2PASEQ_C2PA_C_LIBRARY}"
             "$<TARGET_FILE_DIR:${target}>/libc2pa_c.dylib"
         VERBATIM)
+    get_target_property(C2PASEQ_TARGET_IS_BUNDLE ${target} MACOSX_BUNDLE)
+    if(C2PASEQ_TARGET_IS_BUNDLE)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${C2PASEQ_CODESIGN}" --force --sign - --timestamp=none
+                "$<TARGET_FILE_DIR:${target}>/libc2pa_c.dylib"
+            COMMAND "${C2PASEQ_CODESIGN}" --force --sign - --timestamp=none
+                "$<TARGET_BUNDLE_DIR:${target}>"
+            VERBATIM)
+    endif()
 endfunction()
