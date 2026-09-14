@@ -1,5 +1,7 @@
 #pragma once
 
+#include "provenance/ProvenanceModel.h"
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 namespace c2paseq
@@ -19,7 +21,8 @@ public:
                  double startSeconds,
                  double sourceOffsetSeconds,
                  double lengthSeconds,
-                 juce::Colour colour);
+                 juce::Colour colour,
+                 ProvenanceStatus provenanceStatus);
 
     void paint(juce::Graphics& graphics) override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -55,6 +58,7 @@ private:
     double sourceOffset = 0.0;
     double duration = 0.0;
     juce::Colour clipColour;
+    ProvenanceStatus provenance = ProvenanceStatus::noCredentials;
     bool selected = false;
     DragMode dragMode = DragMode::move;
     juce::Rectangle<int> dragStartBounds;

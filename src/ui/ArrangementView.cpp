@@ -150,6 +150,8 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     newProject.onClick = [this] { createProject(); };
     openProjectButton.onClick = [this] { openProject(); };
     saveProjectButton.onClick = [this] { saveProject(); };
+    exportButton.onClick = [this] { exportProject(); };
+    credentialsButton.onClick = [this] { showSelectedCredentials(); };
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     playPause.onClick = [this] { togglePlayback(); };
@@ -180,6 +182,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     };
 
     for (auto* button : { &newProject, &openProjectButton, &saveProjectButton,
+                          &exportButton, &credentialsButton,
                           &undoButton, &redoButton, &playPause, &stop, &loop,
                           &zoomOut, &zoomIn, &audioSettings })
     {
@@ -236,6 +239,7 @@ void ArrangementView::resized()
         component.setBounds(top.removeFromLeft(width).reduced(1));
     };
     placeButton(newProject, 45); placeButton(openProjectButton, 48); placeButton(saveProjectButton, 46);
+    placeButton(exportButton, 56); placeButton(credentialsButton, 82);
     top.removeFromLeft(6);
     placeButton(undoButton, 48); placeButton(redoButton, 48);
     top.removeFromLeft(10);
@@ -342,6 +346,8 @@ void ArrangementView::refreshTransport()
     geometry.bpm = snapshot.bpm;
     projectName.setText(audioEngine.projectName(), juce::dontSendNotification);
     saveProjectButton.setEnabled(audioEngine.hasProject());
+    exportButton.setEnabled(audioEngine.hasProject());
+    credentialsButton.setEnabled(selectedClipId.isNotEmpty());
     undoButton.setEnabled(audioEngine.canUndo());
     redoButton.setEnabled(audioEngine.canRedo());
     const auto prefix = projectMessage.isNotEmpty() ? projectMessage + "  |  " : juce::String();
@@ -395,6 +401,58 @@ void ArrangementView::saveProject()
 {
     audioEngine.setTimelineView(geometry.pixelsPerSecond, geometry.scrollSeconds);
     showProjectResult(audioEngine.saveProject(), "Project saved");
+}
+
+void ArrangementView::exportProject()
+{
+    fileChooser = std::make_unique<juce::FileChooser>("Export WAV",
+        juce::File::getSpecialLocation(juce::File::userMusicDirectory)
+            .getChildFile(audioEngine.projectName() + " Export.wav"), "*.wav");
+    fileChooser->launchAsync(juce::FileBrowserComponent::saveMode
+                               | juce::FileBrowserComponent::canSelectFiles
+                               | juce::FileBrowserComponent::warnAboutOverwriting,
+        [safe = juce::Component::SafePointer<ArrangementView>(this)](const juce::FileChooser& c)
+        {
+            if (safe == nullptr || c.getResult() == juce::File()) return;
+            auto destination = c.getResult();
+            if (! destination.hasFileExtension("wav"))
+                destination = destination.withFileExtension("wav");
+            const auto result = safe->audioEngine.exportMix(destination);
+            if (result.result.failed())
+                safe->projectMessage = "Export failed: " + result.result.getErrorMessage();
+            else if (result.unsignedBecauseNotConfigured)
+                safe->projectMessage = "Unsigned WAV exported; test signing is not configured";
+            else if (result.externallyTrusted)
+                safe->projectMessage = "Export complete | Content Credentials attached and validated";
+            else
+                safe->projectMessage = "Export complete | Content Credentials attached | Asset integrity validated | External trust issue";
+            safe->refreshTransport();
+            safe->fileChooser.reset();
+        });
+}
+
+void ArrangementView::showSelectedCredentials()
+{
+    for (const auto& track : snapshots)
+        for (const auto& clip : track.clips)
+            if (clip.id == selectedClipId)
+            {
+                const auto& info = clip.provenance;
+                auto details = "File: " + clip.mediaFile.getFileName()
+                    + "\nContent Credentials: " + (info.c2paPresent ? "Present" : "Not present")
+                    + "\nStatus: " + provenanceStatusLabel(info.status);
+                if (info.activeManifest.isNotEmpty())
+                    details += "\nActive manifest: " + info.activeManifest;
+                if (info.claimGenerator.isNotEmpty())
+                    details += "\nGenerator: " + info.claimGenerator;
+                if (info.signer.isNotEmpty())
+                    details += "\nSigner: " + info.signer;
+                if (info.validationSummary.isNotEmpty())
+                    details += "\nValidation: " + info.validationSummary;
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
+                    "Content Credentials", details);
+                return;
+            }
 }
 
 void ArrangementView::togglePlayback()
@@ -505,7 +563,8 @@ void ArrangementView::rebuildArrangement()
             auto view = std::make_unique<WaveformView>(
                 audioEngine.audioFormatManager(), audioEngine.audioThumbnailCache(),
                 clip.mediaFile, clip.name, clip.id, static_cast<int>(trackIndex),
-                clip.startSeconds, clip.sourceOffsetSeconds, clip.lengthSeconds, colour);
+                clip.startSeconds, clip.sourceOffsetSeconds, clip.lengthSeconds, colour,
+                clip.provenance.status);
             view->setSelected(clip.id == selectedClipId);
             view->onSelected = [this](auto& selected) { selectClip(selected.id()); };
             view->onGesture = [this](auto& selected, auto mode, int dx, int dy,

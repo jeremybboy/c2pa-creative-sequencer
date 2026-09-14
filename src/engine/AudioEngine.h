@@ -2,6 +2,10 @@
 
 #include "ProjectEngine.h"
 #include "TracktionAdapter.h"
+#include "export/ExportResult.h"
+#include "provenance/ProvenanceService.h"
+
+#include <memory>
 
 namespace c2paseq
 {
@@ -47,6 +51,8 @@ public:
     [[nodiscard]] std::vector<ArrangementTrackSnapshot> arrangementSnapshot() const;
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
     [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
+    [[nodiscard]] IngredientInfo inspectProvenance(const juce::File&) const;
+    [[nodiscard]] ExportResult exportMix(const juce::File& destination);
 
     [[nodiscard]] juce::Result createProject(const juce::File& projectFolder,
                                              const juce::String& projectName);
@@ -57,6 +63,7 @@ public:
 
 private:
     TracktionAdapter tracktion;
+    ProvenanceService provenance;
     ProjectEngine projectEngine;
 };
 }

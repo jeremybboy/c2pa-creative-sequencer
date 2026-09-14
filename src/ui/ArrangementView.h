@@ -45,6 +45,8 @@ private:
     void createProject();
     void openProject();
     void saveProject();
+    void exportProject();
+    void showSelectedCredentials();
     void togglePlayback();
     void undoEdit();
     void redoEdit();
@@ -81,6 +83,8 @@ private:
     juce::TextButton newProject { "New" };
     juce::TextButton openProjectButton { "Open" };
     juce::TextButton saveProjectButton { "Save" };
+    juce::TextButton exportButton { "Export" };
+    juce::TextButton credentialsButton { "Credentials" };
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
     juce::TextButton playPause { "Play" };

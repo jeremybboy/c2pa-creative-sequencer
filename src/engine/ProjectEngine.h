@@ -10,6 +10,7 @@
 namespace c2paseq
 {
 class TracktionAdapter;
+class ProvenanceService;
 
 struct ArrangementClipSnapshot
 {
@@ -19,6 +20,7 @@ struct ArrangementClipSnapshot
     double startSeconds = 0.0;
     double sourceOffsetSeconds = 0.0;
     double lengthSeconds = 0.0;
+    IngredientInfo provenance;
 };
 
 struct ArrangementTrackSnapshot
@@ -35,7 +37,7 @@ struct ArrangementTrackSnapshot
 class ProjectEngine final
 {
 public:
-    explicit ProjectEngine(TracktionAdapter& tracktionAdapter);
+    ProjectEngine(TracktionAdapter& tracktionAdapter, ProvenanceService& provenanceService);
 
     [[nodiscard]] juce::Result createProject(const juce::File& projectFolder,
                                              const juce::String& projectName);
@@ -85,6 +87,7 @@ private:
     void ensureTrackCount(int count);
 
     TracktionAdapter& tracktion;
+    ProvenanceService& provenance;
     std::optional<Project> project;
     std::optional<ProjectPaths> paths;
     std::vector<Project> undoHistory;

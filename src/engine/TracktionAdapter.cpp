@@ -262,6 +262,57 @@ juce::Result TracktionAdapter::setTrackSolo(int trackIndex, bool soloed)
     return juce::Result::ok();
 }
 
+juce::Result TracktionAdapter::renderWav(const juce::File& destination,
+                                         double endSeconds)
+{
+    if (edit == nullptr || endSeconds <= 0.0)
+        return juce::Result::fail("Invalid render range");
+
+    tracktion::engine::Renderer::Parameters parameters(*edit);
+    parameters.destFile = destination;
+    parameters.audioFormat = engine.getAudioFileFormatManager().getWavFormat();
+    parameters.bitDepth = 24;
+    parameters.sampleRateForAudio = engine.getDeviceManager().getSampleRate();
+    if (parameters.sampleRateForAudio <= 0.0)
+        parameters.sampleRateForAudio = transport::preferredSampleRate;
+    parameters.blockSizeForAudio = transport::preferredBlockSize;
+    parameters.time = { tracktion::TimePosition::fromSeconds(0.0),
+                        tracktion::TimePosition::fromSeconds(endSeconds) };
+    parameters.tracksToDo = tracktion::engine::toBitSet(
+        tracktion::engine::getAllTracks(*edit));
+    parameters.canRenderInMono = false;
+    parameters.mustRenderInMono = false;
+    parameters.usePlugins = true;
+    parameters.useMasterPlugins = true;
+    parameters.trimSilenceAtEnds = false;
+    parameters.shouldNormalise = false;
+
+    tracktion::engine::TransportControl::stopAllTransports(engine, false, true);
+    edit->getTransport().freePlaybackContext();
+    tracktion::engine::Renderer::turnOffAllPlugins(*edit);
+    auto task = tracktion::engine::render_utils::createRenderTask(
+        parameters, "Export Mix", nullptr, nullptr);
+    if (task == nullptr)
+    {
+        edit->getTransport().ensureContextAllocated(true);
+        return juce::Result::fail("Tracktion could not create the offline render task");
+    }
+    while (task->runJob() == juce::ThreadPoolJob::jobNeedsRunningAgain)
+    {
+    }
+    tracktion::engine::Renderer::turnOffAllPlugins(*edit);
+    edit->getTransport().ensureContextAllocated(true);
+    if (task->errorMessage.isNotEmpty())
+    {
+        destination.deleteFile();
+        return juce::Result::fail("Tracktion offline WAV render failed: "
+                                  + task->errorMessage);
+    }
+    if (! destination.existsAsFile())
+        return juce::Result::fail("Tracktion offline WAV render produced no file");
+    return juce::Result::ok();
+}
+
 juce::AudioFormatManager& TracktionAdapter::audioFormatManager() noexcept
 {
     return engine.getAudioFileFormatManager().readFormatManager;

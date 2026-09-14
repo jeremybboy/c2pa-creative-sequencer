@@ -4,6 +4,7 @@
 #include "TracktionAdapter.h"
 #include "project/MediaLibrary.h"
 #include "project/ProjectSerializer.h"
+#include "provenance/ProvenanceService.h"
 #include "transport/TransportFormatting.h"
 
 #include <algorithm>
@@ -11,8 +12,9 @@
 
 namespace c2paseq
 {
-ProjectEngine::ProjectEngine(TracktionAdapter& tracktionAdapter)
-    : tracktion(tracktionAdapter)
+ProjectEngine::ProjectEngine(TracktionAdapter& tracktionAdapter,
+                             ProvenanceService& provenanceService)
+    : tracktion(tracktionAdapter), provenance(provenanceService)
 {
 }
 
@@ -117,6 +119,11 @@ juce::Result ProjectEngine::importAudio(const juce::File& source,
         return result;
 
     const auto copiedFile = paths->root().getChildFile(media.relativePath);
+    media.provenance = provenance.inspect(copiedFile);
+    const auto registered = std::find_if(project->media.begin(), project->media.end(),
+        [&](const auto& item) { return item.id == media.id; });
+    if (registered != project->media.end())
+        registered->provenance = media.provenance;
     ensureTrackCount(trackIndex + 1);
 
     ClipModel clip;
@@ -388,7 +395,8 @@ std::vector<ArrangementTrackSnapshot> ProjectEngine::arrangementSnapshot() const
                 paths->root().getChildFile(media->relativePath),
                 clip.startSeconds,
                 clip.sourceOffsetSeconds,
-                clip.lengthSeconds
+                clip.lengthSeconds,
+                media->provenance
             });
         }
         snapshot.push_back(std::move(trackSnapshot));

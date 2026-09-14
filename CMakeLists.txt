@@ -38,6 +38,17 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/engine/ProjectEngine.h
     src/engine/TracktionAdapter.cpp
     src/engine/TracktionAdapter.h
+    src/export/ExportController.cpp
+    src/export/ExportController.h
+    src/export/ExportResult.h
+    src/export/RenderService.cpp
+    src/export/RenderService.h
+    src/provenance/ProvenanceModel.cpp
+    src/provenance/ProvenanceModel.h
+    src/provenance/ProvenanceService.cpp
+    src/provenance/ProvenanceService.h
+    src/provenance/SigningProvider.cpp
+    src/provenance/SigningProvider.h
     src/project/MediaLibrary.cpp
     src/project/MediaLibrary.h
     src/project/Project.cpp
@@ -84,6 +95,8 @@ target_link_libraries(C2PACreativeSequencer PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
 
+c2paseq_enable_c2pa(C2PACreativeSequencer)
+
 set_target_properties(C2PACreativeSequencer PROPERTIES
     C_VISIBILITY_PRESET hidden
     CXX_VISIBILITY_PRESET hidden
@@ -129,7 +142,9 @@ if(BUILD_TESTING)
         src/project/ProjectPaths.cpp
         src/project/ProjectPaths.h
         src/project/ProjectSerializer.cpp
-        src/project/ProjectSerializer.h)
+        src/project/ProjectSerializer.h
+        src/provenance/ProvenanceModel.cpp
+        src/provenance/ProvenanceModel.h)
     target_include_directories(C2PAProjectModelTests PRIVATE src)
     target_compile_features(C2PAProjectModelTests PRIVATE cxx_std_20)
     target_link_libraries(C2PAProjectModelTests PRIVATE
@@ -177,6 +192,17 @@ if(BUILD_TESTING)
         src/engine/ProjectEngine.h
         src/engine/TracktionAdapter.cpp
         src/engine/TracktionAdapter.h
+        src/export/ExportController.cpp
+        src/export/ExportController.h
+        src/export/ExportResult.h
+        src/export/RenderService.cpp
+        src/export/RenderService.h
+        src/provenance/ProvenanceModel.cpp
+        src/provenance/ProvenanceModel.h
+        src/provenance/ProvenanceService.cpp
+        src/provenance/ProvenanceService.h
+        src/provenance/SigningProvider.cpp
+        src/provenance/SigningProvider.h
         src/project/MediaLibrary.cpp
         src/project/MediaLibrary.h
         src/project/Project.cpp
@@ -203,5 +229,80 @@ if(BUILD_TESTING)
         juce::juce_audio_utils
         juce::juce_cryptography
         juce::juce_recommended_config_flags)
+    c2paseq_enable_c2pa(C2PAArrangementEditingTests)
     add_test(NAME arrangement_editing COMMAND C2PAArrangementEditingTests)
+
+    add_executable(C2PAProvenanceTests
+        tests/provenance/ProvenanceServiceTests.cpp
+        src/app/AppInfo.h
+        src/provenance/ProvenanceModel.cpp
+        src/provenance/ProvenanceModel.h
+        src/provenance/ProvenanceService.cpp
+        src/provenance/ProvenanceService.h
+        src/provenance/SigningProvider.cpp
+        src/provenance/SigningProvider.h)
+    target_include_directories(C2PAProvenanceTests PRIVATE src)
+    target_compile_features(C2PAProvenanceTests PRIVATE cxx_std_20)
+    target_compile_definitions(C2PAProvenanceTests PRIVATE
+        C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav")
+    target_link_libraries(C2PAProvenanceTests PRIVATE
+        juce::juce_audio_formats
+        juce::juce_cryptography
+        juce::juce_recommended_config_flags)
+    c2paseq_enable_c2pa(C2PAProvenanceTests)
+    add_test(NAME provenance_service COMMAND C2PAProvenanceTests)
+
+    add_executable(C2PAExportPipelineTests
+        tests/export/ExportPipelineTests.cpp
+        src/app/AppInfo.h
+        src/engine/AudioEngine.cpp
+        src/engine/AudioEngine.h
+        src/engine/ClipOcclusion.cpp
+        src/engine/ClipOcclusion.h
+        src/engine/NativeAudioClipPolicy.cpp
+        src/engine/NativeAudioClipPolicy.h
+        src/engine/ProjectEngine.cpp
+        src/engine/ProjectEngine.h
+        src/engine/TracktionAdapter.cpp
+        src/engine/TracktionAdapter.h
+        src/export/ExportController.cpp
+        src/export/ExportController.h
+        src/export/ExportResult.h
+        src/export/RenderService.cpp
+        src/export/RenderService.h
+        src/project/MediaLibrary.cpp
+        src/project/MediaLibrary.h
+        src/project/Project.cpp
+        src/project/Project.h
+        src/project/ProjectPaths.cpp
+        src/project/ProjectPaths.h
+        src/project/ProjectSerializer.cpp
+        src/project/ProjectSerializer.h
+        src/provenance/ProvenanceModel.cpp
+        src/provenance/ProvenanceModel.h
+        src/provenance/ProvenanceService.cpp
+        src/provenance/ProvenanceService.h
+        src/provenance/SigningProvider.cpp
+        src/provenance/SigningProvider.h
+        src/transport/TransportFormatting.cpp
+        src/transport/TransportFormatting.h)
+    target_include_directories(C2PAExportPipelineTests PRIVATE src)
+    target_compile_definitions(C2PAExportPipelineTests PRIVATE
+        JUCE_PLUGINHOST_AU=0
+        JUCE_PLUGINHOST_VST3=0
+        JUCE_USE_MP3AUDIOFORMAT=1
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0
+        TRACKTION_ENABLE_ARA=0
+        TRACKTION_ENABLE_CMAJOR=0
+        TRACKTION_ENABLE_CONTROL_SURFACES=0
+        TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=0
+        C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav")
+    target_link_libraries(C2PAExportPipelineTests PRIVATE
+        tracktion::tracktion_engine
+        juce::juce_audio_utils
+        juce::juce_cryptography
+        juce::juce_recommended_config_flags)
+    c2paseq_enable_c2pa(C2PAExportPipelineTests)
+    add_test(NAME export_pipeline COMMAND C2PAExportPipelineTests)
 endif()
