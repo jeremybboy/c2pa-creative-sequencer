@@ -16,6 +16,7 @@ include(cmake/Dependencies.cmake)
 juce_add_gui_app(C2PACreativeSequencer
     PRODUCT_NAME "C2PA Creative Sequencer"
     BUNDLE_ID "app.c2paseq.CreativeSequencer"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/resources/app-icon-source.png"
     MICROPHONE_PERMISSION_ENABLED FALSE)
 
 juce_generate_juce_header(C2PACreativeSequencer)
