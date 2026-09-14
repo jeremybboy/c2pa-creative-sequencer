@@ -1,4 +1,5 @@
-<img width="1441" height="870" alt="Screenshot 2026-09-13 at 4 33 55 PM" src="https://github.com/user-attachments/assets/128e6809-61e0-4e41-9ac3-42ee8514d26c" />
+<img width="1439" height="871" alt="Screenshot 2026-09-13 at 7 23 22 PM" src="https://github.com/user-attachments/assets/96730edc-50c2-4a1c-a4ae-d49e0c3e8526" />
+
 # C2PA Creative Sequencer
 
 A minimal music sequencer for arranging, processing and remixing audio stems while preserving and exporting verifiable C2PA provenance.
