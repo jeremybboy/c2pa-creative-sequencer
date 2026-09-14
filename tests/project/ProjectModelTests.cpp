@@ -74,6 +74,14 @@ int main()
         return fail(3, result.getErrorMessage());
     if (duplicateWasAdded || duplicateMedia.id != media.id || project.media.size() != 1)
         return fail(3, "duplicate media was not deduplicated by SHA-256");
+    project.media.front().provenance.status =
+        c2paseq::ProvenanceStatus::presentWithValidationIssue;
+    project.media.front().provenance.c2paPresent = true;
+    project.media.front().provenance.assetIntact = true;
+    project.media.front().provenance.activeManifest = "urn:c2pa:manifest:test";
+    project.media.front().provenance.claimGenerator = "Fixture Generator 1.0";
+    project.media.front().provenance.signer = "Fixture Signer";
+    project.media.front().provenance.validationSummary = "External trust issue";
 
     c2paseq::ClipModel clip;
     clip.id = juce::Uuid().toString();
@@ -140,6 +148,15 @@ int main()
         || juce::SHA256(copiedMedia) != juce::SHA256(source)
         || project.media.front().sha256 != juce::SHA256(source).toHexString())
         return fail(11, "media copy was not byte-for-byte identical");
+    const auto& loadedProvenance = project.media.front().provenance;
+    if (! loadedProvenance.c2paPresent || ! loadedProvenance.assetIntact
+        || loadedProvenance.status
+            != c2paseq::ProvenanceStatus::presentWithValidationIssue
+        || loadedProvenance.activeManifest != "urn:c2pa:manifest:test"
+        || loadedProvenance.claimGenerator != "Fixture Generator 1.0"
+        || loadedProvenance.signer != "Fixture Signer"
+        || loadedProvenance.validationSummary != "External trust issue")
+        return fail(11, "media provenance summary did not round-trip");
 
     if (! paths.projectJson().existsAsFile() || ! paths.provenanceJson().existsAsFile()
         || ! paths.arrangementEdit().existsAsFile() || ! paths.mediaDirectory().isDirectory())

@@ -64,6 +64,8 @@ public:
                                                    bool soloed);
     [[nodiscard]] juce::Result setTrackMute(int trackIndex, bool muted);
     [[nodiscard]] juce::Result setTrackSolo(int trackIndex, bool soloed);
+    [[nodiscard]] juce::Result renderWav(const juce::File& destination,
+                                          double endSeconds);
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
     [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
     [[nodiscard]] bool createProjectEdit(const juce::File& editFile);

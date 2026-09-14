@@ -11,7 +11,8 @@ WaveformView::WaveformView(juce::AudioFormatManager& formatManager,
                            double startSeconds,
                            double sourceOffsetSeconds,
                            double lengthSeconds,
-                           juce::Colour colour)
+                           juce::Colour colour,
+                           ProvenanceStatus provenanceStatus)
     : thumbnail(256, formatManager, thumbnailCache),
       file(std::move(audioFile)),
       name(std::move(clipName)),
@@ -20,7 +21,8 @@ WaveformView::WaveformView(juce::AudioFormatManager& formatManager,
       timelineStart(startSeconds),
       sourceOffset(sourceOffsetSeconds),
       duration(lengthSeconds),
-      clipColour(colour)
+      clipColour(colour),
+      provenance(provenanceStatus)
 {
     thumbnail.addChangeListener(this);
     thumbnail.setSource(new juce::FileInputSource(file));
@@ -45,7 +47,15 @@ void WaveformView::paint(juce::Graphics& graphics)
                           juce::Justification::centred);
 
     graphics.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-    graphics.drawFittedText(name, getLocalBounds().reduced(8).removeFromTop(16),
+    auto titleBounds = getLocalBounds().reduced(8).removeFromTop(16);
+    auto badgeBounds = titleBounds.removeFromRight(48);
+    const auto badgeText = provenance == ProvenanceStatus::valid ? "CC"
+        : provenance == ProvenanceStatus::noCredentials ? "No CC" : "CC ?";
+    graphics.setColour(provenance == ProvenanceStatus::valid
+        ? juce::Colour::fromRGB(112, 226, 154) : juce::Colour::fromRGB(235, 224, 203));
+    graphics.drawFittedText(badgeText, badgeBounds, juce::Justification::centredRight, 1);
+    graphics.setColour(juce::Colour::fromRGB(224, 218, 207));
+    graphics.drawFittedText(name, titleBounds,
                             juce::Justification::centredLeft, 1);
 }
 

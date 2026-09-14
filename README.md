@@ -3,13 +3,15 @@
 
 A minimal music sequencer for arranging, processing and remixing audio stems while preserving and exporting verifiable C2PA provenance.
 
+**C2PA Creative Sequencer acts as a C2PA Claim Validator when media enters the creative workflow and a C2PA Claim Generator when the final mix is exported.**
+
 ![Overview of stems moving through arrangement and VST processing into a signed, verified WAV](docs/assets/repository-overview.svg)
 
 The creative path remains primary: imported stems become a non-destructive arrangement, optional track processing contributes to a stereo mix, and a separate provenance layer describes meaningful ingredients and operations before C2PA signing and verification.
 
 ## Status
 
-The repository is in version 0.1 proof-of-concept development. PR 001 provides the native macOS application shell, PR 002 adds audio-device configuration and transport, PR 003 adds versioned `.c2paseq` project save/load, and PR 004 adds WAV/AIFF/MP3 stem import, waveforms, and native-speed playback. PR 005 adds the focused Arrangement workspace: persistent Places, musical ruler/grid, reusable tracks, direct clip editing, track controls, navigation, undo/redo, and restoration. VST3 hosting, rendering, and C2PA integration remain planned work and must not be described as implemented yet.
+The repository is in version 0.1 proof-of-concept development. PRs 001–005 provide the native macOS shell, audio transport, project bundles, stem import/playback, and focused Arrangement editing. PR 006 makes source Content Credentials validation automatic on import and makes normal Export a mandatory render → claim → sign → embed → reopen → validate pipeline for stereo 24-bit WAV. VST3 hosting and detailed edit provenance remain future work.
 
 ## Product boundary
 
@@ -17,7 +19,7 @@ The product is an arrangement-based audio-stem sequencer, not a full DAW. It wil
 
 ## Architecture
 
-JUCE owns the native application and UI. The application project model owns canonical clip timing in seconds and edit history, while Tracktion Engine executes the mirrored arrangement for audio-device playback. C2PA code will remain behind a dedicated application service so provenance serialization cannot leak into the audio engine.
+JUCE owns the native application and UI. The application project model owns canonical clip timing in seconds and edit history, while Tracktion Engine executes and offline-renders the mirrored arrangement. All SDK access is isolated in `src/provenance`; UI and project code consume only application-owned provenance records and export results.
 
 See [dependency verification](docs/DEPENDENCIES.md) and [architecture notes](docs/ARCHITECTURE.md).
 
@@ -32,12 +34,14 @@ ctest --test-dir build --output-on-failure
 open "build/C2PACreativeSequencer_artefacts/Debug/C2PA Creative Sequencer.app"
 ```
 
-The first configure downloads the exact JUCE and Tracktion Engine revisions recorded in [dependency verification](docs/DEPENDENCIES.md). The CI workflow uses the Xcode generator on GitHub's macOS runner.
+The first configure downloads the exact JUCE, Tracktion Engine, `c2pa-cpp`, and macOS arm64 C2PA runtime revisions recorded in [dependency verification](docs/DEPENDENCIES.md). The CI workflow uses the Xcode generator on GitHub's macOS runner.
 
 ## Arrangement controls
 
 Add sample roots with **Places → Add Folder…**, expand their folders, and drag supported audio directly to a track and musical position. Clips snap to beats by default; hold **Option** while dragging to bypass snap. **Space** toggles play/pause at the current playhead, **Command-S** saves, and **Command-Z** / **Shift-Command-Z** undo and redo. Use **Delete**, **Command-D**, and **Command-E** for delete, duplicate, and split-at-playhead; use the **−/+** buttons or Command-scroll to zoom, Shift-scroll to move horizontally, and ordinary scroll to move vertically.
 
+Imported files are inspected automatically and clips show **CC**, **No CC**, or **CC ?**; select a clip and click **Credentials** for the validation summary. The first **Export** asks for a PEM signing bundle, validates it with `c2pa-cpp`, stores a machine-local copy with restrictive permissions, and continues automatically. Later Finder launches reuse that credential; **Signing** shows configured state and provides replace/remove actions. Normal Export never silently falls back to unsigned WAV, while `C2PASEQ_SIGNING_BUNDLE_PEM` remains a developer-only override.
+
 ## Known limitations
 
-PR 005 is intentionally an audio-arrangement slice: no recording, MIDI, warping, time stretching, plug-in UI, automation, advanced routing, render/export, or C2PA signing is present. Added Places are machine-local preferences rather than portable project data; imported audio is copied byte-for-byte into the project `Media/` directory, and moving or trimming a clip changes only non-destructive timing metadata. On one track, a later placed or moved clip has playback priority only where it overlaps an earlier clip; different tracks still mix normally.
+The POC still has no recording, MIDI, warping, time stretching, plug-in UI, automation, advanced routing, or detailed edit provenance. The supplied C2PA Conformance credential is a **test credential only**, not the future production identity; external trust recognition depends on the verifier's trust configuration. The private PEM is stored outside projects and Git at `~/Library/Application Support/C2PA Creative Sequencer/Signing/signing-bundle.pem` with mode `0600` inside a `0700` directory. Added Places are machine-local, imported media is copied byte-for-byte into `Media/`, and editing remains non-destructive. On one track, a later clip has priority in overlaps; different tracks mix normally, and export uses that same arrangement.

@@ -1,6 +1,6 @@
 # Architecture
 
-The system keeps four concerns separate: creative state, audio execution, provenance state, and C2PA serialization. JUCE owns the application shell and custom interface; a narrow adapter shields application code from Tracktion Engine; the provenance service will translate a stable internal provenance model into `c2pa-cpp` calls only at its boundary.
+The system keeps four concerns separate: creative state, audio execution, provenance state, and C2PA serialization. JUCE owns the application shell and custom interface; a narrow adapter shields application code from Tracktion Engine; the provenance service translates the stable internal provenance model into `c2pa-cpp` calls only at its boundary.
 
 The initial dependency and component flow is shown in the repository overview diagram. This document will expand only when implementation makes an architectural claim real.
 
@@ -116,3 +116,29 @@ enter the portable project bundle.
   duration/pitch and generates non-zero output.
 - The remaining mouse-feel, visual, and listening workflow is explicitly manual and must
   be completed before merge; a successful build does not substitute for that acceptance.
+
+## PR 006 boundary
+
+`RenderService` derives an export plan from canonical project state. It excludes muted
+tracks and non-soloed tracks when any solo is active, applies the same non-destructive
+same-track occlusion policy used by realtime playback, ends at the last audible segment,
+and deduplicates contributing media by project media identity. `TracktionAdapter` performs
+the resulting offline stereo 24-bit WAV render; no C2PA code participates in audio mixing.
+
+`ProvenanceService` is the only production class that includes `c2pa.hpp`. Import inspects
+the original source without modifying it and stores an application-owned status summary in
+`project.json`: `VALID`, `PRESENT_WITH_VALIDATION_ISSUE`, `NO_CREDENTIALS`, or
+`UNABLE_TO_VALIDATE`. Absence of credentials is a neutral state, not an integrity failure.
+
+`ExportController` owns the deterministic pipeline: require a configured signer, render to an
+uncommitted temporary WAV, build one new final claim, add each actual source once as `componentOf`,
+sign and embed, reopen and validate, then atomically commit. A signing or validation
+failure leaves no destination that could be mistaken for authenticated output. Missing
+configuration is a hard failure in the normal Export path; there is no unsigned fallback.
+
+The signing provider prefers a developer `C2PASEQ_SIGNING_BUNDLE_PEM` override when set;
+otherwise it reads the one-time GUI-selected bundle from the app's private Application Support
+directory. `ProvenanceService` validates and constructs the signer; the UI only selects a file
+and reports state. A supplied SEC1 EC key is converted to the PKCS#8 representation required
+by the SDK in memory; private material is never stored in project data, logs, Git, CI artifacts,
+source media, or the application bundle.

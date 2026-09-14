@@ -47,6 +47,12 @@ juce::var makeMedia(const MediaReference& media)
     object->setProperty("relativePath", media.relativePath);
     object->setProperty("sha256", media.sha256);
     object->setProperty("byteSize", media.byteSize);
+    object->setProperty("c2paStatus", provenanceStatusId(media.provenance.status));
+    object->setProperty("c2paManifestId", media.provenance.activeManifest);
+    object->setProperty("c2paClaimGenerator", media.provenance.claimGenerator);
+    object->setProperty("c2paSigner", media.provenance.signer);
+    object->setProperty("c2paValidationSummary", media.provenance.validationSummary);
+    object->setProperty("c2paAssetIntact", media.provenance.assetIntact);
     return object.release();
 }
 
@@ -235,6 +241,21 @@ juce::Result parseMedia(const juce::var& value, const ProjectPaths& paths, Media
     if (! (byteSize.isInt() || byteSize.isInt64()) || static_cast<juce::int64>(byteSize) < 0)
         return juce::Result::fail("byteSize must be a non-negative integer");
     media.byteSize = static_cast<juce::int64>(byteSize);
+
+    if (object->hasProperty("c2paStatus"))
+    {
+        media.provenance.status = provenanceStatusFromId(
+            object->getProperty("c2paStatus").toString());
+        media.provenance.c2paPresent = media.provenance.status == ProvenanceStatus::valid
+            || media.provenance.status == ProvenanceStatus::presentWithValidationIssue;
+        media.provenance.activeManifest = object->getProperty("c2paManifestId").toString();
+        media.provenance.claimGenerator = object->getProperty("c2paClaimGenerator").toString();
+        media.provenance.signer = object->getProperty("c2paSigner").toString();
+        media.provenance.validationSummary =
+            object->getProperty("c2paValidationSummary").toString();
+        const auto intact = object->getProperty("c2paAssetIntact");
+        if (intact.isBool()) media.provenance.assetIntact = static_cast<bool>(intact);
+    }
 
     const auto mediaFile = paths.root().getChildFile(media.relativePath);
     if (! mediaFile.isAChildOf(paths.mediaDirectory()) || media.sha256.length() != 64)

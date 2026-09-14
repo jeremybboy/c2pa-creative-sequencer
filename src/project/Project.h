@@ -1,5 +1,7 @@
 #pragma once
 
+#include "provenance/ProvenanceModel.h"
+
 #include <juce_core/juce_core.h>
 
 #include <vector>
@@ -36,6 +38,7 @@ struct MediaReference
     juce::String relativePath;
     juce::String sha256;
     std::int64_t byteSize = 0;
+    IngredientInfo provenance;
 };
 
 struct PluginState

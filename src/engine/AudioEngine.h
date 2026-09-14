@@ -2,13 +2,17 @@
 
 #include "ProjectEngine.h"
 #include "TracktionAdapter.h"
+#include "export/ExportResult.h"
+#include "provenance/ProvenanceService.h"
+
+#include <memory>
 
 namespace c2paseq
 {
 class AudioEngine final
 {
 public:
-    AudioEngine();
+    explicit AudioEngine(std::unique_ptr<SigningProvider> signingProvider = {});
 
     [[nodiscard]] bool isInitialised() const noexcept;
     [[nodiscard]] juce::String status() const;
@@ -47,6 +51,12 @@ public:
     [[nodiscard]] std::vector<ArrangementTrackSnapshot> arrangementSnapshot() const;
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
     [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
+    [[nodiscard]] IngredientInfo inspectProvenance(const juce::File&) const;
+    [[nodiscard]] bool signingConfigured() const;
+    [[nodiscard]] juce::String signingCredentialStatus() const;
+    [[nodiscard]] juce::Result configureSigningCredential(const juce::File&);
+    [[nodiscard]] juce::Result removeSigningCredential();
+    [[nodiscard]] ExportResult exportMix(const juce::File& destination);
 
     [[nodiscard]] juce::Result createProject(const juce::File& projectFolder,
                                              const juce::String& projectName);
@@ -57,6 +67,7 @@ public:
 
 private:
     TracktionAdapter tracktion;
+    ProvenanceService provenance;
     ProjectEngine projectEngine;
 };
 }

@@ -1,6 +1,6 @@
 /build*/
 /.cache/
-/.DS_Store
+.DS_Store
 *.xcuserstate
 xcuserdata/
 DerivedData/
@@ -8,3 +8,8 @@ DerivedData/
 *.pem
 *.key
 *.p12
+*.pfx
+*.cer
+*.crt
+c2pa-test-signing-bundle*.zip
+/local/

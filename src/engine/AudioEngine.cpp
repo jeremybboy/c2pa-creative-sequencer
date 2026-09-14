@@ -1,9 +1,11 @@
 #include "AudioEngine.h"
 
+#include "export/ExportController.h"
+
 namespace c2paseq
 {
-AudioEngine::AudioEngine()
-    : projectEngine(tracktion)
+AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider)
+    : provenance(std::move(signingProvider)), projectEngine(tracktion, provenance)
 {
 }
 
@@ -129,6 +131,46 @@ juce::AudioFormatManager& AudioEngine::audioFormatManager() noexcept
 juce::AudioThumbnailCache& AudioEngine::audioThumbnailCache() noexcept
 {
     return tracktion.audioThumbnailCache();
+}
+
+IngredientInfo AudioEngine::inspectProvenance(const juce::File& file) const
+{
+    return provenance.inspect(file);
+}
+
+bool AudioEngine::signingConfigured() const
+{
+    return provenance.signingConfigured();
+}
+
+juce::String AudioEngine::signingCredentialStatus() const
+{
+    return provenance.signingCredentialStatus();
+}
+
+juce::Result AudioEngine::configureSigningCredential(const juce::File& file)
+{
+    return provenance.configureSigningCredential(file);
+}
+
+juce::Result AudioEngine::removeSigningCredential()
+{
+    return provenance.removeSigningCredential();
+}
+
+ExportResult AudioEngine::exportMix(const juce::File& destination)
+{
+    if (const auto* project = projectEngine.currentProject())
+        if (const auto* paths = projectEngine.currentPaths())
+        {
+            ExportController controller(tracktion, provenance);
+            return controller.exportMix(*project, *paths, destination);
+        }
+
+    ExportResult result;
+    result.outputFile = destination;
+    result.result = juce::Result::fail("Create or open a project before exporting");
+    return result;
 }
 
 juce::Result AudioEngine::createProject(const juce::File& projectFolder,
