@@ -61,6 +61,17 @@ juce::var makePlugin(const PluginState& plugin)
     auto object = std::make_unique<juce::DynamicObject>();
     object->setProperty("ownerId", plugin.ownerId);
     object->setProperty("pluginIdentifier", plugin.pluginIdentifier);
+    object->setProperty("name", plugin.name);
+    object->setProperty("vendor", plugin.vendor);
+    object->setProperty("version", plugin.version);
+    object->setProperty("format", plugin.format);
+    object->setProperty("category", plugin.category);
+    object->setProperty("fileOrIdentifier", plugin.fileOrIdentifier);
+    object->setProperty("uniqueId", plugin.uniqueId);
+    object->setProperty("deprecatedUid", plugin.deprecatedUid);
+    object->setProperty("isInstrument", plugin.isInstrument);
+    object->setProperty("bypassed", plugin.bypassed);
+    object->setProperty("missing", plugin.missing);
     object->setProperty("stateBase64", plugin.stateBase64);
     return object.release();
 }
@@ -269,6 +280,22 @@ juce::Result parsePlugin(const juce::var& value, PluginState& plugin)
     if (auto result = requireObject(value, object, "plugin state"); result.failed()) return result;
     if (auto result = requireString(*object, "ownerId", plugin.ownerId); result.failed()) return result;
     if (auto result = requireString(*object, "pluginIdentifier", plugin.pluginIdentifier); result.failed()) return result;
+    plugin.name = object->getProperty("name").toString();
+    plugin.vendor = object->getProperty("vendor").toString();
+    plugin.version = object->getProperty("version").toString();
+    plugin.format = object->getProperty("format").toString();
+    plugin.category = object->getProperty("category").toString();
+    plugin.fileOrIdentifier = object->getProperty("fileOrIdentifier").toString();
+    if (object->hasProperty("uniqueId"))
+        plugin.uniqueId = static_cast<int>(object->getProperty("uniqueId"));
+    if (object->hasProperty("deprecatedUid"))
+        plugin.deprecatedUid = static_cast<int>(object->getProperty("deprecatedUid"));
+    if (object->hasProperty("isInstrument"))
+        plugin.isInstrument = static_cast<bool>(object->getProperty("isInstrument"));
+    if (object->hasProperty("bypassed"))
+        plugin.bypassed = static_cast<bool>(object->getProperty("bypassed"));
+    if (object->hasProperty("missing"))
+        plugin.missing = static_cast<bool>(object->getProperty("missing"));
     const auto state = object->getProperty("stateBase64");
     if (! state.isString())
         return juce::Result::fail("stateBase64 must be a string");
@@ -359,10 +386,20 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
 
     juce::Array<juce::var>* plugins = nullptr;
     if (auto result = requireArray(*root, "plugins", plugins); result.failed()) return result;
+    juce::StringArray pluginOwners;
     for (const auto& value : *plugins)
     {
         PluginState plugin;
         if (auto result = parsePlugin(value, plugin); result.failed()) return result;
+        const auto owner = std::find_if(loaded.tracks.begin(), loaded.tracks.end(),
+            [&](const auto& track) { return track.id == plugin.ownerId; });
+        if (owner == loaded.tracks.end())
+            return juce::Result::fail("Plug-in owner track does not exist");
+        if (pluginOwners.contains(plugin.ownerId))
+            return juce::Result::fail("Only one VST3 slot is allowed per track");
+        if (plugin.format != "VST3" || plugin.isInstrument)
+            return juce::Result::fail("Project contains an unsupported plug-in type");
+        pluginOwners.add(plugin.ownerId);
         loaded.plugins.push_back(std::move(plugin));
     }
 

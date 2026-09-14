@@ -64,6 +64,18 @@ public:
                                                    bool soloed);
     [[nodiscard]] juce::Result setTrackMute(int trackIndex, bool muted);
     [[nodiscard]] juce::Result setTrackSolo(int trackIndex, bool soloed);
+    void registerPluginDescription(const juce::PluginDescription&);
+    [[nodiscard]] juce::Result setTrackPlugin(int trackIndex,
+                                               const juce::PluginDescription&,
+                                               const juce::String& stateBase64,
+                                               bool bypassed);
+    [[nodiscard]] juce::Result setTrackPluginBypassed(int trackIndex, bool bypassed);
+    [[nodiscard]] juce::Result removeTrackPlugin(int trackIndex);
+    [[nodiscard]] juce::Result captureTrackPluginState(int trackIndex,
+                                                       juce::String& stateBase64,
+                                                       bool& bypassed,
+                                                       bool& missing);
+    [[nodiscard]] juce::AudioPluginInstance* trackPluginInstance(int trackIndex) const;
     [[nodiscard]] juce::Result renderWav(const juce::File& destination,
                                           double endSeconds);
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;

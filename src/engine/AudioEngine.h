@@ -4,6 +4,7 @@
 #include "TracktionAdapter.h"
 #include "export/ExportResult.h"
 #include "provenance/ProvenanceService.h"
+#include "plugins/PluginHost.h"
 
 #include <memory>
 
@@ -12,7 +13,8 @@ namespace c2paseq
 class AudioEngine final
 {
 public:
-    explicit AudioEngine(std::unique_ptr<SigningProvider> signingProvider = {});
+    explicit AudioEngine(std::unique_ptr<SigningProvider> signingProvider = {},
+                         juce::File pluginCacheFile = {});
 
     [[nodiscard]] bool isInitialised() const noexcept;
     [[nodiscard]] juce::String status() const;
@@ -40,6 +42,12 @@ public:
     [[nodiscard]] juce::Result setTrackSolo(int, bool);
     [[nodiscard]] juce::Result setTrackGain(int, double);
     [[nodiscard]] juce::Result setTrackPan(int, double);
+    [[nodiscard]] const std::vector<PluginDescriptor>& availableVst3Plugins() const noexcept;
+    [[nodiscard]] juce::Result scanVst3Plugins(const juce::FileSearchPath& paths = {});
+    [[nodiscard]] juce::Result loadTrackPlugin(int, const juce::String& identifier);
+    [[nodiscard]] juce::Result setTrackPluginBypassed(int, bool);
+    [[nodiscard]] juce::Result removeTrackPlugin(int);
+    [[nodiscard]] juce::Result openTrackPluginEditor(int);
     [[nodiscard]] bool undo();
     [[nodiscard]] bool redo();
     [[nodiscard]] bool canUndo() const noexcept;
@@ -69,5 +77,6 @@ private:
     TracktionAdapter tracktion;
     ProvenanceService provenance;
     ProjectEngine projectEngine;
+    PluginHost pluginHost;
 };
 }

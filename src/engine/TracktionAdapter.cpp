@@ -262,6 +262,111 @@ juce::Result TracktionAdapter::setTrackSolo(int trackIndex, bool soloed)
     return juce::Result::ok();
 }
 
+void TracktionAdapter::registerPluginDescription(const juce::PluginDescription& description)
+{
+    engine.getPluginManager().knownPluginList.addType(description);
+}
+
+juce::Result TracktionAdapter::setTrackPlugin(int trackIndex,
+                                               const juce::PluginDescription& description,
+                                               const juce::String& stateBase64,
+                                               bool bypassed)
+{
+    if (edit == nullptr || trackIndex < 0 || description.pluginFormatName != "VST3"
+        || description.isInstrument)
+        return juce::Result::fail("Invalid VST3 audio effect");
+
+    edit->ensureNumberOfAudioTracks(trackIndex + 1);
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+
+    registerPluginDescription(description);
+    if (auto result = removeTrackPlugin(trackIndex); result.failed())
+        return result;
+
+    auto state = tracktion::engine::ExternalPlugin::create(engine, description);
+    state.setProperty("enabled", ! bypassed, nullptr);
+    if (stateBase64.isNotEmpty())
+        state.setProperty("state", stateBase64, nullptr);
+
+    auto plugin = edit->getPluginCache().createNewPlugin(state);
+    auto* external = dynamic_cast<tracktion::engine::ExternalPlugin*>(plugin.get());
+    if (external == nullptr)
+        return juce::Result::fail("Tracktion could not create the VST3 node");
+
+    tracks[trackIndex]->pluginList.insertPlugin(plugin, 0, nullptr);
+    external->initialiseFully();
+    if (const auto error = external->getLoadError(); error.isNotEmpty())
+    {
+        external->deleteFromParent();
+        return juce::Result::fail("VST3 load failed: " + error);
+    }
+
+    external->setEnabled(! bypassed);
+    edit->getTransport().ensureContextAllocated(true);
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::setTrackPluginBypassed(int trackIndex, bool bypassed)
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    auto* plugin = tracks[trackIndex]->pluginList
+        .findFirstPluginOfType<tracktion::engine::ExternalPlugin>();
+    if (plugin == nullptr)
+        return juce::Result::fail("Track has no loaded VST3");
+    plugin->setEnabled(! bypassed);
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::removeTrackPlugin(int trackIndex)
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    if (auto* plugin = tracks[trackIndex]->pluginList
+            .findFirstPluginOfType<tracktion::engine::ExternalPlugin>())
+        plugin->deleteFromParent();
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::captureTrackPluginState(int trackIndex,
+                                                        juce::String& stateBase64,
+                                                        bool& bypassed,
+                                                        bool& missing)
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    auto* plugin = tracks[trackIndex]->pluginList
+        .findFirstPluginOfType<tracktion::engine::ExternalPlugin>();
+    if (plugin == nullptr)
+        return juce::Result::fail("Track has no loaded VST3");
+
+    plugin->flushPluginStateToValueTree();
+    stateBase64 = plugin->state.getProperty("state").toString();
+    bypassed = ! plugin->isEnabled();
+    missing = plugin->isMissing();
+    return juce::Result::ok();
+}
+
+juce::AudioPluginInstance* TracktionAdapter::trackPluginInstance(int trackIndex) const
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return nullptr;
+    if (auto* plugin = tracks[trackIndex]->pluginList
+            .findFirstPluginOfType<tracktion::engine::ExternalPlugin>())
+        return plugin->getAudioPluginInstance();
+    return nullptr;
+}
+
 juce::Result TracktionAdapter::renderWav(const juce::File& destination,
                                          double endSeconds)
 {

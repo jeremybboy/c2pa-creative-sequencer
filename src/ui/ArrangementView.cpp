@@ -664,6 +664,8 @@ void ArrangementView::rebuildArrangement()
         header->setState(snapshots[trackIndex].name, snapshots[trackIndex].gainDb,
                          snapshots[trackIndex].pan, snapshots[trackIndex].muted,
                          snapshots[trackIndex].soloed, colour);
+        header->setPluginState(snapshots[trackIndex].plugin,
+                               audioEngine.availableVst3Plugins());
         header->onNameChanged = [this](int index, const auto& name)
         {
             deferTrackEdit([index, name](AudioEngine& engine)
@@ -691,6 +693,28 @@ void ArrangementView::rebuildArrangement()
             deferTrackEdit([index, value](AudioEngine& engine)
                 { return engine.setTrackPan(index, value); }, "Changed track pan");
         };
+        header->onScanPlugins = [this] { scanPlugins(); };
+        header->onLoadPlugin = [this](int index, const auto& identifier)
+        {
+            applyEditResult(audioEngine.loadTrackPlugin(index, identifier),
+                            "Loaded VST3");
+        };
+        header->onOpenPlugin = [this](int index)
+        {
+            const auto result = audioEngine.openTrackPluginEditor(index);
+            projectMessage = result.wasOk() ? "Opened VST3 editor"
+                                             : "VST3 error: " + result.getErrorMessage();
+            refreshTransport();
+        };
+        header->onBypassPlugin = [this](int index, bool bypassed)
+        {
+            applyEditResult(audioEngine.setTrackPluginBypassed(index, bypassed),
+                            bypassed ? "Bypassed VST3" : "Enabled VST3");
+        };
+        header->onRemovePlugin = [this](int index)
+        {
+            applyEditResult(audioEngine.removeTrackPlugin(index), "Removed VST3");
+        };
         headerContainer.addAndMakeVisible(*header);
         trackHeaders.push_back(std::move(header));
 
@@ -713,6 +737,19 @@ void ArrangementView::rebuildArrangement()
     updateScrollRanges();
     layoutArrangement();
     refreshTransport();
+}
+
+void ArrangementView::scanPlugins()
+{
+    projectMessage = "Scanning standard macOS VST3 folders...";
+    refreshTransport();
+    const auto result = audioEngine.scanVst3Plugins();
+    projectMessage = result.wasOk()
+        ? "VST3 scan complete: "
+            + juce::String(static_cast<int>(audioEngine.availableVst3Plugins().size()))
+            + " plug-ins cached"
+        : "VST3 scan error: " + result.getErrorMessage();
+    rebuildArrangement();
 }
 
 void ArrangementView::layoutArrangement()

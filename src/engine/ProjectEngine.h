@@ -11,6 +11,16 @@ namespace c2paseq
 {
 class TracktionAdapter;
 class ProvenanceService;
+struct PluginDescriptor;
+
+struct TrackPluginSnapshot
+{
+    juce::String identifier;
+    juce::String name;
+    juce::String vendor;
+    bool bypassed = false;
+    bool missing = false;
+};
 
 struct ArrangementClipSnapshot
 {
@@ -31,6 +41,7 @@ struct ArrangementTrackSnapshot
     double pan = 0.0;
     bool muted = false;
     bool soloed = false;
+    std::optional<TrackPluginSnapshot> plugin;
     std::vector<ArrangementClipSnapshot> clips;
 };
 
@@ -64,6 +75,10 @@ public:
     [[nodiscard]] juce::Result setTrackSolo(int trackIndex, bool soloed);
     [[nodiscard]] juce::Result setTrackGain(int trackIndex, double gainDb);
     [[nodiscard]] juce::Result setTrackPan(int trackIndex, double pan);
+    [[nodiscard]] juce::Result setTrackPlugin(int trackIndex,
+                                               const PluginDescriptor&);
+    [[nodiscard]] juce::Result setTrackPluginBypassed(int trackIndex, bool bypassed);
+    [[nodiscard]] juce::Result removeTrackPlugin(int trackIndex);
     [[nodiscard]] bool undo();
     [[nodiscard]] bool redo();
     [[nodiscard]] bool canUndo() const noexcept;
@@ -84,6 +99,8 @@ private:
     [[nodiscard]] juce::Result commitLiveTrackAudibility(Project previous,
                                                          int trackIndex,
                                                          bool solo);
+    [[nodiscard]] PluginState* pluginForTrack(int trackIndex);
+    [[nodiscard]] const PluginState* pluginForTrack(int trackIndex) const;
     void ensureTrackCount(int count);
 
     TracktionAdapter& tracktion;

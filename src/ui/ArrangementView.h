@@ -55,6 +55,7 @@ private:
     void showExportCredentials();
     void showSelectedCredentials();
     void togglePlayback();
+    void scanPlugins();
     void undoEdit();
     void redoEdit();
     void importAudioFiles(const juce::Array<juce::File>&, int x, int y);

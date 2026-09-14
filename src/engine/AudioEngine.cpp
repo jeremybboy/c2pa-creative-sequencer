@@ -4,8 +4,12 @@
 
 namespace c2paseq
 {
-AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider)
-    : provenance(std::move(signingProvider)), projectEngine(tracktion, provenance)
+AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider,
+                         juce::File pluginCacheFile)
+    : provenance(std::move(signingProvider)), projectEngine(tracktion, provenance),
+      pluginHost(tracktion, projectEngine,
+                 pluginCacheFile == juce::File() ? PluginScanner::defaultCacheFile()
+                                                  : std::move(pluginCacheFile))
 {
 }
 
@@ -94,6 +98,27 @@ juce::Result AudioEngine::setTrackMute(int i, bool v) { return projectEngine.set
 juce::Result AudioEngine::setTrackSolo(int i, bool v) { return projectEngine.setTrackSolo(i, v); }
 juce::Result AudioEngine::setTrackGain(int i, double v) { return projectEngine.setTrackGain(i, v); }
 juce::Result AudioEngine::setTrackPan(int i, double v) { return projectEngine.setTrackPan(i, v); }
+const std::vector<PluginDescriptor>& AudioEngine::availableVst3Plugins() const noexcept
+{
+    return pluginHost.availablePlugins();
+}
+juce::Result AudioEngine::scanVst3Plugins(const juce::FileSearchPath& paths)
+{
+    return pluginHost.scanVst3(paths);
+}
+juce::Result AudioEngine::loadTrackPlugin(int i, const juce::String& id)
+{
+    return pluginHost.loadTrackPlugin(i, id);
+}
+juce::Result AudioEngine::setTrackPluginBypassed(int i, bool bypassed)
+{
+    return pluginHost.setTrackPluginBypassed(i, bypassed);
+}
+juce::Result AudioEngine::removeTrackPlugin(int i) { return pluginHost.removeTrackPlugin(i); }
+juce::Result AudioEngine::openTrackPluginEditor(int i)
+{
+    return pluginHost.openTrackPluginEditor(i);
+}
 bool AudioEngine::undo() { return projectEngine.undo(); }
 bool AudioEngine::redo() { return projectEngine.redo(); }
 bool AudioEngine::canUndo() const noexcept { return projectEngine.canUndo(); }

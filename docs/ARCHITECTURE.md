@@ -142,3 +142,30 @@ directory. `ProvenanceService` validates and constructs the signer; the UI only 
 and reports state. A supplied SEC1 EC key is converted to the PKCS#8 representation required
 by the SDK in memory; private material is never stored in project data, logs, Git, CI artifacts,
 source media, or the application bundle.
+
+## PR 008 boundary
+
+`PluginScanner` performs only explicit VST3 scans of the standard macOS user and
+system locations and persists JUCE's metadata cache outside projects. `PluginHost`
+is the application-facing load/open/bypass/remove boundary; `PluginWindow` owns a
+native editor when supplied and falls back to JUCE's generic parameter editor.
+No application class talks directly to Steinberg VST3 interfaces.
+
+The project model remains authoritative for one optional effect slot per track,
+including identity, metadata, opaque state, bypass, and missing status. A project
+rebuild asks `TracktionAdapter` to insert that external effect before Tracktion's
+track volume/pan plug-in. A missing or failed plug-in never substitutes another
+binary: the stored record survives, processing is bypassed, and the track remains
+usable and removable.
+
+Tracktion Engine owns the single processing graph used by hardware playback and
+`Renderer`, so PR 008 adds no parallel DSP or export-only plug-in path. The export
+controller remains render → claim → sign → embed → reopen → validate;
+the rendered PCM now includes enabled track VST3 processing before provenance is
+attached. Detailed plug-in/AI assertions are explicitly deferred to PR 009.
+
+Instrument hosting is deferred because the sequencer has no MIDI model and adding
+one solely to audition Surge XT would violate the product boundary. The inspected
+AI reference repository is a standalone SwiftUI application with no VST3 build
+target, so PR 008 does not claim integration until that external project supplies
+an Apple-silicon effect bundle and its runtime/assets.
