@@ -26,7 +26,7 @@ public:
     void pause();
     void stop();
     void seek(double positionSeconds);
-    void setLooping(bool shouldLoop);
+    void setLooping(bool shouldLoop, const juce::String& selectedClipId = {});
     void setBpm(double bpm);
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,

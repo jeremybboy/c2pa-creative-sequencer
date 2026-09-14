@@ -181,6 +181,27 @@ int main(int argc, char* argv[])
         return 7;
     }
 
+    transport.setLoopRange({ tracktion::TimePosition::fromSeconds(0.05),
+                             tracktion::TimePosition::fromSeconds(0.15) });
+    transport.looping = true;
+    transport.ensureContextAllocated(true);
+    transport.setPosition(tracktion::TimePosition::fromSeconds(0.14));
+    transport.play(false);
+    for (int block = 0; block < 4; ++block)
+    {
+        audio.clear();
+        audioInterface.processBlock(audio, midi);
+    }
+    const auto wrappedPosition = transport.getPosition().inSeconds();
+    if (! transport.isPlaying() || wrappedPosition < 0.05 || wrappedPosition >= 0.15)
+    {
+        std::cerr << "loop did not wrap while transport stayed active: "
+                  << wrappedPosition << '\n';
+        return 8;
+    }
+    transport.stop(false, true);
+    transport.looping = false;
+
     ScopedTestDirectory testDirectory;
     const auto wavFile = testDirectory.file.getChildFile("tone.wav");
     const auto loopTaggedWavFile = testDirectory.file.getChildFile("loop-125-Csharp.wav");
@@ -191,7 +212,7 @@ int main(int argc, char* argv[])
     if (! writeTestAudio(wavFile, wavFormat))
     {
         std::cerr << "failed to write WAV fixture\n";
-        return 8;
+        return 9;
     }
     juce::StringPairArray loopMetadata;
     loopMetadata.set(juce::WavAudioFormat::acidOneShot, "0");
@@ -206,17 +227,17 @@ int main(int argc, char* argv[])
     if (! writeTestAudio(loopTaggedWavFile, wavFormat, 48000.0, 92160, loopMetadata))
     {
         std::cerr << "failed to write loop-tagged WAV fixture\n";
-        return 8;
+        return 9;
     }
     if (! writeTestAudio(aiffFile, aiffFormat))
     {
         std::cerr << "failed to write AIFF fixture\n";
-        return 8;
+        return 9;
     }
     if (! writeEmbeddedMp3(mp3File))
     {
         std::cerr << "failed to write MP3 fixture\n";
-        return 8;
+        return 9;
     }
 
     for (const auto& file : { wavFile, aiffFile, mp3File })
@@ -225,7 +246,7 @@ int main(int argc, char* argv[])
         if (! imported.isValid() || imported.getLength() <= 0.0)
         {
             std::cerr << "failed to decode " << file.getFileName() << '\n';
-            return 9;
+            return 10;
         }
     }
 
@@ -233,13 +254,13 @@ int main(int argc, char* argv[])
         256, engine.getAudioFileFormatManager().readFormatManager,
         engine.getAudioFileManager().getAudioThumbnailCache());
     if (! thumbnail.setSource(new juce::FileInputSource(wavFile)))
-        return 10;
+        return 11;
     const auto thumbnailDeadline = juce::Time::getMillisecondCounter() + 3000;
     while (! thumbnail.isFullyLoaded()
            && juce::Time::getMillisecondCounter() < thumbnailDeadline)
         juce::Thread::sleep(5);
     if (! thumbnail.isFullyLoaded() || thumbnail.getTotalLength() <= 0.0)
-        return 11;
+        return 12;
 
     const auto playbackFile = argc > 1 ? juce::File::getCurrentWorkingDirectory()
                                              .getChildFile(juce::String::fromUTF8(argv[1]))
@@ -254,12 +275,12 @@ int main(int argc, char* argv[])
     const auto insertedClip = audioTrack->insertWaveClip(
         playbackFile.getFileNameWithoutExtension(), playbackFile, clipPosition, false);
     if (insertedClip == nullptr)
-        return 12;
+        return 13;
 
     if (! insertedClip->getAutoTempo() || ! insertedClip->getAutoPitch())
     {
         std::cerr << "loop metadata did not reproduce Tracktion auto-stretch\n";
-        return 13;
+        return 14;
     }
 
     std::cout << "playback fixture: " << playbackFile.getFullPathName() << '\n'
@@ -284,7 +305,7 @@ int main(int argc, char* argv[])
                     - wavAudio.getLength()) > 0.000001)
     {
         std::cerr << "native playback policy did not remove auto-stretch\n";
-        return 14;
+        return 15;
     }
 
     transport.stop(false, true);
@@ -303,7 +324,7 @@ int main(int argc, char* argv[])
     }
     std::cout << "output peak: " << peakMagnitude << '\n';
     if (peakMagnitude == 0.0f)
-        return 15;
+        return 16;
 
     std::cout << "transport and audio import: WAV/AIFF/MP3 decode, waveform, and playback passed\n";
     return 0;

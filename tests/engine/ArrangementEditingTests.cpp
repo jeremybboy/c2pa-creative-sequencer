@@ -106,6 +106,13 @@ int main()
     if (tracks[1].clips.size() != 2)
         return fail(13, "split/delete produced the wrong clip count");
 
+    engine.setLooping(true, originalId);
+    const auto selectedLoop = engine.transportSnapshot();
+    if (! selectedLoop.looping || ! close(selectedLoop.loopStartSeconds, 4.25)
+        || ! close(selectedLoop.loopEndSeconds, 5.0))
+        return fail(14, "selected clip did not configure the live transport loop");
+    engine.setLooping(false);
+
     engine.seek(0.5);
     engine.play();
     const auto beforeAudibilityChange = engine.transportSnapshot();
@@ -134,6 +141,7 @@ int main()
         return fail(16, "undo/redo did not restore track pan");
 
     engine.setTimelineView(144.0, 8.0);
+    engine.setLooping(true);
     if (engine.saveProject().failed() || engine.openProject(projectFolder).failed())
         return fail(17, "save/reopen failed");
     tracks = engine.arrangementSnapshot();
@@ -143,6 +151,10 @@ int main()
         || ! close(engine.timelinePixelsPerSecond(), 144.0)
         || ! close(engine.timelineScrollSeconds(), 8.0))
         return fail(18, "saved arrangement did not restore exactly");
+    const auto restoredLoop = engine.transportSnapshot();
+    if (! restoredLoop.looping || ! close(restoredLoop.loopStartSeconds, 0.0)
+        || ! close(restoredLoop.loopEndSeconds, 5.75))
+        return fail(18, "full-arrangement loop did not survive save/reopen");
 
     const auto& left = tracks[1].clips[0];
     const auto& right = tracks[1].clips[1];
@@ -153,7 +165,7 @@ int main()
         return fail(19, "split clip timing or source offsets did not survive reopen");
 
     std::cout << "arrangement editing: import, move, trim, split, duplicate, delete, "
-                 "live mute/solo transport preservation, track controls, undo/redo, "
+                 "live loop range, mute/solo transport preservation, track controls, undo/redo, "
                  "and reopen passed\n";
     return 0;
 }

@@ -29,18 +29,21 @@ class TimelineSurface final : public juce::Component
 {
 public:
     void setState(TimelineGeometry newGeometry, int newTrackCount,
-                  double newPlayhead, double newVerticalOffset)
+                  const TransportSnapshot& transport, double newVerticalOffset)
     {
         geometry = newGeometry;
         trackCount = std::max(minimumVisibleTracks, newTrackCount);
-        playhead = newPlayhead;
+        setTransportState(transport);
         verticalOffset = newVerticalOffset;
         repaint();
     }
 
-    void setPlayhead(double seconds)
+    void setTransportState(const TransportSnapshot& transport)
     {
-        playhead = seconds;
+        playhead = transport.positionSeconds;
+        looping = transport.looping;
+        loopStart = transport.loopStartSeconds;
+        loopEnd = transport.loopEndSeconds;
         repaint();
     }
 
@@ -49,6 +52,22 @@ public:
         g.fillAll(juce::Colour::fromRGB(78, 81, 85));
         g.setColour(juce::Colour::fromRGB(48, 50, 53));
         g.fillRect(0, 0, getWidth(), rulerHeight);
+
+        if (looping && loopEnd > loopStart + 0.001)
+        {
+            const auto startX = static_cast<float>(geometry.timeToX(loopStart));
+            const auto endX = static_cast<float>(geometry.timeToX(loopEnd));
+            const auto visible = juce::Rectangle<float>(0.0f, 0.0f,
+                static_cast<float>(getWidth()), static_cast<float>(rulerHeight));
+            const auto range = juce::Rectangle<float>(startX, 0.0f,
+                std::max(1.0f, endX - startX), static_cast<float>(rulerHeight))
+                    .getIntersection(visible);
+            g.setColour(juce::Colour::fromRGB(197, 151, 49).withAlpha(0.28f));
+            g.fillRect(range);
+            g.setColour(juce::Colour::fromRGB(255, 213, 92));
+            g.drawLine(startX, static_cast<float>(rulerHeight - 3), endX,
+                       static_cast<float>(rulerHeight - 3), 2.0f);
+        }
 
         const auto beatDuration = geometry.beatSeconds();
         const auto visibleStart = geometry.scrollSeconds;
@@ -121,6 +140,9 @@ private:
     TimelineGeometry geometry;
     int trackCount = minimumVisibleTracks;
     double playhead = 0.0;
+    bool looping = false;
+    double loopStart = 0.0;
+    double loopEnd = 0.0;
     double verticalOffset = 0.0;
 };
 
@@ -158,7 +180,17 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     playPause.onClick = [this] { togglePlayback(); };
     stop.onClick = [this] { audioEngine.stop(); refreshTransport(); };
     loop.setClickingTogglesState(true);
-    loop.onClick = [this] { audioEngine.setLooping(loop.getToggleState()); };
+    loop.onClick = [this]
+    {
+        const auto enabled = loop.getToggleState();
+        audioEngine.setLooping(enabled, selectedClipId);
+        const auto snapshot = audioEngine.transportSnapshot();
+        projectMessage = snapshot.looping
+            ? "Loop: " + juce::String(snapshot.loopStartSeconds, 3)
+                + " - " + juce::String(snapshot.loopEndSeconds, 3) + " s"
+            : "Loop off";
+        refreshTransport();
+    };
     zoomOut.onClick = [this] { zoomBy(0.8, timelineBounds.getWidth() * 0.5); };
     zoomIn.onClick = [this] { zoomBy(1.25, timelineBounds.getWidth() * 0.5); };
     audioSettings.onClick = [this] { showAudioSettings(); };
@@ -349,12 +381,13 @@ void ArrangementView::refreshTransport()
     projectName.setText(audioEngine.projectName(), juce::dontSendNotification);
     saveProjectButton.setEnabled(audioEngine.hasProject());
     exportButton.setEnabled(audioEngine.hasProject());
+    loop.setEnabled(audioEngine.hasProject());
     credentialsButton.setEnabled(selectedClipId.isNotEmpty());
     undoButton.setEnabled(audioEngine.canUndo());
     redoButton.setEnabled(audioEngine.canRedo());
     const auto prefix = projectMessage.isNotEmpty() ? projectMessage + "  |  " : juce::String();
     status.setText(prefix + audioEngine.status(), juce::dontSendNotification);
-    timelineSurface->setPlayhead(snapshot.positionSeconds);
+    timelineSurface->setTransportState(snapshot);
 }
 
 void ArrangementView::createProject()
@@ -755,7 +788,7 @@ void ArrangementView::scanPlugins()
 void ArrangementView::layoutArrangement()
 {
     timelineSurface->setState(geometry, static_cast<int>(snapshots.size()),
-        audioEngine.transportSnapshot().positionSeconds, verticalOffset);
+        audioEngine.transportSnapshot(), verticalOffset);
     for (auto& view : waveformViews)
     {
         const auto x = juce::roundToInt(geometry.timeToX(view->start()));

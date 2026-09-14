@@ -14,7 +14,7 @@ No project, transport, clip, plug-in, render, or provenance behavior exists in t
 
 `TracktionAdapter` owns one in-memory empty Tracktion `Edit` and exposes only application-level device and transport snapshots. The engine opens output channels only and disables system MIDI scanning; the app requests 48 kHz and 512 samples when the selected device reports those values as supported, otherwise it keeps that device's valid settings and displays the effective values.
 
-The transport bar implements play/pause, stop-to-zero, loop enablement, a ten-minute seek range, position display, and BPM control with a 120 BPM default. The Audio Device button opens JUCE's output-only device selector; recording and input configuration remain outside the product boundary.
+The transport bar implements play/pause, stop-to-zero, arrangement-aware loop enablement, a ten-minute seek range, position display, and BPM control with a 120 BPM default. Loop resolves to the selected clip or, with no selection, the full arrangement; its persisted range is mirrored into Tracktion and highlighted in the ruler. The Audio Device button opens JUCE's output-only device selector; recording and input configuration remain outside the product boundary.
 
 The `transport_foundation` test uses Tracktion's hosted-audio interface at 48 kHz/512 samples. It processes an empty Edit, proves every output sample remains zero, proves the underlying playhead advances by the processed duration, and proves stop plus seek positions are deterministic without relying on physical CI audio hardware.
 

@@ -56,6 +56,7 @@ public:
     [[nodiscard]] juce::Result openProject(const juce::File& projectFolder);
     void closeProject();
     void setBpm(double bpm);
+    void setLooping(bool shouldLoop, const juce::String& selectedClipId);
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
                                            double startSeconds);

@@ -6,6 +6,7 @@
 #include "project/ProjectSerializer.h"
 #include "plugins/PluginDescriptor.h"
 #include "provenance/ProvenanceService.h"
+#include "transport/ArrangementLoop.h"
 #include "transport/TransportFormatting.h"
 
 #include <algorithm>
@@ -117,6 +118,25 @@ void ProjectEngine::setBpm(double bpm)
 {
     if (project.has_value())
         project->bpm = std::clamp(bpm, transport::minimumBpm, transport::maximumBpm);
+}
+
+void ProjectEngine::setLooping(bool shouldLoop, const juce::String& selectedClipId)
+{
+    if (! project.has_value())
+    {
+        tracktion.setLooping(false);
+        return;
+    }
+
+    if (shouldLoop)
+    {
+        const auto range = resolveArrangementLoopRange(*project, selectedClipId);
+        project->loopStartSeconds = range.startSeconds;
+        project->loopEndSeconds = range.endSeconds;
+        tracktion.setLoopRange(range.startSeconds, range.endSeconds);
+    }
+    project->looping = shouldLoop;
+    tracktion.setLooping(shouldLoop);
 }
 
 juce::Result ProjectEngine::importAudio(const juce::File& source,
@@ -573,6 +593,13 @@ juce::Result ProjectEngine::rebuildEditFromProject()
                 plugin->bypassed = true;
         }
     }
+    auto range = ArrangementLoopRange { project->loopStartSeconds, project->loopEndSeconds };
+    if (! range.isValid())
+        range = resolveArrangementLoopRange(*project, {});
+    project->loopStartSeconds = range.startSeconds;
+    project->loopEndSeconds = range.endSeconds;
+    tracktion.setLoopRange(range.startSeconds, range.endSeconds);
+    tracktion.setLooping(project->looping);
     return juce::Result::ok();
 }
 

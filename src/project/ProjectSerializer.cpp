@@ -87,6 +87,9 @@ juce::var makeProjectDocument(const Project& project)
     object->setProperty("bpm", project.bpm);
     object->setProperty("timelinePixelsPerSecond", project.timelinePixelsPerSecond);
     object->setProperty("timelineScrollSeconds", project.timelineScrollSeconds);
+    object->setProperty("loopStartSeconds", project.loopStartSeconds);
+    object->setProperty("loopEndSeconds", project.loopEndSeconds);
+    object->setProperty("looping", project.looping);
     object->setProperty("applicationVersion", project.applicationVersion);
     object->setProperty("arrangementFile", "arrangement.tracktionedit");
     object->setProperty("provenanceFile", "provenance.json");
@@ -361,6 +364,25 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
     loaded.timelinePixelsPerSecond = juce::jlimit(24.0, 640.0,
                                                    loaded.timelinePixelsPerSecond);
     loaded.timelineScrollSeconds = std::max(0.0, loaded.timelineScrollSeconds);
+    if (root->hasProperty("loopStartSeconds"))
+        if (auto result = requireNumber(*root, "loopStartSeconds",
+                                        loaded.loopStartSeconds); result.failed()) return result;
+    if (root->hasProperty("loopEndSeconds"))
+        if (auto result = requireNumber(*root, "loopEndSeconds",
+                                        loaded.loopEndSeconds); result.failed()) return result;
+    if (root->hasProperty("looping"))
+    {
+        const auto value = root->getProperty("looping");
+        if (! value.isBool())
+            return juce::Result::fail("Property 'looping' must be a boolean");
+        loaded.looping = static_cast<bool>(value);
+    }
+    loaded.loopStartSeconds = std::max(0.0, loaded.loopStartSeconds);
+    if (loaded.loopEndSeconds <= loaded.loopStartSeconds + 0.001)
+    {
+        loaded.loopEndSeconds = 0.0;
+        loaded.looping = false;
+    }
     if (auto result = requireString(*root, "applicationVersion", loaded.applicationVersion); result.failed()) return result;
     if (root->getProperty("arrangementFile").toString() != "arrangement.tracktionedit"
         || root->getProperty("provenanceFile").toString() != "provenance.json")
