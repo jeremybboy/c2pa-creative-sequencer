@@ -1,3 +1,4 @@
+
 <img width="1439" height="871" alt="Screenshot 2026-09-13 at 7 23 22 PM" src="https://github.com/user-attachments/assets/96730edc-50c2-4a1c-a4ae-d49e0c3e8526" />
 
 # C2PA Creative Sequencer
@@ -48,3 +49,5 @@ Each track header has a **+ VST** control. Choose **Scan VST3** explicitly to in
 ## Known limitations
 
 The POC still has no recording, MIDI/instrument hosting, warping, time stretching, automation, plug-in chains, advanced routing, plug-in sandboxing, or detailed plug-in/edit provenance. The supplied C2PA Conformance credential is a **test credential only**, not the future production identity; external trust recognition depends on the verifier's trust configuration. The private PEM is stored outside projects and Git at `~/Library/Application Support/C2PA Creative Sequencer/Signing/signing-bundle.pem` with mode `0600` inside a `0700` directory. Added Places are machine-local, imported media is copied byte-for-byte into `Media/`, and editing remains non-destructive. On one track, a later clip has priority in overlaps; different tracks mix normally, and export uses that same arrangement.
+
+<img width="1536" height="1024" alt="Evolution_Build_C2PA_DAW" src="https://github.com/user-attachments/assets/e24c84d3-37cb-4d3a-8b19-58ef5cd38e3a" />
