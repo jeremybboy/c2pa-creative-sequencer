@@ -2,6 +2,7 @@
 #include "plugins/PluginScanner.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 
@@ -188,7 +189,16 @@ int main()
     if (std::abs(probe.getSample(0, 0) - 0.6f) > 0.001f)
         return fail(6, "serialized VST3 parameter state was not restored");
 
-    c2paseq::AudioEngine engine({}, cache);
+    bool editorCloseRequested = false;
+    {
+        c2paseq::PluginWindow editorWindow(*instance,
+            [&editorCloseRequested] { editorCloseRequested = true; }, false);
+        editorWindow.closeButtonPressed();
+    }
+    if (! editorCloseRequested)
+        return fail(7, "VST3 editor close did not request ownership release");
+
+    c2paseq::AudioEngine engine({}, cache, false);
     if (auto result = engine.scanVst3Plugins(paths); result.failed())
         return fail(7, result.getErrorMessage());
     const auto project = root.getChildFile("Hosting Test.c2paseq");
@@ -210,28 +220,39 @@ int main()
         || engine.setTrackPluginBypassed(0, false).failed())
         return fail(11, "VST3 bypass changed transport state");
 
+    const auto editorMarker = root.getChildFile("editor-lifecycle.txt");
+    const auto editorMarkerPath = editorMarker.getFullPathName().toStdString();
+    ::setenv("C2PASEQ_TEST_EDITOR_MARKER", editorMarkerPath.c_str(), 1);
+    if (engine.openTrackPluginEditor(0).failed()
+        || editorMarker.loadFileAsString() != "opened")
+        return fail(12, "hosted VST3 editor did not open");
+    if (engine.importAudio(source, 1, 0.0).failed()
+        || editorMarker.loadFileAsString() != "closed")
+        return fail(12, "arrangement rebuild did not close the VST3 editor first");
+    ::unsetenv("C2PASEQ_TEST_EDITOR_MARKER");
+
     if (engine.saveProject().failed() || savedPluginState(project).isEmpty()
         || engine.openProject(project).failed())
-        return fail(12, "project save/reopen failed with a hosted VST3");
+        return fail(13, "project save/reopen failed with a hosted VST3");
     const auto tracks = engine.arrangementSnapshot();
     if (tracks.empty() || ! tracks[0].plugin.has_value()
         || tracks[0].plugin->identifier != found->identifier
         || tracks[0].plugin->missing || tracks[0].plugin->bypassed)
-        return fail(13, "VST3 identity/state was not restored after reopen");
+        return fail(14, "VST3 identity/state was not restored after reopen");
 
     const auto missingProject = root.getChildFile("Missing Plugin.c2paseq");
     if (! project.copyDirectoryTo(missingProject)
         || ! pointSavedPluginAtMissingBundle(missingProject))
-        return fail(13, "could not create missing-plugin project fixture");
+        return fail(15, "could not create missing-plugin project fixture");
     c2paseq::AudioEngine missingEngine({}, root.getChildFile("missing-cache.xml"));
     if (auto result = missingEngine.openProject(missingProject); result.failed())
-        return fail(13, "project with missing VST3 did not open: " + result.getErrorMessage());
+        return fail(15, "project with missing VST3 did not open: " + result.getErrorMessage());
     const auto missingTracks = missingEngine.arrangementSnapshot();
     if (missingTracks.empty() || missingTracks[0].clips.empty()
         || ! missingTracks[0].plugin.has_value() || ! missingTracks[0].plugin->missing
         || ! missingTracks[0].plugin->bypassed
         || missingEngine.removeTrackPlugin(0).failed())
-        return fail(13, "missing VST3 was not preserved, bypassed, and removable");
+        return fail(15, "missing VST3 was not preserved, bypassed, and removable");
 
     c2paseq::TracktionAdapter direct;
     if (! direct.createProjectEdit(root.getChildFile("render.tracktionedit"))
@@ -242,26 +263,26 @@ int main()
         || direct.renderWav(bypassed, 1.0).failed()
         || direct.setTrackPluginBypassed(0, false).failed()
         || direct.renderWav(processed, 1.0).failed())
-        return fail(14, "Tracktion hosted offline render failed");
+        return fail(16, "Tracktion hosted offline render failed");
     const auto inputRms = readRms(bypassed);
     const auto outputRms = readRms(processed);
     if (inputRms <= 0.0 || std::abs(outputRms / inputRms - 0.25) > 0.04)
-        return fail(15, "offline render did not contain the hosted VST3 result; ratio="
+        return fail(17, "offline render did not contain the hosted VST3 result; ratio="
             + juce::String(outputRms / inputRms, 4));
 
     engine.seek(0.5);
     if (engine.removeTrackPlugin(0).failed()
         || std::abs(engine.transportSnapshot().positionSeconds - 0.5) > 0.02)
-        return fail(16, "removing a VST3 moved the playhead");
+        return fail(18, "removing a VST3 moved the playhead");
 
     const auto externalPath = juce::SystemStats::getEnvironmentVariable(
         "C2PASEQ_EXTERNAL_VST3", {});
     if (externalPath.isNotEmpty())
         if (auto result = exerciseExternalVst3(juce::File(externalPath), source, root);
             result.failed())
-            return fail(17, result.getErrorMessage());
+            return fail(19, result.getErrorMessage());
 
     std::cout << "VST3 scan, instantiate, realtime DSP, attach, bypass, persistence, "
-                 "offline DSP, remove, and transport invariants passed\n";
+                 "editor lifecycle, offline DSP, remove, and transport invariants passed\n";
     return 0;
 }

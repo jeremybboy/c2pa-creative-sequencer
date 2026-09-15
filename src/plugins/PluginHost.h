@@ -14,7 +14,9 @@ class TracktionAdapter;
 class PluginHost final
 {
 public:
-    PluginHost(TracktionAdapter&, ProjectEngine&, juce::File cacheFile = PluginScanner::defaultCacheFile());
+    PluginHost(TracktionAdapter&, ProjectEngine&,
+               juce::File cacheFile = PluginScanner::defaultCacheFile(),
+               bool showEditorWindows = true);
     ~PluginHost();
 
     [[nodiscard]] const std::vector<PluginDescriptor>& availablePlugins() const noexcept;
@@ -27,10 +29,12 @@ public:
 private:
     void registerCachedPlugins();
     void closeEditor(int trackIndex);
+    void closeAllEditors();
 
     TracktionAdapter& tracktion;
     ProjectEngine& projectEngine;
     PluginScanner scanner;
+    bool showEditorWindows = true;
     std::map<int, std::unique_ptr<PluginWindow>> windows;
 };
 }

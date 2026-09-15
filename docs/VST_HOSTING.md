@@ -22,6 +22,12 @@ The editor window uses the plug-in's editor when one is provided and otherwise
 uses JUCE's generic parameter editor. The project stores opaque parameter state,
 identity, metadata, and bypass state, but never copies a third-party bundle.
 
+Closing an editor destroys it. Arrangement mutations currently rebuild the Tracktion
+Edit, so the host also closes all open editor windows before Tracktion destroys their
+processor instances. This preserves the POC architecture while preventing stale
+editor timers or callbacks from accessing deleted processors; reopen the editor from
+the track menu after the arrangement edit if it is still needed.
+
 ## Audio path
 
 The Tracktion Engine graph is:

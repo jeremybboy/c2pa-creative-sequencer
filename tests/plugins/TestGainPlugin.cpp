@@ -1,7 +1,37 @@
 #include <JuceHeader.h>
 
+#include <cstdlib>
+
 namespace
 {
+class TestGainEditor final : public juce::AudioProcessorEditor
+{
+public:
+    explicit TestGainEditor(juce::AudioProcessor& processor)
+        : juce::AudioProcessorEditor(processor)
+    {
+        setSize(320, 180);
+        writeMarker("opened");
+    }
+
+    ~TestGainEditor() override
+    {
+        writeMarker("closed");
+    }
+
+    void paint(juce::Graphics& graphics) override
+    {
+        graphics.fillAll(juce::Colours::darkgrey);
+    }
+
+private:
+    static void writeMarker(const juce::String& state)
+    {
+        if (const auto* path = std::getenv("C2PASEQ_TEST_EDITOR_MARKER"); path != nullptr)
+            juce::File(juce::String::fromUTF8(path)).replaceWithText(state);
+    }
+};
+
 class TestGainProcessor final : public juce::AudioProcessor
 {
 public:
@@ -28,7 +58,7 @@ public:
     }
     juce::AudioProcessorEditor* createEditor() override
     {
-        return new juce::GenericAudioProcessorEditor(*this);
+        return new TestGainEditor(*this);
     }
     bool hasEditor() const override { return true; }
     double getTailLengthSeconds() const override { return 0.0; }

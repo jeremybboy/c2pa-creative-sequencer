@@ -5,11 +5,13 @@
 namespace c2paseq
 {
 AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider,
-                         juce::File pluginCacheFile)
+                         juce::File pluginCacheFile,
+                         bool showPluginWindows)
     : provenance(std::move(signingProvider)), projectEngine(tracktion, provenance),
       pluginHost(tracktion, projectEngine,
                  pluginCacheFile == juce::File() ? PluginScanner::defaultCacheFile()
-                                                  : std::move(pluginCacheFile))
+                                                  : std::move(pluginCacheFile),
+                 showPluginWindows)
 {
 }
 

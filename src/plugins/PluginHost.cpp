@@ -7,13 +7,20 @@
 
 namespace c2paseq
 {
-PluginHost::PluginHost(TracktionAdapter& adapter, ProjectEngine& project, juce::File cacheFile)
-    : tracktion(adapter), projectEngine(project), scanner(std::move(cacheFile))
+PluginHost::PluginHost(TracktionAdapter& adapter, ProjectEngine& project,
+                       juce::File cacheFile, bool shouldShowEditorWindows)
+    : tracktion(adapter), projectEngine(project), scanner(std::move(cacheFile)),
+      showEditorWindows(shouldShowEditorWindows)
 {
     registerCachedPlugins();
+    tracktion.setBeforeEditReplacement([this] { closeAllEditors(); });
 }
 
-PluginHost::~PluginHost() = default;
+PluginHost::~PluginHost()
+{
+    tracktion.setBeforeEditReplacement({});
+    closeAllEditors();
+}
 
 const std::vector<PluginDescriptor>& PluginHost::availablePlugins() const noexcept
 {
@@ -63,7 +70,10 @@ juce::Result PluginHost::openTrackPluginEditor(int trackIndex)
     if (instance == nullptr)
         return juce::Result::fail("The track VST3 is missing or failed to load");
 
-    auto window = std::make_unique<PluginWindow>(*instance);
+    auto window = std::make_unique<PluginWindow>(*instance, [this, trackIndex]
+    {
+        closeEditor(trackIndex);
+    }, showEditorWindows);
     windows[trackIndex] = std::move(window);
     return juce::Result::ok();
 }
@@ -77,5 +87,10 @@ void PluginHost::registerCachedPlugins()
 void PluginHost::closeEditor(int trackIndex)
 {
     windows.erase(trackIndex);
+}
+
+void PluginHost::closeAllEditors()
+{
+    windows.clear();
 }
 }
