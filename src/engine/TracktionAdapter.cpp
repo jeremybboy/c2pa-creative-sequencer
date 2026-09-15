@@ -441,6 +441,11 @@ juce::AudioThumbnailCache& TracktionAdapter::audioThumbnailCache() noexcept
     return engine.getAudioFileManager().getAudioThumbnailCache();
 }
 
+void TracktionAdapter::setBeforeEditReplacement(std::function<void()> callback)
+{
+    beforeEditReplacement = std::move(callback);
+}
+
 bool TracktionAdapter::createProjectEdit(const juce::File& editFile)
 {
     auto replacement = tracktion::engine::createEmptyEdit(engine, editFile);
@@ -448,7 +453,11 @@ bool TracktionAdapter::createProjectEdit(const juce::File& editFile)
         return false;
 
     if (edit != nullptr)
+    {
+        if (beforeEditReplacement)
+            beforeEditReplacement();
         edit->getTransport().stop(false, true);
+    }
     edit = std::move(replacement);
     prepareEdit();
     return true;
@@ -473,7 +482,11 @@ bool TracktionAdapter::loadProjectEdit(const juce::File& editFile)
         return false;
 
     if (edit != nullptr)
+    {
+        if (beforeEditReplacement)
+            beforeEditReplacement();
         edit->getTransport().stop(false, true);
+    }
     edit = std::move(replacement);
     configureLoadedAudioClips();
     edit->getTransport().ensureContextAllocated();
@@ -483,7 +496,11 @@ bool TracktionAdapter::loadProjectEdit(const juce::File& editFile)
 void TracktionAdapter::closeProjectEdit()
 {
     if (edit != nullptr)
+    {
+        if (beforeEditReplacement)
+            beforeEditReplacement();
         edit->getTransport().stop(false, true);
+    }
     edit = tracktion::engine::createEmptyEdit(engine, {});
     prepareEdit();
 }

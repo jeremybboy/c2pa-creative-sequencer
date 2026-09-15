@@ -2,6 +2,7 @@
 
 #include <tracktion_engine/tracktion_engine.h>
 
+#include <functional>
 #include <memory>
 
 namespace c2paseq
@@ -83,6 +84,7 @@ public:
                                           double endSeconds);
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
     [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
+    void setBeforeEditReplacement(std::function<void()> callback);
     [[nodiscard]] bool createProjectEdit(const juce::File& editFile);
     [[nodiscard]] bool saveProjectEdit(const juce::File& editFile);
     [[nodiscard]] bool loadProjectEdit(const juce::File& editFile);
@@ -95,6 +97,7 @@ private:
 
     tracktion::engine::Engine engine;
     std::unique_ptr<tracktion::engine::Edit> edit;
+    std::function<void()> beforeEditReplacement;
     bool initialised = false;
 };
 }

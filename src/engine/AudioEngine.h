@@ -14,7 +14,8 @@ class AudioEngine final
 {
 public:
     explicit AudioEngine(std::unique_ptr<SigningProvider> signingProvider = {},
-                         juce::File pluginCacheFile = {});
+                         juce::File pluginCacheFile = {},
+                         bool showPluginWindows = true);
 
     [[nodiscard]] bool isInitialised() const noexcept;
     [[nodiscard]] juce::String status() const;

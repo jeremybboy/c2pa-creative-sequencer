@@ -151,6 +151,11 @@ is the application-facing load/open/bypass/remove boundary; `PluginWindow` owns 
 native editor when supplied and falls back to JUCE's generic parameter editor.
 No application class talks directly to Steinberg VST3 interfaces.
 
+`TracktionAdapter` notifies `PluginHost` before replacing an Edit. The host destroys
+every editor window before Tracktion releases its corresponding processor, preventing
+editor timers or callbacks from retaining deleted processor references. Pressing an
+editor's close button also releases the owned editor instead of only hiding it.
+
 The project model remains authoritative for one optional effect slot per track,
 including identity, metadata, opaque state, bypass, and missing status. A project
 rebuild asks `TracktionAdapter` to insert that external effect before Tracktion's
