@@ -76,6 +76,9 @@ struct Project
     double bpm = 120.0;
     double timelinePixelsPerSecond = 96.0;
     double timelineScrollSeconds = 0.0;
+    double loopStartSeconds = 0.0;
+    double loopEndSeconds = 0.0;
+    bool looping = false;
     std::vector<TrackModel> tracks;
     std::vector<MediaReference> media;
     std::vector<PluginState> plugins;

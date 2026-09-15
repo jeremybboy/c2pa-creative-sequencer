@@ -58,9 +58,9 @@ void AudioEngine::seek(double positionSeconds)
     tracktion.seek(positionSeconds);
 }
 
-void AudioEngine::setLooping(bool shouldLoop)
+void AudioEngine::setLooping(bool shouldLoop, const juce::String& selectedClipId)
 {
-    tracktion.setLooping(shouldLoop);
+    projectEngine.setLooping(shouldLoop, selectedClipId);
 }
 
 void AudioEngine::setBpm(double bpm)

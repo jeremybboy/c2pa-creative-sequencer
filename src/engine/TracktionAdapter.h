@@ -20,6 +20,8 @@ struct TransportSnapshot
     double bpm = 120.0;
     bool playing = false;
     bool looping = false;
+    double loopStartSeconds = 0.0;
+    double loopEndSeconds = 0.0;
 };
 
 struct AudioFileMetadata
@@ -47,6 +49,7 @@ public:
     void stop();
     void seek(double positionSeconds);
     void setLooping(bool shouldLoop);
+    void setLoopRange(double startSeconds, double endSeconds);
     void setBpm(double bpm);
     [[nodiscard]] juce::Result inspectAudioFile(const juce::File& file,
                                                 AudioFileMetadata& metadata);

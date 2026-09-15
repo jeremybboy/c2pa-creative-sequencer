@@ -1,4 +1,5 @@
 #include "engine/ClipOcclusion.h"
+#include "transport/ArrangementLoop.h"
 #include "ui/ArrangementShortcuts.h"
 
 #include <cmath>
@@ -75,6 +76,25 @@ int main()
         || ! overlaps(firstTrack[0], secondTrack[0]))
         return fail(4, "different tracks did not retain simultaneous playback ranges");
 
+    c2paseq::Project project;
+    project.bpm = 120.0;
+    c2paseq::TrackModel loopTrack;
+    auto firstLoopClip = clip(2.0, 0.0, 3.0);
+    firstLoopClip.id = "selected";
+    loopTrack.clips.push_back(firstLoopClip);
+    loopTrack.clips.push_back(clip(8.0, 0.0, 4.0));
+    project.tracks.push_back(loopTrack);
+
+    const auto selectedRange = c2paseq::resolveArrangementLoopRange(project, "selected");
+    if (! selectedRange.isValid() || ! close(selectedRange.startSeconds, 2.0)
+        || ! close(selectedRange.endSeconds, 5.0))
+        return fail(5, "selected clip did not define the arrangement loop range");
+
+    const auto fullRange = c2paseq::resolveArrangementLoopRange(project, {});
+    if (! fullRange.isValid() || ! close(fullRange.startSeconds, 0.0)
+        || ! close(fullRange.endSeconds, 12.0))
+        return fail(6, "full arrangement did not define the fallback loop range");
+
     const auto noModifiers = juce::ModifierKeys::noModifiers;
     const auto command = juce::ModifierKeys::commandModifier;
     const auto commandShift = juce::ModifierKeys(
@@ -91,9 +111,9 @@ int main()
         || c2paseq::commandForKeyPress(
                { juce::KeyPress::deleteKey, noModifiers, 0 })
             != ArrangementCommand::deleteClip)
-        return fail(5, "arrangement keyboard mapping is incomplete");
+        return fail(7, "arrangement keyboard mapping is incomplete");
 
-    std::cout << "arrangement rules: overlap priority, restoration, cross-track mixing, "
+    std::cout << "arrangement rules: overlap priority, loop ranges, cross-track mixing, "
                  "and shortcuts passed\n";
     return 0;
 }

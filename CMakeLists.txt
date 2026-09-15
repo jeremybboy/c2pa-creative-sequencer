@@ -70,6 +70,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/timeline/TimelineGeometry.h
     src/transport/TransportFormatting.cpp
     src/transport/TransportFormatting.h
+    src/transport/ArrangementLoop.cpp
+    src/transport/ArrangementLoop.h
     src/ui/ArrangementView.cpp
     src/ui/ArrangementView.h
     src/ui/ArrangementShortcuts.cpp
@@ -196,6 +198,8 @@ if(BUILD_TESTING)
         src/engine/ClipOcclusion.cpp
         src/engine/ClipOcclusion.h
         src/project/Project.h
+        src/transport/ArrangementLoop.cpp
+        src/transport/ArrangementLoop.h
         src/ui/ArrangementShortcuts.cpp
         src/ui/ArrangementShortcuts.h)
     target_include_directories(C2PAArrangementRulesTests PRIVATE src)
@@ -245,6 +249,8 @@ if(BUILD_TESTING)
         src/project/ProjectPaths.h
         src/project/ProjectSerializer.cpp
         src/project/ProjectSerializer.h
+        src/transport/ArrangementLoop.cpp
+        src/transport/ArrangementLoop.h
         src/transport/TransportFormatting.cpp
         src/transport/TransportFormatting.h)
     target_include_directories(C2PAArrangementEditingTests PRIVATE src)
@@ -329,6 +335,8 @@ if(BUILD_TESTING)
         src/provenance/ProvenanceService.h
         src/provenance/SigningProvider.cpp
         src/provenance/SigningProvider.h
+        src/transport/ArrangementLoop.cpp
+        src/transport/ArrangementLoop.h
         src/transport/TransportFormatting.cpp
         src/transport/TransportFormatting.h)
     target_include_directories(C2PAExportPipelineTests PRIVATE src)
@@ -396,6 +404,8 @@ if(BUILD_TESTING)
         src/provenance/ProvenanceService.h
         src/provenance/SigningProvider.cpp
         src/provenance/SigningProvider.h
+        src/transport/ArrangementLoop.cpp
+        src/transport/ArrangementLoop.h
         src/transport/TransportFormatting.cpp
         src/transport/TransportFormatting.h)
     target_include_directories(C2PAPluginHostingTests PRIVATE src)

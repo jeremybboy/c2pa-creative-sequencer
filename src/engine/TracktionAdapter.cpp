@@ -108,12 +108,15 @@ TransportSnapshot TracktionAdapter::transportSnapshot() const
 
     const auto& editTransport = edit->getTransport();
     const auto* tempo = edit->tempoSequence.getTempo(0);
+    const auto loopRange = editTransport.getLoopRange();
 
     return {
         editTransport.getPosition().inSeconds(),
         tempo != nullptr ? tempo->getBpm() : transport::defaultBpm,
         editTransport.isPlaying(),
-        editTransport.looping.get()
+        editTransport.looping.get(),
+        loopRange.getStart().inSeconds(),
+        loopRange.getEnd().inSeconds()
     };
 }
 
@@ -150,6 +153,16 @@ void TracktionAdapter::seek(double positionSeconds)
 void TracktionAdapter::setLooping(bool shouldLoop)
 {
     edit->getTransport().looping = shouldLoop;
+}
+
+void TracktionAdapter::setLoopRange(double startSeconds, double endSeconds)
+{
+    startSeconds = transport::sanitisePosition(startSeconds);
+    endSeconds = std::max(endSeconds, startSeconds + 0.001);
+    edit->getTransport().setLoopRange({
+        tracktion::TimePosition::fromSeconds(startSeconds),
+        tracktion::TimePosition::fromSeconds(endSeconds)
+    });
 }
 
 void TracktionAdapter::setBpm(double bpm)
