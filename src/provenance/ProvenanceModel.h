@@ -4,6 +4,8 @@
 
 #include <vector>
 
+#include "watermark/SoftBindingPayload.h"
+
 namespace c2paseq
 {
 enum class ProvenanceStatus
@@ -12,6 +14,13 @@ enum class ProvenanceStatus
     presentWithValidationIssue,
     noCredentials,
     unableToValidate
+};
+
+enum class ProvenanceRetrievalMode
+{
+    none,
+    embedded,
+    recoveredSoftBinding
 };
 
 [[nodiscard]] juce::String provenanceStatusId(ProvenanceStatus status);
@@ -23,12 +32,23 @@ struct IngredientInfo
     ProvenanceStatus status = ProvenanceStatus::noCredentials;
     bool c2paPresent = false;
     bool assetIntact = false;
+    ProvenanceRetrievalMode retrievalMode = ProvenanceRetrievalMode::none;
     juce::String activeManifest;
     juce::String claimGenerator;
     juce::String signer;
     juce::String validationSummary;
     juce::String rawManifestJson;
     std::vector<juce::String> validationIssues;
+    juce::String softBindingAlgorithm;
+    juce::String softBindingPayloadHex;
+};
+
+struct SoftBindingClaim
+{
+    static constexpr const char* algorithm = "com.microsoft.wavmark.1";
+    SoftBindingPayload payload;
+    std::uint64_t startMilliseconds = 0;
+    std::uint64_t endMilliseconds = 0;
 };
 
 struct ContributingIngredient

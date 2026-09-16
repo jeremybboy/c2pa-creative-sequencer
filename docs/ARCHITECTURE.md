@@ -174,3 +174,26 @@ one solely to audition Surge XT would violate the product boundary. The inspecte
 AI reference repository is a standalone SwiftUI application with no VST3 build
 target, so PR 008 does not claim integration until that external project supplies
 an Apple-silicon effect bundle and its runtime/assets.
+
+## PR 011 soft-binding boundary
+
+PR 011 does not change embedded-manifest inspection. `ExportController` optionally
+orchestrates render → payload allocation → WavMark embed → exact decode verification →
+C2PA sign/embed → reopen validation → exact manifest-store persistence → atomic output
+commit. A failure in any enabled stage is fatal; disabled export follows the pre-PR-011
+path and creates no watermark or recovery record.
+
+`WatermarkService` is the application boundary for non-realtime model work. The production
+`WavMarkService` invokes a machine-local Python helper; no model loading, resampling, or
+inference occurs in Tracktion's realtime graph. The adapter downmixes and resamples only a
+working representation to mono 16 kHz, embeds there, resamples the residual to the original
+rate, applies it coherently to both channels, writes stereo 24-bit WAV, and requires exact
+decode from the final file.
+
+`ProvenanceService` remains the only C2PA SDK boundary. It adds the C2PA 2.4 `blocks`
+soft-binding structure and `c2pa.watermarked.bound`, captures the exact bytes returned by
+`Builder::sign()`, and can inspect those bytes against a derivative. `SoftBindingStore`
+maps `com.microsoft.wavmark.1` plus the 16-bit payload to those bytes; recovery additionally
+requires the stored manifest's own algorithm and value to match, so an index hit is not proof.
+Recovered results set `RECOVERED_SOFT_BINDING`, force `assetIntact = false`, and never claim
+that the derivative satisfies the original manifest's cryptographic hard binding.

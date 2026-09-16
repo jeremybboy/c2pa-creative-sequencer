@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <map>
 #include <vector>
 
 namespace c2paseq
@@ -94,6 +95,7 @@ private:
     juce::TextButton exportButton { "Export" };
     juce::TextButton credentialsButton { "Credentials" };
     juce::TextButton signingButton { "Signing" };
+    juce::TextButton wavMarkButton { "WavMark" };
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
     juce::TextButton playPause { "Play" };
@@ -114,5 +116,6 @@ private:
     std::vector<ArrangementTrackSnapshot> snapshots;
     std::vector<std::unique_ptr<WaveformView>> waveformViews;
     std::vector<std::unique_ptr<TrackHeaderView>> trackHeaders;
+    std::map<std::string, IngredientInfo> recoveredProvenance;
 };
 }

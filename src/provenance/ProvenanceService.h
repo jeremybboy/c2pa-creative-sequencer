@@ -4,6 +4,8 @@
 #include "SigningProvider.h"
 
 #include <memory>
+#include <optional>
+#include <vector>
 
 namespace c2paseq
 {
@@ -23,7 +25,14 @@ public:
                                        const juce::File& destination,
                                        const std::vector<ContributingIngredient>& ingredients,
                                        const juce::String& outputTitle,
-                                       IngredientInfo& validation) const;
+                                       IngredientInfo& validation,
+                                       const std::optional<SoftBindingClaim>& softBinding = {},
+                                       std::vector<std::uint8_t>* manifestStore = nullptr) const;
+    [[nodiscard]] IngredientInfo inspectRecoveredManifest(
+        const juce::File& asset,
+        const std::vector<std::uint8_t>& manifestStore) const;
+    [[nodiscard]] static bool hasMatchingSoftBinding(
+        const IngredientInfo&, const SoftBindingPayload&);
 
 private:
     std::unique_ptr<SigningProvider> signingProvider;

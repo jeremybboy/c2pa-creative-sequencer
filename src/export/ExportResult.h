@@ -9,8 +9,11 @@ enum class ExportStage
     complete,
     planning,
     audioRender,
+    watermarkEmbedding,
+    watermarkVerification,
     signingConfiguration,
     signingAndEmbedding,
+    recoveryStorePersistence,
     finalValidation,
     fileCommit
 };
@@ -24,6 +27,11 @@ struct ExportResult
     bool credentialsAttached = false;
     bool credentialsValidated = false;
     bool externallyTrusted = false;
+    bool softBindingEnabled = false;
+    bool watermarkVerified = false;
+    juce::String softBindingPayloadHex;
+    juce::String softBindingManifestId;
+    double watermarkSnrDb = 0.0;
     IngredientInfo outputProvenance;
     std::vector<ContributingIngredient> ingredients;
 };

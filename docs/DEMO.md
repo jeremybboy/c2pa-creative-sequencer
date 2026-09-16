@@ -35,3 +35,24 @@ Remove the credential through **Signing**, repeat Export, and confirm the app as
 instead of creating an unsigned WAV. Do not approve if a failed signing attempt leaves a
 destination presented as authenticated, if render extends beyond the last audible clip, or if
 source selection disagrees with the final audible arrangement.
+
+## PR 011 local WavMark recovery acceptance
+
+1. Run `scripts/setup_wavmark.sh`; relaunch and confirm **WavMark** reports `Ready`.
+2. Open an arrangement, toggle **WavMark** on, and export. Confirm the output is stereo at the
+   device/native render rate, plays normally, and embedded Content Credentials validate.
+3. Open exported Credentials and confirm `c2pa.watermarked.bound`, algorithm
+   `com.microsoft.wavmark.1`, the 16-bit payload, and measured SNR are reported.
+4. Listen to the same arrangement exported once with WavMark disabled and once enabled. Record
+   the listening result separately; the automated SNR measurement is not perceptual acceptance.
+5. Run `python3 scripts/make_softbinding_demo_derivative.py signed.wav derivative.wav`.
+   Confirm the derivative plays, initially shows **No CC**, and has no embedded C2PA manifest.
+6. Import/select the derivative, choose **Credentials → Recover via WavMark**, and confirm
+   **CC ↻**, the recovered generator/signer, matching payload, and the explicit warning that
+   the derivative is not hard-binding validated.
+7. Repeat recovery with an unrelated unwatermarked WAV and confirm a clean failure with no
+   provenance claim or crash.
+
+Automated real-model evidence on the development machine: the 44.1 kHz stereo end-to-end test
+measured 38.48 dB SNR and passed exact embed/decode, C2PA sign, manifest removal, local lookup,
+and assertion agreement. Human comparative listening remains required before merge.

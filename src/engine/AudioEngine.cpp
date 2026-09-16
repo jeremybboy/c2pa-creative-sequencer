@@ -6,8 +6,16 @@ namespace c2paseq
 {
 AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider,
                          juce::File pluginCacheFile,
-                         bool showPluginWindows)
-    : provenance(std::move(signingProvider)), projectEngine(tracktion, provenance),
+                         bool showPluginWindows,
+                         std::unique_ptr<WatermarkService> watermarkService,
+                         juce::File softBindingStoreDirectory)
+    : provenance(std::move(signingProvider)),
+      watermark(watermarkService != nullptr
+          ? std::move(watermarkService) : std::make_unique<WavMarkService>()),
+      softBindingStore(softBindingStoreDirectory == juce::File()
+          ? SoftBindingStore::defaultDirectory() : std::move(softBindingStoreDirectory)),
+      softBindingRecovery(*watermark, softBindingStore, provenance),
+      projectEngine(tracktion, provenance),
       pluginHost(tracktion, projectEngine,
                  pluginCacheFile == juce::File() ? PluginScanner::defaultCacheFile()
                                                   : std::move(pluginCacheFile),
@@ -185,12 +193,33 @@ juce::Result AudioEngine::removeSigningCredential()
     return provenance.removeSigningCredential();
 }
 
+void AudioEngine::setSoftBindingEnabled(bool enabled) noexcept
+{
+    useSoftBinding = enabled;
+}
+
+bool AudioEngine::softBindingEnabled() const noexcept
+{
+    return useSoftBinding;
+}
+
+juce::String AudioEngine::watermarkStatus() const
+{
+    return watermark->statusDescription();
+}
+
+juce::Result AudioEngine::recoverProvenance(const juce::File& file, IngredientInfo& recovered)
+{
+    return softBindingRecovery.recover(file, recovered);
+}
+
 ExportResult AudioEngine::exportMix(const juce::File& destination)
 {
     if (const auto* project = projectEngine.currentProject())
         if (const auto* paths = projectEngine.currentPaths())
         {
-            ExportController controller(tracktion, provenance);
+            ExportController controller(tracktion, provenance, watermark.get(),
+                                        &softBindingStore, useSoftBinding);
             return controller.exportMix(*project, *paths, destination);
         }
 

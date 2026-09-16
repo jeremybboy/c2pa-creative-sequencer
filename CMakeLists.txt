@@ -13,6 +13,20 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version")
 include(CTest)
 include(cmake/Dependencies.cmake)
 
+option(C2PASEQ_ENABLE_REAL_WAVMARK_TEST
+       "Enable the opt-in test that requires scripts/setup_wavmark.sh" OFF)
+
+set(C2PASEQ_WATERMARK_SOURCES
+    src/watermark/SoftBindingPayload.cpp
+    src/watermark/SoftBindingPayload.h
+    src/watermark/SoftBindingRecoveryService.cpp
+    src/watermark/SoftBindingRecoveryService.h
+    src/watermark/SoftBindingStore.cpp
+    src/watermark/SoftBindingStore.h
+    src/watermark/WatermarkService.h
+    src/watermark/WavMarkService.cpp
+    src/watermark/WavMarkService.h)
+
 juce_add_gui_app(C2PACreativeSequencer
     PRODUCT_NAME "C2PA Creative Sequencer"
     BUNDLE_ID "app.c2paseq.CreativeSequencer"
@@ -22,6 +36,7 @@ juce_add_gui_app(C2PACreativeSequencer
 juce_generate_juce_header(C2PACreativeSequencer)
 
 target_sources(C2PACreativeSequencer PRIVATE
+    ${C2PASEQ_WATERMARK_SOURCES}
     src/app/AppInfo.h
     src/app/Application.cpp
     src/app/Application.h
@@ -209,7 +224,28 @@ if(BUILD_TESTING)
         juce::juce_recommended_config_flags)
     add_test(NAME arrangement_rules COMMAND C2PAArrangementRulesTests)
 
+    add_executable(C2PASoftBindingTests
+        tests/watermark/SoftBindingTests.cpp
+        src/watermark/SoftBindingPayload.cpp
+        src/watermark/SoftBindingPayload.h
+        src/watermark/SoftBindingStore.cpp
+        src/watermark/SoftBindingStore.h)
+    target_include_directories(C2PASoftBindingTests PRIVATE src)
+    target_compile_features(C2PASoftBindingTests PRIVATE cxx_std_20)
+    target_link_libraries(C2PASoftBindingTests PRIVATE
+        juce::juce_cryptography
+        juce::juce_recommended_config_flags)
+    add_test(NAME soft_binding COMMAND C2PASoftBindingTests)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME soft_binding_derivative
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/watermark/test_demo_derivative.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make_softbinding_demo_derivative.py")
+    endif()
+
     add_executable(C2PAArrangementEditingTests
+        ${C2PASEQ_WATERMARK_SOURCES}
         tests/engine/ArrangementEditingTests.cpp
         src/app/AppInfo.h
         src/engine/AudioEngine.cpp
@@ -281,7 +317,9 @@ if(BUILD_TESTING)
         src/provenance/ProvenanceService.cpp
         src/provenance/ProvenanceService.h
         src/provenance/SigningProvider.cpp
-        src/provenance/SigningProvider.h)
+        src/provenance/SigningProvider.h
+        src/watermark/SoftBindingPayload.cpp
+        src/watermark/SoftBindingPayload.h)
     target_include_directories(C2PAProvenanceTests PRIVATE src)
     target_compile_features(C2PAProvenanceTests PRIVATE cxx_std_20)
     target_compile_definitions(C2PAProvenanceTests PRIVATE
@@ -296,6 +334,7 @@ if(BUILD_TESTING)
     add_test(NAME provenance_service COMMAND C2PAProvenanceTests)
 
     add_executable(C2PAExportPipelineTests
+        ${C2PASEQ_WATERMARK_SOURCES}
         tests/export/ExportPipelineTests.cpp
         src/app/AppInfo.h
         src/engine/AudioEngine.cpp
@@ -363,8 +402,15 @@ if(BUILD_TESTING)
     add_dependencies(C2PAExportPipelineTests C2PATestGainVST3_VST3)
     c2paseq_enable_c2pa(C2PAExportPipelineTests)
     add_test(NAME export_pipeline COMMAND C2PAExportPipelineTests)
+    if(C2PASEQ_ENABLE_REAL_WAVMARK_TEST)
+        add_test(NAME real_wavmark_pipeline COMMAND C2PAExportPipelineTests)
+        set_tests_properties(real_wavmark_pipeline PROPERTIES
+            ENVIRONMENT "C2PASEQ_RUN_REAL_WAVMARK_TEST=1"
+            LABELS "wavmark;integration")
+    endif()
 
     add_executable(C2PAPluginHostingTests
+        ${C2PASEQ_WATERMARK_SOURCES}
         tests/plugins/PluginHostingTests.cpp
         src/app/AppInfo.h
         src/engine/AudioEngine.cpp

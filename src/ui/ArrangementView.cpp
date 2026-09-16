@@ -175,6 +175,15 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     exportButton.onClick = [this] { exportProject(); };
     credentialsButton.onClick = [this] { showSelectedCredentials(); };
     signingButton.onClick = [this] { showSigningSettings(); };
+    wavMarkButton.setClickingTogglesState(true);
+    wavMarkButton.onClick = [this]
+    {
+        audioEngine.setSoftBindingEnabled(wavMarkButton.getToggleState());
+        projectMessage = "WavMark recovery "
+            + juce::String(audioEngine.softBindingEnabled() ? "enabled" : "disabled")
+            + " | Runtime: " + audioEngine.watermarkStatus();
+        refreshTransport();
+    };
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     playPause.onClick = [this] { togglePlayback(); };
@@ -215,7 +224,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     };
 
     for (auto* button : { &newProject, &openProjectButton, &saveProjectButton,
-                          &exportButton, &credentialsButton, &signingButton,
+                          &exportButton, &credentialsButton, &signingButton, &wavMarkButton,
                           &undoButton, &redoButton, &playPause, &stop, &loop,
                           &zoomOut, &zoomIn, &audioSettings })
     {
@@ -224,6 +233,8 @@ ArrangementView::ArrangementView(AudioEngine& engine)
         addAndMakeVisible(*button);
     }
     loop.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(197, 151, 49));
+    wavMarkButton.setColour(juce::TextButton::buttonOnColourId,
+                           juce::Colour::fromRGB(42, 139, 157));
 
     addAndMakeVisible(browser);
     addAndMakeVisible(*timelineSurface);
@@ -274,6 +285,7 @@ void ArrangementView::resized()
     placeButton(newProject, 45); placeButton(openProjectButton, 48); placeButton(saveProjectButton, 46);
     placeButton(exportButton, 56); placeButton(credentialsButton, 82);
     placeButton(signingButton, 62);
+    placeButton(wavMarkButton, 72);
     top.removeFromLeft(6);
     placeButton(undoButton, 48); placeButton(redoButton, 48);
     top.removeFromLeft(10);
@@ -479,7 +491,9 @@ void ArrangementView::beginExportWithConfiguredSigner()
             if (! destination.hasFileExtension("wav"))
                 destination = destination.withFileExtension("wav");
             safe->fileChooser.reset();
-            safe->projectMessage = "Rendering mix... Creating Content Credentials... Signing... Embedding... Validating...";
+            safe->projectMessage = safe->audioEngine.softBindingEnabled()
+                ? "Rendering... WavMark embedding/verifying... C2PA signing... Storing recovery manifest..."
+                : "Rendering mix... Creating Content Credentials... Signing... Embedding... Validating...";
             safe->refreshTransport();
             juce::MessageManager::callAsync([safe, destination]
             {
@@ -499,6 +513,9 @@ void ArrangementView::beginExportWithConfiguredSigner()
                 safe->projectMessage = safe->lastExport->externallyTrusted
                     ? "Export complete | Content Credentials attached | Validation successful"
                     : "Export complete | Content Credentials attached | Asset integrity validated | External trust issue";
+                if (safe->lastExport->softBindingEnabled)
+                    safe->projectMessage += " | WavMark recovery "
+                        + safe->lastExport->softBindingPayloadHex;
                 safe->refreshTransport();
                 safe->showExportCompletion();
             });
@@ -591,6 +608,12 @@ void ArrangementView::showExportCredentials()
         + "\nStatus: " + provenanceStatusLabel(result.outputProvenance.status)
         + "\nValidation: " + result.outputProvenance.validationSummary
         + "\nIngredients: " + juce::String(result.ingredients.size());
+    if (result.softBindingEnabled)
+        details += "\nWavMark recovery: Enabled"
+            "\nAlgorithm: " + juce::String(SoftBindingClaim::algorithm)
+            + "\nPayload: " + result.softBindingPayloadHex
+            + "\nMeasured SNR: " + juce::String(result.watermarkSnrDb, 2) + " dB"
+            + "\nLocal manifest: " + result.softBindingManifestId;
     if (result.outputProvenance.activeManifest.isNotEmpty())
         details += "\nManifest: " + result.outputProvenance.activeManifest;
     for (const auto& ingredient : result.ingredients)
@@ -606,10 +629,51 @@ void ArrangementView::showSelectedCredentials()
         for (const auto& clip : track.clips)
             if (clip.id == selectedClipId)
             {
-                const auto& info = clip.provenance;
+                const auto recovered = recoveredProvenance.find(clip.id.toStdString());
+                const auto& info = recovered != recoveredProvenance.end()
+                    ? recovered->second : clip.provenance;
+                if (! info.c2paPresent && info.status == ProvenanceStatus::noCredentials)
+                {
+                    juce::AlertWindow::showOkCancelBox(
+                        juce::MessageBoxIconType::InfoIcon, "Content Credentials",
+                        "No embedded Content Credentials.\n\nRuntime: "
+                            + audioEngine.watermarkStatus(),
+                        "Recover via WavMark", "Cancel", this,
+                        juce::ModalCallbackFunction::create(
+                            [safe = juce::Component::SafePointer<ArrangementView>(this),
+                             file = clip.mediaFile,
+                             id = clip.id](int result)
+                            {
+                                if (safe == nullptr || result != 1) return;
+                                IngredientInfo recoveredInfo;
+                                const auto recovery = safe->audioEngine.recoverProvenance(
+                                    file, recoveredInfo);
+                                if (recovery.failed())
+                                {
+                                    safe->projectMessage = "Recovery failed: "
+                                        + recovery.getErrorMessage();
+                                    safe->refreshTransport();
+                                    juce::AlertWindow::showMessageBoxAsync(
+                                        juce::MessageBoxIconType::WarningIcon,
+                                        "WavMark Recovery", recovery.getErrorMessage(),
+                                        "OK", safe.getComponent());
+                                    return;
+                                }
+                                safe->recoveredProvenance[id.toStdString()] = recoveredInfo;
+                                safe->projectMessage = "Recovered via WavMark soft binding";
+                                safe->rebuildArrangement();
+                                safe->showSelectedCredentials();
+                            }));
+                    return;
+                }
                 auto details = "File: " + clip.mediaFile.getFileName()
                     + "\nContent Credentials: " + (info.c2paPresent ? "Present" : "Not present")
                     + "\nStatus: " + provenanceStatusLabel(info.status);
+                if (info.retrievalMode == ProvenanceRetrievalMode::recoveredSoftBinding)
+                    details += "\nRetrieval: Recovered via WavMark soft binding"
+                        "\nAlgorithm: " + info.softBindingAlgorithm
+                        + "\nPayload: " + info.softBindingPayloadHex
+                        + "\nHard binding: Not valid for this derivative";
                 if (info.activeManifest.isNotEmpty())
                     details += "\nActive manifest: " + info.activeManifest;
                 if (info.claimGenerator.isNotEmpty())
@@ -690,6 +754,12 @@ void ArrangementView::rebuildArrangement()
     trackHeaders.clear();
     snapshots = audioEngine.arrangementSnapshot();
 
+    for (auto& track : snapshots)
+        for (auto& clip : track.clips)
+            if (const auto recovered = recoveredProvenance.find(clip.id.toStdString());
+                recovered != recoveredProvenance.end())
+                clip.provenance = recovered->second;
+
     for (std::size_t trackIndex = 0; trackIndex < snapshots.size(); ++trackIndex)
     {
         const auto colour = colourForTrack(static_cast<int>(trackIndex));
@@ -757,7 +827,7 @@ void ArrangementView::rebuildArrangement()
                 audioEngine.audioFormatManager(), audioEngine.audioThumbnailCache(),
                 clip.mediaFile, clip.name, clip.id, static_cast<int>(trackIndex),
                 clip.startSeconds, clip.sourceOffsetSeconds, clip.lengthSeconds, colour,
-                clip.provenance.status);
+                clip.provenance.status, clip.provenance.retrievalMode);
             view->setSelected(clip.id == selectedClipId);
             view->onSelected = [this](auto& selected) { selectClip(selected.id()); };
             view->onGesture = [this](auto& selected, auto mode, int dx, int dy,

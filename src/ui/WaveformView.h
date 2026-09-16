@@ -22,7 +22,8 @@ public:
                  double sourceOffsetSeconds,
                  double lengthSeconds,
                  juce::Colour colour,
-                 ProvenanceStatus provenanceStatus);
+                 ProvenanceStatus provenanceStatus,
+                 ProvenanceRetrievalMode retrievalMode = ProvenanceRetrievalMode::none);
 
     void paint(juce::Graphics& graphics) override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -59,6 +60,7 @@ private:
     double duration = 0.0;
     juce::Colour clipColour;
     ProvenanceStatus provenance = ProvenanceStatus::noCredentials;
+    ProvenanceRetrievalMode retrieval = ProvenanceRetrievalMode::none;
     bool selected = false;
     DragMode dragMode = DragMode::move;
     juce::Rectangle<int> dragStartBounds;
