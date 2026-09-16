@@ -5,7 +5,7 @@ namespace c2paseq
 juce::String SoftBindingPayload::toHex() const
 {
     return juce::String::toHexString(bytes.data(), static_cast<int>(bytes.size()), 0)
-        .toUpperCase();
+        .toLowerCase();
 }
 
 juce::String SoftBindingPayload::toBase64() const
@@ -24,14 +24,14 @@ juce::String SoftBindingPayload::toBitString() const
 
 std::optional<SoftBindingPayload> SoftBindingPayload::fromHex(const juce::String& input)
 {
-    const auto hex = input.trim().toUpperCase();
-    if (hex.length() != 4)
+    const auto hex = input.trim().toLowerCase();
+    if (hex.length() != static_cast<int>(byteCount * 2))
         return std::nullopt;
     for (const auto character : hex)
         if (juce::CharacterFunctions::getHexDigitValue(character) < 0)
             return std::nullopt;
     SoftBindingPayload output;
-    for (int index = 0; index < 2; ++index)
+    for (int index = 0; index < static_cast<int>(byteCount); ++index)
         output.bytes[static_cast<std::size_t>(index)] = static_cast<std::uint8_t>(
             hex.substring(index * 2, index * 2 + 2).getHexValue32());
     return output;
@@ -40,13 +40,13 @@ std::optional<SoftBindingPayload> SoftBindingPayload::fromHex(const juce::String
 std::optional<SoftBindingPayload> SoftBindingPayload::fromBitString(const juce::String& input)
 {
     const auto bits = input.trim();
-    if (bits.length() != 16)
+    if (bits.length() != static_cast<int>(byteCount * 8))
         return std::nullopt;
     for (const auto character : bits)
         if (character != '0' && character != '1')
             return std::nullopt;
     SoftBindingPayload output;
-    for (int index = 0; index < 16; ++index)
+    for (int index = 0; index < static_cast<int>(byteCount * 8); ++index)
         if (bits[index] == '1')
             output.bytes[static_cast<std::size_t>(index / 8)] |= static_cast<std::uint8_t>(
                 1u << (7 - index % 8));

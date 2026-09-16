@@ -5,12 +5,16 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 namespace c2paseq
 {
+inline constexpr std::string_view audioWMarkAlgorithm =
+    "io.github.jeremybboy.audiowmark.1";
+
 struct SoftBindingPayload
 {
-    static constexpr std::size_t byteCount = 2;
+    static constexpr std::size_t byteCount = 16;
     std::array<std::uint8_t, byteCount> bytes {};
 
     [[nodiscard]] juce::String toHex() const;

@@ -2,6 +2,8 @@
 
 #include "provenance/ProvenanceModel.h"
 
+#include <functional>
+
 namespace c2paseq
 {
 enum class ExportStage
@@ -10,13 +12,17 @@ enum class ExportStage
     planning,
     audioRender,
     watermarkEmbedding,
-    watermarkVerification,
     signingConfiguration,
+    creatingContentCredentials,
     signingAndEmbedding,
-    recoveryStorePersistence,
+    publicationOutbox,
     finalValidation,
-    fileCommit
+    fileCommit,
+    cancelled
 };
+
+using ExportProgressCallback = std::function<void(ExportStage)>;
+using ExportCancellationCheck = std::function<bool()>;
 
 struct ExportResult
 {
@@ -28,10 +34,15 @@ struct ExportResult
     bool credentialsValidated = false;
     bool externallyTrusted = false;
     bool softBindingEnabled = false;
-    bool watermarkVerified = false;
+    bool audioPropertiesVerified = false;
     juce::String softBindingPayloadHex;
     juce::String softBindingManifestId;
-    double watermarkSnrDb = 0.0;
+    juce::File publicationPackage;
+    double renderSeconds = 0.0;
+    double watermarkEmbedSeconds = 0.0;
+    double signingAndValidationSeconds = 0.0;
+    double publicationSeconds = 0.0;
+    double totalSeconds = 0.0;
     IngredientInfo outputProvenance;
     std::vector<ContributingIngredient> ingredients;
 };

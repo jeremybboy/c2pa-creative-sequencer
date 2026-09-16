@@ -13,19 +13,17 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum macOS version")
 include(CTest)
 include(cmake/Dependencies.cmake)
 
-option(C2PASEQ_ENABLE_REAL_WAVMARK_TEST
-       "Enable the opt-in test that requires scripts/setup_wavmark.sh" OFF)
+option(C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST
+       "Enable opt-in tests that require scripts/setup_audiowmark.sh" OFF)
 
 set(C2PASEQ_WATERMARK_SOURCES
+    src/watermark/AudioWMarkService.cpp
+    src/watermark/AudioWMarkService.h
+    src/watermark/SoftBindingOutbox.cpp
+    src/watermark/SoftBindingOutbox.h
     src/watermark/SoftBindingPayload.cpp
     src/watermark/SoftBindingPayload.h
-    src/watermark/SoftBindingRecoveryService.cpp
-    src/watermark/SoftBindingRecoveryService.h
-    src/watermark/SoftBindingStore.cpp
-    src/watermark/SoftBindingStore.h
-    src/watermark/WatermarkService.h
-    src/watermark/WavMarkService.cpp
-    src/watermark/WavMarkService.h)
+    src/watermark/WatermarkService.h)
 
 juce_add_gui_app(C2PACreativeSequencer
     PRODUCT_NAME "C2PA Creative Sequencer"
@@ -226,10 +224,10 @@ if(BUILD_TESTING)
 
     add_executable(C2PASoftBindingTests
         tests/watermark/SoftBindingTests.cpp
+        src/watermark/SoftBindingOutbox.cpp
+        src/watermark/SoftBindingOutbox.h
         src/watermark/SoftBindingPayload.cpp
-        src/watermark/SoftBindingPayload.h
-        src/watermark/SoftBindingStore.cpp
-        src/watermark/SoftBindingStore.h)
+        src/watermark/SoftBindingPayload.h)
     target_include_directories(C2PASoftBindingTests PRIVATE src)
     target_compile_features(C2PASoftBindingTests PRIVATE cxx_std_20)
     target_link_libraries(C2PASoftBindingTests PRIVATE
@@ -238,10 +236,12 @@ if(BUILD_TESTING)
     add_test(NAME soft_binding COMMAND C2PASoftBindingTests)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
-        add_test(NAME soft_binding_derivative
+        add_test(NAME soft_binding_resolver
             COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/watermark/test_demo_derivative.py"
-                "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make_softbinding_demo_derivative.py")
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/tests/test_resolver.py")
+        add_test(NAME soft_binding_demo_derivative
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/watermark/test_demo_derivative.py")
     endif()
 
     add_executable(C2PAArrangementEditingTests
@@ -392,6 +392,8 @@ if(BUILD_TESTING)
         C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav"
         C2PA_TEST_CERTIFICATE_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_certs.pem"
         C2PA_TEST_PRIVATE_KEY_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_private.key"
+        C2PASEQ_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        JUCE_MODAL_LOOPS_PERMITTED=1
         C2PASEQ_TEST_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestGainVST3_VST3>")
     target_link_libraries(C2PAExportPipelineTests PRIVATE
         tracktion::tracktion_engine
@@ -402,11 +404,16 @@ if(BUILD_TESTING)
     add_dependencies(C2PAExportPipelineTests C2PATestGainVST3_VST3)
     c2paseq_enable_c2pa(C2PAExportPipelineTests)
     add_test(NAME export_pipeline COMMAND C2PAExportPipelineTests)
-    if(C2PASEQ_ENABLE_REAL_WAVMARK_TEST)
-        add_test(NAME real_wavmark_pipeline COMMAND C2PAExportPipelineTests)
-        set_tests_properties(real_wavmark_pipeline PROPERTIES
-            ENVIRONMENT "C2PASEQ_RUN_REAL_WAVMARK_TEST=1"
-            LABELS "wavmark;integration")
+    if(C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST)
+        add_test(NAME real_audiowmark_pipeline COMMAND C2PAExportPipelineTests)
+        set_tests_properties(real_audiowmark_pipeline PROPERTIES
+            ENVIRONMENT "C2PASEQ_RUN_REAL_AUDIOWMARK_TEST=1"
+            LABELS "audiowmark;integration")
+        add_test(NAME audiowmark_benchmark COMMAND C2PAExportPipelineTests)
+        set_tests_properties(audiowmark_benchmark PROPERTIES
+            ENVIRONMENT "C2PASEQ_RUN_AUDIOWMARK_BENCHMARK=1"
+            LABELS "audiowmark;benchmark"
+            TIMEOUT 600)
     endif()
 
     add_executable(C2PAPluginHostingTests

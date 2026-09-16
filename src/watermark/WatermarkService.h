@@ -2,13 +2,16 @@
 
 #include "SoftBindingPayload.h"
 
+#include <functional>
+
 namespace c2paseq
 {
 struct WatermarkEmbedResult
 {
-    double snrDb = 0.0;
+    double elapsedSeconds = 0.0;
     int sampleRate = 0;
     int channels = 0;
+    int bitsPerSample = 0;
     juce::int64 frames = 0;
 };
 
@@ -21,8 +24,7 @@ public:
     [[nodiscard]] virtual juce::Result embed(const juce::File& input,
                                               const juce::File& output,
                                               const SoftBindingPayload&,
-                                              WatermarkEmbedResult&) = 0;
-    [[nodiscard]] virtual juce::Result decode(const juce::File& input,
-                                               SoftBindingPayload&) = 0;
+                                              WatermarkEmbedResult&,
+                                              const std::function<bool()>& shouldCancel = {}) = 0;
 };
 }

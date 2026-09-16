@@ -8,15 +8,17 @@ namespace c2paseq
 class ProvenanceService;
 class TracktionAdapter;
 class WatermarkService;
-class SoftBindingStore;
+class SoftBindingOutbox;
 
 class ExportController final
 {
 public:
     ExportController(TracktionAdapter& tracktion, ProvenanceService& provenance,
                      WatermarkService* watermark = nullptr,
-                     SoftBindingStore* store = nullptr,
-                     bool softBindingEnabled = false);
+                     SoftBindingOutbox* outbox = nullptr,
+                     bool softBindingEnabled = false,
+                     ExportProgressCallback progress = {},
+                     ExportCancellationCheck shouldCancel = {});
 
     [[nodiscard]] ExportResult exportMix(const Project& project,
                                           const ProjectPaths& paths,
@@ -26,7 +28,9 @@ private:
     TracktionAdapter& tracktion;
     ProvenanceService& provenance;
     WatermarkService* watermarkService = nullptr;
-    SoftBindingStore* recoveryStore = nullptr;
+    SoftBindingOutbox* publicationOutbox = nullptr;
     bool useSoftBinding = false;
+    ExportProgressCallback progressCallback;
+    ExportCancellationCheck cancellationCheck;
 };
 }

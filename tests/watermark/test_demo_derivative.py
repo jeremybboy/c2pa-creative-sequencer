@@ -1,25 +1,32 @@
-#!/usr/bin/env python3
+import importlib.util
 import pathlib
 import struct
-import subprocess
-import sys
 import tempfile
+import unittest
 
 
-def chunk(name, payload):
-    return name + struct.pack("<I", len(payload)) + payload + (b"\0" if len(payload) & 1 else b"")
+SCRIPT = pathlib.Path(__file__).parents[2] / "scripts/make_softbinding_demo_derivative.py"
+SPEC = importlib.util.spec_from_file_location("demo_derivative", SCRIPT)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
 
 
-with tempfile.TemporaryDirectory() as directory:
-    root = pathlib.Path(directory)
-    source = root / "signed.wav"
-    derivative = root / "derivative.wav"
-    fmt = chunk(b"fmt ", b"format")
-    audio = chunk(b"data", b"PCM-WATERMARK-BYTES")
-    c2pa = chunk(b"C2PA", b"manifest-store")
-    body = b"WAVE" + fmt + c2pa + audio
-    source.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
-    subprocess.run([sys.executable, sys.argv[1], str(source), str(derivative)], check=True)
-    result = derivative.read_bytes()
-    if b"C2PA" in result or audio not in result or fmt not in result:
-        raise SystemExit("derivative rewrite did not remove only C2PA")
+class DemoDerivativeTests(unittest.TestCase):
+    def test_removes_only_c2pa_chunk(self):
+        fmt = b"fmt " + struct.pack("<I", 4) + b"fmt!"
+        c2pa = b"c2pa" + struct.pack("<I", 4) + b"test"
+        audio = b"data" + struct.pack("<I", 4) + b"pcm!"
+        body = b"WAVE" + fmt + c2pa + audio
+        with tempfile.TemporaryDirectory() as directory:
+            source = pathlib.Path(directory) / "source.wav"
+            output = pathlib.Path(directory) / "output.wav"
+            source.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
+            MODULE.create_derivative(source, output)
+            result = output.read_bytes()
+            self.assertNotIn(b"c2pa", result)
+            self.assertIn(fmt, result)
+            self.assertIn(audio, result)
+
+
+if __name__ == "__main__":
+    unittest.main()

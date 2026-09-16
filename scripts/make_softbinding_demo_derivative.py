@@ -1,39 +1,41 @@
 #!/usr/bin/env python3
-"""Rewrite PCM WAV chunks while deliberately omitting embedded C2PA/JUMBF."""
+"""Remove C2PA RIFF chunks while preserving all other WAV bytes."""
 
 import argparse
+import pathlib
 import struct
 
 
-def chunks(data: bytes):
-    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
-        raise ValueError("input is not a RIFF/WAVE file")
+def create_derivative(source, destination):
+    data = pathlib.Path(source).read_bytes()
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        raise ValueError("source is not a RIFF/WAVE file")
+    chunks = []
     offset = 12
+    removed = 0
     while offset + 8 <= len(data):
-        chunk_id = data[offset:offset + 4]
         size = struct.unpack_from("<I", data, offset + 4)[0]
         end = offset + 8 + size + (size & 1)
         if end > len(data):
-            raise ValueError("malformed WAV chunk")
-        yield chunk_id, data[offset:end]
+            raise ValueError("source contains a truncated RIFF chunk")
+        chunk = data[offset:end]
+        if data[offset:offset + 4].lower() == b"c2pa":
+            removed += 1
+        else:
+            chunks.append(chunk)
         offset = end
+    if removed == 0:
+        raise ValueError("source contains no C2PA RIFF chunk")
+    body = b"WAVE" + b"".join(chunks)
+    pathlib.Path(destination).write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input")
-    parser.add_argument("output")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source")
+    parser.add_argument("destination")
     args = parser.parse_args()
-    source = open(args.input, "rb").read()
-    kept = []
-    for chunk_id, raw in chunks(source):
-        # c2pa-rs embeds WAV manifests in a C2PA RIFF chunk. Preserve audio and
-        # ordinary metadata, removing only the credential container.
-        if chunk_id.lower() != b"c2pa":
-            kept.append(raw)
-    body = b"WAVE" + b"".join(kept)
-    with open(args.output, "wb") as output:
-        output.write(b"RIFF" + struct.pack("<I", len(body)) + body)
+    create_derivative(args.source, args.destination)
 
 
 if __name__ == "__main__":

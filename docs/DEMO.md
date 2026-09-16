@@ -36,23 +36,34 @@ instead of creating an unsigned WAV. Do not approve if a failed signing attempt 
 destination presented as authenticated, if render extends beyond the last audible clip, or if
 source selection disagrees with the final audible arrangement.
 
-## PR 011 local WavMark recovery acceptance
+## PR 011 AudioWMark authoring and external recovery acceptance
 
-1. Run `scripts/setup_wavmark.sh`; relaunch and confirm **WavMark** reports `Ready`.
-2. Open an arrangement, toggle **WavMark** on, and export. Confirm the output is stereo at the
-   device/native render rate, plays normally, and embedded Content Credentials validate.
-3. Open exported Credentials and confirm `c2pa.watermarked.bound`, algorithm
-   `com.microsoft.wavmark.1`, the 16-bit payload, and measured SNR are reported.
-4. Listen to the same arrangement exported once with WavMark disabled and once enabled. Record
-   the listening result separately; the automated SNR measurement is not perceptual acceptance.
-5. Run `python3 scripts/make_softbinding_demo_derivative.py signed.wav derivative.wav`.
-   Confirm the derivative plays, initially shows **No CC**, and has no embedded C2PA manifest.
-6. Import/select the derivative, choose **Credentials → Recover via WavMark**, and confirm
-   **CC ↻**, the recovered generator/signer, matching payload, and the explicit warning that
-   the derivative is not hard-binding validated.
-7. Repeat recovery with an unrelated unwatermarked WAV and confirm a clean failure with no
-   provenance claim or crash.
+### Part A — authoring
 
-Automated real-model evidence on the development machine: the 44.1 kHz stereo end-to-end test
-measured 38.48 dB SNR and passed exact embed/decode, C2PA sign, manifest removal, local lookup,
-and assertion agreement. Human comparative listening remains required before merge.
+1. Run `scripts/setup_audiowmark.sh`, launch the Sequencer, and confirm **Audio SB** reports ready.
+2. Export the same arrangement once with **Audio SB** off and once on. While enabled export runs,
+   move the app window and confirm the UI stays responsive; cancellation must return cleanly.
+3. Confirm the enabled WAV is playable, stereo, 24-bit, has the expected sample rate/duration,
+   and its embedded C2PA validates.
+4. Confirm the manifest contains `c2pa.watermarked.bound`, the C2PA 2.4 `c2pa.soft-binding`
+   blocks schema, `io.github.jeremybboy.audiowmark.1`, and a 32-character lowercase value.
+5. Confirm the matching `SoftBindingOutbox/<binding-id>/` contains `binding.json` and
+   `manifest.c2pa`, but no audio, project media, or signing credential.
+6. Listen comparatively to the normal and watermarked exports. Human listening quality remains
+   open until explicitly accepted; automated tests are not perceptual acceptance.
+
+### Part B — external resolver
+
+7. Run `python3 tools/softbinding-resolver/server.py` and open `http://127.0.0.1:8787`.
+8. Click **Import Sequencer Publications**; repeating the import must be idempotent.
+9. Create a manifestless derivative with
+   `python3 scripts/make_softbinding_demo_derivative.py signed.wav derivative.wav`.
+10. Drop it into the browser. Confirm no embedded C2PA is reported, AudioWMark finds the exact
+    128-bit repository value, and the exact stored `.c2pa` is available.
+11. Confirm the UI says **Content Credentials recovered via audio watermark** and explicitly says
+    the derivative has not passed the original asset's cryptographic hard binding.
+12. Drop an unrelated unwatermarked WAV and confirm **No matching soft-bound Content Credentials
+    found**, with no provenance claim and no crash.
+
+The opt-in real integration test covers real embed, C2PA signing, metadata-only derivative,
+external decode, exact repository match, idempotent import, and byte-exact manifest retrieval.

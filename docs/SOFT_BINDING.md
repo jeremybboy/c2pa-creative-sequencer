@@ -1,53 +1,77 @@
-# WavMark Soft-Binding Recovery
+# Audio Soft-Binding Authoring and Recovery Demo
 
-This is a **local/offline proof of concept**, not a production C2PA Soft Binding Resolution
-Service. A 16-bit WavMark payload is only unique within this machine's local store; it is not a
-global identifier and does not establish ownership, rights, or identity.
+PR 011 separates the claim generator from the recovery consumer. It is a local architecture
+demonstration, not a production C2PA Soft Binding Resolution Service and not a claim of C2PA SBR
+API conformance.
 
 ```text
-Render ──> WavMark payload ──> C2PA sign ──┬─> embedded C2PA manifest
-                                           └─> exact .c2pa bytes in local store
+AUTHORING SIDE
+Creative Sequencer -> render -> AudioWMark embed -> C2PA soft-binding assertion
+                   -> C2PA sign/embed -----> signed WAV
+                                      `----> publication outbox
+                                             (binding + exact .c2pa)
 
-Manifestless derivative ──> WavMark decode ──> alg + payload ──> local resolver
-                                                       └───────> recovered signed manifest
+RECOVERY SIDE
+Manifestless derivative -> browser -> POST /matches/byContent -> local resolver
+                                                               |- AudioWMark decode
+                                                               `- exact binding lookup
+                                         -> manifest repository -> recovered .c2pa
 ```
 
-## Runtime and audio adapter
+## Authoring side
 
-Run `scripts/setup_wavmark.sh` once. It installs pinned Python dependencies, WavMark commit
-`6ab3bf7ce0679e5b5cfeff3a62e8df9cd2024b37`, and the checksum-verified official model under:
+Run `scripts/setup_audiowmark.sh` once. It builds AudioWMark 0.6.5 at commit
+`c204998c92931285efdf6670c81cefd199298895` outside the repository and app bundle under:
 
 ```text
-~/Library/Application Support/C2PA Creative Sequencer/WavMark/
+~/Library/Application Support/C2PA Creative Sequencer/AudioWMark/
 ```
 
-The app invokes that helper only during export or explicit recovery. The final deliverable is
-not converted to mono or 16 kHz: the helper derives a mono 16 kHz working signal, computes the
-WavMark residual, resamples the residual to the render rate, applies it coherently to stereo,
-writes 24-bit WAV, then downmixes/resamples the written result and requires an exact decode.
+AudioWMark is GPL-3.0-or-later. The Sequencer does not link it; `AudioWMarkService` invokes its
+native executable as an external process. Enabled export generates 16 random bytes, represents
+them as 32 lowercase hexadecimal characters, and performs exactly one watermark operation:
+`audiowmark add`. The experimental identifier is
+`io.github.jeremybboy.audiowmark.1`; it is **not** an official C2PA Soft Binding Algorithm List
+registration.
 
-## Manifest and local resolver
+The background export sequence is render -> watermark embed -> format verification -> create
+the C2PA 2.4 `blocks` soft-binding assertion and `c2pa.watermarked.bound` action -> sign/embed ->
+reopen/validate -> publish -> atomically commit. The final WAV remains stereo, 24-bit, at the
+render sample rate and duration. No watermark decode occurs in production export and PCM is not
+changed after signing.
 
-Enabled export records `c2pa.watermarked.bound` and a `c2pa.soft-binding` assertion with
-algorithm `com.microsoft.wavmark.1`, a whole-audio millisecond timespan, and the payload as the
-pinned SDK's base64 JSON representation. `Builder::sign()`'s returned bytes are written without
-reconstruction to:
+After signing, the Sequencer writes the exact manifest-store bytes returned by `c2pa-cpp`:
 
 ```text
-~/Library/Application Support/C2PA Creative Sequencer/SoftBindingStore/
+~/Library/Application Support/C2PA Creative Sequencer/SoftBindingOutbox/<binding-id>/
+  manifest.c2pa
+  binding.json
+```
+
+The package contains no key, PEM, audio, or project media. It is a publisher handoff, not the
+resolver repository.
+
+## Recovery side
+
+The independent resolver owns:
+
+```text
+~/Library/Application Support/C2PA Soft Binding Demo/repository/
   index.json
   manifests/<sha256>.c2pa
 ```
 
-Recovery first confirms the asset has no embedded manifest, decodes WavMark, resolves the local
-entry, inspects the stored manifest against the derivative, and independently checks that the
-manifest contains the same algorithm and payload. Missing payloads, decode failures, corrupted
-stores, and assertion mismatches are failures; there is no fallback provenance claim.
+Start it with `python3 tools/softbinding-resolver/server.py`, open
+`http://127.0.0.1:8787`, import Sequencer publications, and drop a derivative into the browser.
+The service runs `audiowmark get`, checks every 128-bit candidate against its repository, and
+reports recovery only on exact membership. It implements `POST /manifests`, `POST /bindings`,
+`POST /matches/byContent`, `POST /imports/sequencer`, `GET /matches/byBinding`,
+`GET /manifests/{manifestId}`, and `GET /services/supportedAlgorithms`.
 
-## Semantic limit
+AudioWMark can emit false candidate patterns. The first candidate is never treated as
+provenance; only a repository match counts. A recovered signed manifest remains evidence linked
+through a soft binding: the derivative has not passed the original asset's cryptographic hard
+binding. A future production publisher can replace the local outbox with remote
+`POST /manifests` and `POST /bindings` without changing the Sequencer's provenance semantics.
 
-An embedded manifest is validated normally and always takes priority. A recovered manifest is
-reported as `RECOVERED_SOFT_BINDING` and **not** as cryptographic validation of the derivative:
-removing or rewriting the original container breaks the original hard binding even when the
-audio watermark survives. Recovered state is transient UI information in this PR and is not
-automatically propagated into a later export.
+See `docs/BENCHMARKS.md` for measured export timings and `docs/DEMO.md` for acceptance steps.

@@ -75,7 +75,6 @@ IngredientInfo parseManifest(const std::string& manifestJson)
 {
     IngredientInfo info;
     info.c2paPresent = true;
-    info.retrievalMode = ProvenanceRetrievalMode::embedded;
     info.rawManifestJson = juce::String::fromUTF8(manifestJson.c_str());
 
     juce::var document;
@@ -182,7 +181,7 @@ juce::String makeManifestDefinition(const juce::String& title,
         juce::Array<juce::var> blocks;
         blocks.add(block.release());
         auto data = std::make_unique<juce::DynamicObject>();
-        data->setProperty("alg", SoftBindingClaim::algorithm);
+        data->setProperty("alg", juce::String(SoftBindingClaim::algorithm.data()));
         data->setProperty("blocks", blocks);
         auto soft = std::make_unique<juce::DynamicObject>();
         soft->setProperty("label", "c2pa.soft-binding");
@@ -486,38 +485,6 @@ juce::Result ProvenanceService::signWav(
     return juce::Result::ok();
 }
 
-IngredientInfo ProvenanceService::inspectRecoveredManifest(
-    const juce::File& asset,
-    const std::vector<std::uint8_t>& manifestStore) const
-{
-    IngredientInfo info;
-    if (! asset.existsAsFile() || manifestStore.empty())
-    {
-        info.status = ProvenanceStatus::unableToValidate;
-        info.validationSummary = "Recovery asset or stored manifest is missing";
-        return info;
-    }
-    try
-    {
-        std::ifstream stream(asset.getFullPathName().toStdString(), std::ios::binary);
-        c2pa::Reader reader(makeContext(), "wav", stream, manifestStore);
-        info = parseManifest(reader.json());
-        info.retrievalMode = ProvenanceRetrievalMode::recoveredSoftBinding;
-        info.assetIntact = false;
-        info.status = ProvenanceStatus::presentWithValidationIssue;
-        info.validationSummary = "Recovered signed manifest via WavMark soft binding; "
-            "the derivative is not validated by the original hard binding";
-        return info;
-    }
-    catch (const std::exception& error)
-    {
-        info.status = ProvenanceStatus::unableToValidate;
-        info.validationSummary = "Stored manifest could not be inspected: "
-            + juce::String::fromUTF8(error.what());
-        return info;
-    }
-}
-
 bool ProvenanceService::hasMatchingSoftBinding(const IngredientInfo& info,
                                                const SoftBindingPayload& payload)
 {
@@ -540,7 +507,8 @@ bool ProvenanceService::hasMatchingSoftBinding(const IngredientInfo& info,
         auto* data = assertion->getProperty("data").getDynamicObject();
         auto* blocks = data != nullptr ? data->getProperty("blocks").getArray() : nullptr;
         if (data == nullptr || blocks == nullptr
-            || data->getProperty("alg").toString() != SoftBindingClaim::algorithm)
+            || data->getProperty("alg").toString()
+                != juce::String(SoftBindingClaim::algorithm.data()))
             continue;
         for (const auto& blockValue : *blocks)
             if (auto* block = blockValue.getDynamicObject(); block != nullptr

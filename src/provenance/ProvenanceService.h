@@ -28,9 +28,6 @@ public:
                                        IngredientInfo& validation,
                                        const std::optional<SoftBindingClaim>& softBinding = {},
                                        std::vector<std::uint8_t>* manifestStore = nullptr) const;
-    [[nodiscard]] IngredientInfo inspectRecoveredManifest(
-        const juce::File& asset,
-        const std::vector<std::uint8_t>& manifestStore) const;
     [[nodiscard]] static bool hasMatchingSoftBinding(
         const IngredientInfo&, const SoftBindingPayload&);
 
