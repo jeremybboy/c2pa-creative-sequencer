@@ -1,4 +1,10 @@
+
+
+<img width="1536" height="1024" alt="ChatGPT Image Sep 16, 2026, 09_59_20 PM" src="https://github.com/user-attachments/assets/e5af6076-f5b8-411b-91dd-4d1bf32e2056" />
+
 # C2PA SBR-Inspired Local Demonstration Service
+
+Soft Binding Resolution
 
 This independent local tool imports Creative Sequencer publication packages, owns a manifest
 repository, decodes AudioWMark candidates, resolves exact binding matches, and serves the browser
