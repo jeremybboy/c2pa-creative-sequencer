@@ -60,6 +60,10 @@ def handler_factory(repository, service, outbox, static_root=None):
                     return self.send_json(404, {"error": "manifest not found"})
                 self.send_response(200)
                 self.send_header("Content-Type", "application/c2pa")
+                self.send_header(
+                    "Content-Disposition", 'attachment; filename="recovered-manifest.c2pa"'
+                )
+                self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)

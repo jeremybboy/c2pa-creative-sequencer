@@ -108,6 +108,11 @@ class ResolverTests(unittest.TestCase):
             connection.request("GET", "/manifests/" + MANIFEST_ID)
             response = connection.getresponse()
             self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Content-Type"), "application/c2pa")
+            self.assertEqual(
+                response.getheader("Content-Disposition"),
+                'attachment; filename="recovered-manifest.c2pa"'
+            )
             self.assertEqual(response.read(), MANIFEST_BYTES)
         finally:
             server.shutdown()
