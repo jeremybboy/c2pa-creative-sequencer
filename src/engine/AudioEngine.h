@@ -5,6 +5,8 @@
 #include "export/ExportResult.h"
 #include "provenance/ProvenanceService.h"
 #include "plugins/PluginHost.h"
+#include "watermark/AudioWMarkService.h"
+#include "watermark/SoftBindingOutbox.h"
 
 #include <memory>
 
@@ -15,7 +17,9 @@ class AudioEngine final
 public:
     explicit AudioEngine(std::unique_ptr<SigningProvider> signingProvider = {},
                          juce::File pluginCacheFile = {},
-                         bool showPluginWindows = true);
+                         bool showPluginWindows = true,
+                         std::unique_ptr<WatermarkService> watermarkService = {},
+                         juce::File softBindingOutboxDirectory = {});
 
     [[nodiscard]] bool isInitialised() const noexcept;
     [[nodiscard]] juce::String status() const;
@@ -65,7 +69,13 @@ public:
     [[nodiscard]] juce::String signingCredentialStatus() const;
     [[nodiscard]] juce::Result configureSigningCredential(const juce::File&);
     [[nodiscard]] juce::Result removeSigningCredential();
-    [[nodiscard]] ExportResult exportMix(const juce::File& destination);
+    void setSoftBindingEnabled(bool enabled) noexcept;
+    [[nodiscard]] bool softBindingEnabled() const noexcept;
+    [[nodiscard]] juce::String watermarkStatus() const;
+    [[nodiscard]] ExportResult exportMix(
+        const juce::File& destination,
+        ExportProgressCallback progress = {},
+        ExportCancellationCheck shouldCancel = {});
 
     [[nodiscard]] juce::Result createProject(const juce::File& projectFolder,
                                              const juce::String& projectName);
@@ -77,7 +87,10 @@ public:
 private:
     TracktionAdapter tracktion;
     ProvenanceService provenance;
+    std::unique_ptr<WatermarkService> watermark;
+    SoftBindingOutbox softBindingOutbox;
     ProjectEngine projectEngine;
     PluginHost pluginHost;
+    bool useSoftBinding = false;
 };
 }

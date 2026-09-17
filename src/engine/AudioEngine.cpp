@@ -6,8 +6,15 @@ namespace c2paseq
 {
 AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider,
                          juce::File pluginCacheFile,
-                         bool showPluginWindows)
-    : provenance(std::move(signingProvider)), projectEngine(tracktion, provenance),
+                         bool showPluginWindows,
+                         std::unique_ptr<WatermarkService> watermarkService,
+                         juce::File softBindingOutboxDirectory)
+    : provenance(std::move(signingProvider)),
+      watermark(watermarkService != nullptr
+          ? std::move(watermarkService) : std::make_unique<AudioWMarkService>()),
+      softBindingOutbox(softBindingOutboxDirectory == juce::File()
+          ? SoftBindingOutbox::defaultDirectory() : std::move(softBindingOutboxDirectory)),
+      projectEngine(tracktion, provenance),
       pluginHost(tracktion, projectEngine,
                  pluginCacheFile == juce::File() ? PluginScanner::defaultCacheFile()
                                                   : std::move(pluginCacheFile),
@@ -185,12 +192,31 @@ juce::Result AudioEngine::removeSigningCredential()
     return provenance.removeSigningCredential();
 }
 
-ExportResult AudioEngine::exportMix(const juce::File& destination)
+void AudioEngine::setSoftBindingEnabled(bool enabled) noexcept
+{
+    useSoftBinding = enabled;
+}
+
+bool AudioEngine::softBindingEnabled() const noexcept
+{
+    return useSoftBinding;
+}
+
+juce::String AudioEngine::watermarkStatus() const
+{
+    return watermark->statusDescription();
+}
+
+ExportResult AudioEngine::exportMix(const juce::File& destination,
+                                    ExportProgressCallback progress,
+                                    ExportCancellationCheck shouldCancel)
 {
     if (const auto* project = projectEngine.currentProject())
         if (const auto* paths = projectEngine.currentPaths())
         {
-            ExportController controller(tracktion, provenance);
+            ExportController controller(tracktion, provenance, watermark.get(),
+                                        &softBindingOutbox, useSoftBinding,
+                                        std::move(progress), std::move(shouldCancel));
             return controller.exportMix(*project, *paths, destination);
         }
 

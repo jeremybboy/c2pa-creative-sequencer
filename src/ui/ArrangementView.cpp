@@ -172,9 +172,28 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     newProject.onClick = [this] { createProject(); };
     openProjectButton.onClick = [this] { openProject(); };
     saveProjectButton.onClick = [this] { saveProject(); };
-    exportButton.onClick = [this] { exportProject(); };
+    exportButton.onClick = [this]
+    {
+        if (exportInProgress)
+        {
+            exportCancellationRequested.store(true);
+            projectMessage = "Cancelling export…";
+            status.setText(projectMessage, juce::dontSendNotification);
+            return;
+        }
+        exportProject();
+    };
     credentialsButton.onClick = [this] { showSelectedCredentials(); };
     signingButton.onClick = [this] { showSigningSettings(); };
+    audioSoftBindingButton.setClickingTogglesState(true);
+    audioSoftBindingButton.onClick = [this]
+    {
+        audioEngine.setSoftBindingEnabled(audioSoftBindingButton.getToggleState());
+        projectMessage = "Audio soft binding "
+            + juce::String(audioEngine.softBindingEnabled() ? "enabled" : "disabled")
+            + " | Runtime: " + audioEngine.watermarkStatus();
+        refreshTransport();
+    };
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     playPause.onClick = [this] { togglePlayback(); };
@@ -215,7 +234,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     };
 
     for (auto* button : { &newProject, &openProjectButton, &saveProjectButton,
-                          &exportButton, &credentialsButton, &signingButton,
+                          &exportButton, &credentialsButton, &signingButton, &audioSoftBindingButton,
                           &undoButton, &redoButton, &playPause, &stop, &loop,
                           &zoomOut, &zoomIn, &audioSettings })
     {
@@ -224,6 +243,8 @@ ArrangementView::ArrangementView(AudioEngine& engine)
         addAndMakeVisible(*button);
     }
     loop.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(197, 151, 49));
+    audioSoftBindingButton.setColour(juce::TextButton::buttonOnColourId,
+                                     juce::Colour::fromRGB(42, 139, 157));
 
     addAndMakeVisible(browser);
     addAndMakeVisible(*timelineSurface);
@@ -246,6 +267,8 @@ ArrangementView::ArrangementView(AudioEngine& engine)
 
 ArrangementView::~ArrangementView()
 {
+    exportCancellationRequested.store(true);
+    if (exportThread.joinable()) exportThread.join();
     horizontalScroll.removeListener(this);
     verticalScroll.removeListener(this);
 }
@@ -274,6 +297,7 @@ void ArrangementView::resized()
     placeButton(newProject, 45); placeButton(openProjectButton, 48); placeButton(saveProjectButton, 46);
     placeButton(exportButton, 56); placeButton(credentialsButton, 82);
     placeButton(signingButton, 62);
+    placeButton(audioSoftBindingButton, 72);
     top.removeFromLeft(6);
     placeButton(undoButton, 48); placeButton(redoButton, 48);
     top.removeFromLeft(10);
@@ -298,6 +322,9 @@ void ArrangementView::resized()
 
 bool ArrangementView::keyPressed(const juce::KeyPress& key)
 {
+    if (exportInProgress)
+        return true;
+
     switch (commandForKeyPress(key))
     {
         case ArrangementCommand::togglePlayPause: togglePlayback(); return true;
@@ -479,30 +506,112 @@ void ArrangementView::beginExportWithConfiguredSigner()
             if (! destination.hasFileExtension("wav"))
                 destination = destination.withFileExtension("wav");
             safe->fileChooser.reset();
-            safe->projectMessage = "Rendering mix... Creating Content Credentials... Signing... Embedding... Validating...";
-            safe->refreshTransport();
-            juce::MessageManager::callAsync([safe, destination]
-            {
-                if (safe == nullptr) return;
-                auto result = safe->audioEngine.exportMix(destination);
-                if (result.result.failed())
-                {
-                    safe->lastExport.reset();
-                    safe->projectMessage = "Export failed: " + result.result.getErrorMessage();
-                    safe->refreshTransport();
-                    juce::AlertWindow::showMessageBoxAsync(
-                        juce::MessageBoxIconType::WarningIcon, "Export Failed",
-                        result.result.getErrorMessage(), "OK", safe.getComponent());
-                    return;
-                }
-                safe->lastExport = std::move(result);
-                safe->projectMessage = safe->lastExport->externallyTrusted
-                    ? "Export complete | Content Credentials attached | Validation successful"
-                    : "Export complete | Content Credentials attached | Asset integrity validated | External trust issue";
-                safe->refreshTransport();
-                safe->showExportCompletion();
-            });
+            safe->startBackgroundExport(destination);
         });
+}
+
+void ArrangementView::startBackgroundExport(const juce::File& destination)
+{
+    if (exportThread.joinable()) exportThread.join();
+    exportCancellationRequested.store(false);
+    setExportInProgress(true);
+    updateExportProgress(ExportStage::planning);
+    const auto safe = juce::Component::SafePointer<ArrangementView>(this);
+    exportThread = std::thread([this, safe, destination]
+    {
+        auto progress = [safe](ExportStage stage)
+        {
+            juce::MessageManager::callAsync([safe, stage]
+            {
+                if (safe != nullptr) safe->updateExportProgress(stage);
+            });
+        };
+        auto exportResult = audioEngine.exportMix(destination, std::move(progress), [this]
+        {
+            return exportCancellationRequested.load();
+        });
+        juce::MessageManager::callAsync([safe, completed = std::move(exportResult)]() mutable
+        {
+            if (safe != nullptr) safe->completeBackgroundExport(std::move(completed));
+        });
+    });
+}
+
+void ArrangementView::updateExportProgress(ExportStage stage)
+{
+    switch (stage)
+    {
+        case ExportStage::planning: projectMessage = "Preparing export…"; break;
+        case ExportStage::audioRender: projectMessage = "Rendering audio…"; break;
+        case ExportStage::watermarkEmbedding: projectMessage = "Embedding AudioWMark…"; break;
+        case ExportStage::creatingContentCredentials:
+            projectMessage = "Creating Content Credentials…"; break;
+        case ExportStage::signingAndEmbedding: projectMessage = "Signing…"; break;
+        case ExportStage::finalValidation: projectMessage = "Validating…"; break;
+        case ExportStage::publicationOutbox:
+            projectMessage = "Preparing recovery publication…"; break;
+        case ExportStage::fileCommit: projectMessage = "Committing export…"; break;
+        case ExportStage::cancelled: projectMessage = "Export cancelled"; break;
+        case ExportStage::complete: projectMessage = "Export complete"; break;
+        case ExportStage::signingConfiguration: projectMessage = "Checking signing…"; break;
+    }
+    status.setText(projectMessage, juce::dontSendNotification);
+    repaint();
+}
+
+void ArrangementView::completeBackgroundExport(ExportResult result)
+{
+    if (exportThread.joinable()) exportThread.join();
+    setExportInProgress(false);
+    if (result.result.failed())
+    {
+        lastExport.reset();
+        projectMessage = result.stage == ExportStage::cancelled
+            ? "Export cancelled" : "Export failed: " + result.result.getErrorMessage();
+        refreshTransport();
+        if (result.stage != ExportStage::cancelled)
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon, "Export Failed",
+                result.result.getErrorMessage(), "OK", this);
+        return;
+    }
+    lastExport = std::move(result);
+    projectMessage = lastExport->externallyTrusted
+        ? "Export complete | Content Credentials attached | Validation successful"
+        : "Export complete | Content Credentials attached | Asset integrity validated | External trust issue";
+    if (lastExport->softBindingEnabled)
+        projectMessage += " | Audio soft binding " + lastExport->softBindingPayloadHex;
+    refreshTransport();
+    showExportCompletion();
+}
+
+void ArrangementView::setExportInProgress(bool active)
+{
+    exportInProgress = active;
+    if (active) stopTimer(); else startTimerHz(30);
+    exportButton.setButtonText(active ? "Cancel" : "Export");
+    for (auto* component : { static_cast<juce::Component*>(&newProject),
+                             static_cast<juce::Component*>(&openProjectButton),
+                             static_cast<juce::Component*>(&saveProjectButton),
+                             static_cast<juce::Component*>(&credentialsButton),
+                             static_cast<juce::Component*>(&signingButton),
+                             static_cast<juce::Component*>(&audioSoftBindingButton),
+                             static_cast<juce::Component*>(&undoButton),
+                             static_cast<juce::Component*>(&redoButton),
+                             static_cast<juce::Component*>(&playPause),
+                             static_cast<juce::Component*>(&stop),
+                             static_cast<juce::Component*>(&loop),
+                             static_cast<juce::Component*>(&bpm) })
+        component->setEnabled(! active);
+    browser.setEnabled(! active);
+    timelineSurface->setEnabled(! active);
+    headerContainer.setEnabled(! active);
+    horizontalScroll.setEnabled(! active);
+    verticalScroll.setEnabled(! active);
+    zoomOut.setEnabled(! active);
+    zoomIn.setEnabled(! active);
+    audioSettings.setEnabled(! active);
+    exportButton.setEnabled(true);
 }
 
 void ArrangementView::chooseSigningCredential(std::function<void()> continuation)
@@ -591,6 +700,13 @@ void ArrangementView::showExportCredentials()
         + "\nStatus: " + provenanceStatusLabel(result.outputProvenance.status)
         + "\nValidation: " + result.outputProvenance.validationSummary
         + "\nIngredients: " + juce::String(result.ingredients.size());
+    if (result.softBindingEnabled)
+        details += "\nAudio soft binding: Published"
+            "\nAlgorithm: " + juce::String(SoftBindingClaim::algorithm.data())
+            + "\nBinding: " + result.softBindingPayloadHex
+            + "\nPublication package: " + result.publicationPackage.getFullPathName()
+            + "\nAudioWMark embed: " + juce::String(result.watermarkEmbedSeconds, 3) + " s"
+            + "\nTotal export: " + juce::String(result.totalSeconds, 3) + " s";
     if (result.outputProvenance.activeManifest.isNotEmpty())
         details += "\nManifest: " + result.outputProvenance.activeManifest;
     for (const auto& ingredient : result.ingredients)

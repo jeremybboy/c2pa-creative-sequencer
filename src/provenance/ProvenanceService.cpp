@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 
 namespace c2paseq
@@ -131,7 +132,8 @@ IngredientInfo parseManifest(const std::string& manifestJson)
     return info;
 }
 
-juce::String makeManifestDefinition(const juce::String& title)
+juce::String makeManifestDefinition(const juce::String& title,
+                                    const std::optional<SoftBindingClaim>& softBinding)
 {
     auto root = std::make_unique<juce::DynamicObject>();
     root->setProperty("claim_version", 2);
@@ -151,6 +153,12 @@ juce::String makeManifestDefinition(const juce::String& title)
         "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation");
     juce::Array<juce::var> actions;
     actions.add(action.release());
+    if (softBinding.has_value())
+    {
+        auto watermarked = std::make_unique<juce::DynamicObject>();
+        watermarked->setProperty("action", "c2pa.watermarked.bound");
+        actions.add(watermarked.release());
+    }
     auto actionData = std::make_unique<juce::DynamicObject>();
     actionData->setProperty("actions", actions);
     auto assertion = std::make_unique<juce::DynamicObject>();
@@ -158,6 +166,28 @@ juce::String makeManifestDefinition(const juce::String& title)
     assertion->setProperty("data", actionData.release());
     juce::Array<juce::var> assertions;
     assertions.add(assertion.release());
+    if (softBinding.has_value())
+    {
+        auto timespan = std::make_unique<juce::DynamicObject>();
+        timespan->setProperty("start", static_cast<juce::int64>(softBinding->startMilliseconds));
+        timespan->setProperty("end", static_cast<juce::int64>(softBinding->endMilliseconds));
+        auto scope = std::make_unique<juce::DynamicObject>();
+        scope->setProperty("timespan", timespan.release());
+        auto block = std::make_unique<juce::DynamicObject>();
+        block->setProperty("scope", scope.release());
+        // c2pa-rs 0.90.15's official SoftBinding JSON test accepts a base64
+        // string here and converts the assertion to its CBOR representation.
+        block->setProperty("value", softBinding->payload.toBase64());
+        juce::Array<juce::var> blocks;
+        blocks.add(block.release());
+        auto data = std::make_unique<juce::DynamicObject>();
+        data->setProperty("alg", juce::String(SoftBindingClaim::algorithm.data()));
+        data->setProperty("blocks", blocks);
+        auto soft = std::make_unique<juce::DynamicObject>();
+        soft->setProperty("label", "c2pa.soft-binding");
+        soft->setProperty("data", data.release());
+        assertions.add(soft.release());
+    }
     root->setProperty("assertions", assertions);
     return juce::JSON::toString(juce::var(root.release()), false);
 }
@@ -403,7 +433,9 @@ juce::Result ProvenanceService::signWav(
     const juce::File& destination,
     const std::vector<ContributingIngredient>& ingredients,
     const juce::String& outputTitle,
-    IngredientInfo& validation) const
+    IngredientInfo& validation,
+    const std::optional<SoftBindingClaim>& softBinding,
+    std::vector<std::uint8_t>* manifestStore) const
 {
     if (const auto error = signingConfigurationError(); error.isNotEmpty())
         return juce::Result::fail(error);
@@ -421,7 +453,7 @@ juce::Result ProvenanceService::signWav(
     try
     {
         builder = std::make_unique<c2pa::Builder>(
-            makeContext(), makeManifestDefinition(outputTitle).toStdString());
+            makeContext(), makeManifestDefinition(outputTitle, softBinding).toStdString());
         for (const auto& ingredient : ingredients)
             builder->add_ingredient(makeIngredientDefinition(ingredient).toStdString(),
                 std::filesystem::path(ingredient.file.getFullPathName().toStdString()));
@@ -434,9 +466,11 @@ juce::Result ProvenanceService::signWav(
 
     try
     {
-        builder->sign(
+        auto bytes = builder->sign(
             std::filesystem::path(unsignedWav.getFullPathName().toStdString()),
             std::filesystem::path(destination.getFullPathName().toStdString()), *signer);
+        if (manifestStore != nullptr)
+            manifestStore->assign(bytes.begin(), bytes.end());
     }
     catch (const std::exception& error)
     {
@@ -449,5 +483,38 @@ juce::Result ProvenanceService::signWav(
         return juce::Result::fail(
             "Exported Content Credentials failed post-export validation.");
     return juce::Result::ok();
+}
+
+bool ProvenanceService::hasMatchingSoftBinding(const IngredientInfo& info,
+                                               const SoftBindingPayload& payload)
+{
+    juce::var document;
+    if (juce::JSON::parse(info.rawManifestJson, document).failed()) return false;
+    auto* root = document.getDynamicObject();
+    auto* manifests = root != nullptr
+        ? root->getProperty("manifests").getDynamicObject() : nullptr;
+    auto* active = manifests != nullptr
+        ? manifests->getProperty(info.activeManifest).getDynamicObject() : nullptr;
+    auto* assertions = active != nullptr
+        ? active->getProperty("assertions").getArray() : nullptr;
+    if (assertions == nullptr) return false;
+    for (const auto& assertionValue : *assertions)
+    {
+        auto* assertion = assertionValue.getDynamicObject();
+        if (assertion == nullptr
+            || ! assertion->getProperty("label").toString().startsWith("c2pa.soft-binding"))
+            continue;
+        auto* data = assertion->getProperty("data").getDynamicObject();
+        auto* blocks = data != nullptr ? data->getProperty("blocks").getArray() : nullptr;
+        if (data == nullptr || blocks == nullptr
+            || data->getProperty("alg").toString()
+                != juce::String(SoftBindingClaim::algorithm.data()))
+            continue;
+        for (const auto& blockValue : *blocks)
+            if (auto* block = blockValue.getDynamicObject(); block != nullptr
+                && block->getProperty("value").toString() == payload.toBase64())
+                return true;
+    }
+    return false;
 }
 }

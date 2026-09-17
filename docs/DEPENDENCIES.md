@@ -1,6 +1,6 @@
 # Dependency Verification
 
-Verified on 2026-09-11 on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xcode 26.4, Git 2.54.0, and CMake 4.3.2. This is an engineering dependency record, not legal advice.
+Core dependencies were verified on 2026-09-11 and AudioWMark on 2026-09-16, on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xcode 26.4, Git 2.54.0, and CMake 4.3.2. This is an engineering dependency record, not legal advice.
 
 ## Decision summary
 
@@ -10,6 +10,7 @@ Verified on 2026-09-11 on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xco
 | Tracktion Engine | v3.2.0 release (`0a5f4e6a`); `develop` reports 3.5.0 | v3.2.0 | GPLv3-or-later or commercial Tracktion license | Requires C++20 and supports macOS; its module API supplies `Engine`, device management, plug-in management, timeline/edit state, and rendering |
 | VST 3 SDK | 3.8.1 build 84 (`3cdf9ca5`) | JUCE 8.0.6 bundled VST3 host interfaces in PR 008; standalone SDK integration remains deferred | MIT; Steinberg trademark/compatibility usage guidelines still apply | JUCE discovery, instantiation, editor, state, realtime processing, and offline render pass on Apple silicon with a deterministic VST3 fixture |
 | `c2pa-cpp` | v0.26.9 (`26f7c8cd`), backed by `c2pa-rs` 0.90.15 | Integrated in PR 006 at v0.26.9 | MIT or Apache-2.0; transitive components require their own notices | Built on macOS arm64; WAV read, ingredient, ES256 sign/embed, reopen, validation, and tamper detection pass locally |
+| AudioWMark | 0.6.5 (`c204998c`) | exact commit `c204998c92931285efdf6670c81cefd199298895` | GPL-3.0-or-later | Built outside the app and invoked as a native executable; normal 128-bit payload, stereo/native-rate/24-bit output verified |
 
 ## Architecture consequences
 
@@ -18,6 +19,7 @@ Verified on 2026-09-11 on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xco
 3. Keep every C2PA call inside `src/provenance`. The current API is context-oriented: use `c2pa::Context`, `c2pa::Reader`, `c2pa::Builder`, and `c2pa::Signer`; context-free reader/builder constructors compile but are deprecated.
 4. Use JUCE/Tracktion plug-in hosting rather than coupling application code directly to Steinberg interfaces. PR 008 uses the VST3 interfaces bundled by the pinned JUCE 8.0.6 dependency; if a later distribution build adds the standalone SDK, test JUCE's custom-SDK path against the pinned MIT SDK.
 5. Set the POC deployment target to macOS 13.3 because `c2pa-cpp` v0.26.9 sets that minimum and distributes an `aarch64-apple-darwin` prebuilt runtime.
+6. Keep GPL AudioWMark outside the app bundle and realtime graph and invoke it only as an external executable. Normal CI does not require it; opt-in tests build the pinned runtime and validate real recovery.
 
 ## Deferred distribution checkpoint
 
@@ -27,6 +29,7 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - An open-source route would have to satisfy JUCE's AGPLv3 terms and Tracktion Engine's GPLv3-or-later terms together with every bundled/transitive notice. Do not choose this route casually.
 - The current standalone VST 3 SDK source is MIT-licensed. Product naming, documentation, package, and compatibility claims remain subject to Steinberg's published trademark usage guidelines.
 - `c2pa-cpp` is dual MIT/Apache-2.0. Its prebuilt runtime comes from `c2pa-rs`; preserve the transitive license inventory before distribution.
+- AudioWMark is GPL-3.0-or-later. This POC neither links nor bundles it, but any future distribution strategy still needs a deliberate legal review of executable delivery and source obligations.
 - Commercial license tier and seat counts depend on the owner, revenue/funding, developer count, and distribution model. Those facts are not available in this repository, so exact commercial cost is intentionally unresolved.
 
 ## API and feature evidence
@@ -57,6 +60,24 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - Independent inspection of the PR 006 example with `c2patool` 0.26.30 reports `validation_state: Valid`, the expected `signingCredential.untrusted` trust-list issue, the C2PA Creative Sequencer 0.1.0 generator, and exactly the three audible deduplicated ingredients `A.wav`, `B.wav`, and `C.wav`.
 - The full upstream CTest run was not a valid offline pass: 195 of 369 C++ tests passed, 174 tests attempted public timestamp or remote-manifest URLs and failed because network resolution was unavailable, and the separate C test executable had not been built. These failures do not contradict the isolated offline WAV result, but CI must split offline tests from explicit network tests.
 
+### AudioWMark and C2PA soft binding
+
+- The inspected official AudioWMark 0.6.5 source at commit
+  `c204998c92931285efdf6670c81cefd199298895` documents 128-bit messages as the normal profile;
+  deprecated short-payload mode is not used.
+- `scripts/setup_audiowmark.sh` also pins zita-resampler commit
+  `cfea03f129f067c13f2453db89e10f19309cf45d`, builds outside the repository, and finishes with
+  a real 48 kHz stereo exact 128-bit add/get self-test.
+- The app performs only `audiowmark add --strict` before signing. Decode runs solely in opt-in
+  integration tests and the independent resolver, which ignores decoded candidates without an
+  exact repository match.
+- The opt-in integration test preserved stereo, render rate, 24-bit depth, and exact duration;
+  signed and validated the WAV; removed only the C2PA RIFF chunk; decoded the derivative; and
+  recovered byte-identical published manifest-store data through the external repository.
+- C2PA 2.4 `c2pa.soft-binding` retains its `blocks` structure and timespan scope, accompanied by
+  `c2pa.watermarked.bound`. `io.github.jeremybboy.audiowmark.1` is deliberately experimental
+  and is not represented as an official SBAL registration.
+
 ## PR 001 build evidence
 
 - CMake configured the selected Tracktion Engine v3.2.0/JUCE 8.0.6 pair with Apple Clang 21 using the Unix Makefiles generator.
@@ -83,3 +104,5 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - [`c2pa-cpp` repository](https://github.com/contentauth/c2pa-cpp)
 - [`c2pa-cpp` v0.26.9](https://github.com/contentauth/c2pa-cpp/releases/tag/v0.26.9)
 - [C2PA supported formats](https://opensource.contentauthenticity.org/docs/c2pa-node/docs/supported-formats/)
+- [AudioWMark repository](https://github.com/swesterfeld/audiowmark)
+- [C2PA 2.4 soft-binding assertion](https://spec.c2pa.org/specifications/specifications/2.4/specs/C2PA_Specification.html#_soft_binding_2)

@@ -4,6 +4,8 @@
 
 #include <vector>
 
+#include "watermark/SoftBindingPayload.h"
+
 namespace c2paseq
 {
 enum class ProvenanceStatus
@@ -29,6 +31,14 @@ struct IngredientInfo
     juce::String validationSummary;
     juce::String rawManifestJson;
     std::vector<juce::String> validationIssues;
+};
+
+struct SoftBindingClaim
+{
+    static constexpr std::string_view algorithm = audioWMarkAlgorithm;
+    SoftBindingPayload payload;
+    std::uint64_t startMilliseconds = 0;
+    std::uint64_t endMilliseconds = 0;
 };
 
 struct ContributingIngredient

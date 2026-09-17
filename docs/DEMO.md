@@ -35,3 +35,35 @@ Remove the credential through **Signing**, repeat Export, and confirm the app as
 instead of creating an unsigned WAV. Do not approve if a failed signing attempt leaves a
 destination presented as authenticated, if render extends beyond the last audible clip, or if
 source selection disagrees with the final audible arrangement.
+
+## PR 011 AudioWMark authoring and external recovery acceptance
+
+### Part A — authoring
+
+1. Run `scripts/setup_audiowmark.sh`, launch the Sequencer, and confirm **Audio SB** reports ready.
+2. Export the same arrangement once with **Audio SB** off and once on. While enabled export runs,
+   move the app window and confirm the UI stays responsive; cancellation must return cleanly.
+3. Confirm the enabled WAV is playable, stereo, 24-bit, has the expected sample rate/duration,
+   and its embedded C2PA validates.
+4. Confirm the manifest contains `c2pa.watermarked.bound`, the C2PA 2.4 `c2pa.soft-binding`
+   blocks schema, `io.github.jeremybboy.audiowmark.1`, and a 32-character lowercase value.
+5. Confirm the matching `SoftBindingOutbox/<binding-id>/` contains `binding.json` and
+   `manifest.c2pa`, but no audio, project media, or signing credential.
+6. Listen comparatively to the normal and watermarked exports. Human listening quality remains
+   open until explicitly accepted; automated tests are not perceptual acceptance.
+
+### Part B — external resolver
+
+7. Run `python3 tools/softbinding-resolver/server.py` and open `http://127.0.0.1:8787`.
+8. Click **Import Sequencer Publications**; repeating the import must be idempotent.
+9. Create a manifestless derivative with
+   `python3 scripts/make_softbinding_demo_derivative.py signed.wav derivative.wav`.
+10. Drop it into the browser. Confirm no embedded C2PA is reported, AudioWMark finds the exact
+    128-bit repository value, and the exact stored `.c2pa` is available.
+11. Confirm the UI says **Content Credentials recovered via audio watermark** and explicitly says
+    the derivative has not passed the original asset's cryptographic hard binding.
+12. Drop an unrelated unwatermarked WAV and confirm **No matching soft-bound Content Credentials
+    found**, with no provenance claim and no crash.
+
+The opt-in real integration test covers real embed, C2PA signing, metadata-only derivative,
+external decode, exact repository match, idempotent import, and byte-exact manifest retrieval.

@@ -9,9 +9,11 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <vector>
 
 namespace c2paseq
@@ -49,6 +51,10 @@ private:
     void saveProject();
     void exportProject();
     void beginExportWithConfiguredSigner();
+    void startBackgroundExport(const juce::File& destination);
+    void updateExportProgress(ExportStage);
+    void completeBackgroundExport(ExportResult);
+    void setExportInProgress(bool);
     void chooseSigningCredential(std::function<void()> continuation = {});
     void showSigningSettings();
     void showExportCompletion();
@@ -94,6 +100,7 @@ private:
     juce::TextButton exportButton { "Export" };
     juce::TextButton credentialsButton { "Credentials" };
     juce::TextButton signingButton { "Signing" };
+    juce::TextButton audioSoftBindingButton { "Audio SB" };
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
     juce::TextButton playPause { "Play" };
@@ -114,5 +121,8 @@ private:
     std::vector<ArrangementTrackSnapshot> snapshots;
     std::vector<std::unique_ptr<WaveformView>> waveformViews;
     std::vector<std::unique_ptr<TrackHeaderView>> trackHeaders;
+    std::atomic_bool exportCancellationRequested { false };
+    bool exportInProgress = false;
+    std::thread exportThread;
 };
 }

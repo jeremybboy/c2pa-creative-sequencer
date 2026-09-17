@@ -1,12 +1,17 @@
 #include "engine/AudioEngine.h"
+#include "watermark/AudioWMarkService.h"
 
 #include <juce_cryptography/juce_cryptography.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <future>
 #include <iostream>
 #include <memory>
+#include <optional>
 
 namespace
 {
@@ -23,18 +28,21 @@ struct ScopedTestDirectory
     bool ready = false;
 };
 
-bool writeTone(const juce::File& file, float amplitude, double seconds = 2.0)
+bool writeTone(const juce::File& file, float amplitude, double seconds = 2.0,
+               int channels = 1)
 {
     constexpr double sampleRate = 48000.0;
     const auto sampleCount = static_cast<int>(sampleRate * seconds);
-    juce::AudioBuffer<float> source(1, sampleCount);
+    juce::AudioBuffer<float> source(channels, sampleCount);
     for (int sample = 0; sample < sampleCount; ++sample)
-        source.setSample(0, sample, amplitude * std::sin(
-            juce::MathConstants<double>::twoPi * 220.0 * sample / sampleRate));
+        for (int channel = 0; channel < channels; ++channel)
+            source.setSample(channel, sample, amplitude * std::sin(
+                juce::MathConstants<double>::twoPi * (220.0 + channel * 30.0)
+                    * sample / sampleRate));
     auto stream = file.createOutputStream();
     juce::WavAudioFormat format;
     auto writer = std::unique_ptr<juce::AudioFormatWriter>(
-        format.createWriterFor(stream.release(), sampleRate, 1, 24, {}, 0));
+        format.createWriterFor(stream.release(), sampleRate, channels, 24, {}, 0));
     return writer != nullptr && writer->writeFromAudioSampleBuffer(source, 0, sampleCount);
 }
 
@@ -67,6 +75,19 @@ double rmsAt(const WavReadback& wav, double seconds, double windowSeconds = 0.1)
 bool approximately(double value, double expected, double tolerance)
 {
     return std::abs(value - expected) <= tolerance;
+}
+
+template <typename Future>
+bool waitWhileDispatching(Future& future, int timeoutMilliseconds)
+{
+    const auto deadline = juce::Time::getMillisecondCounter() + timeoutMilliseconds;
+    while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+    {
+        if (juce::Time::getMillisecondCounter() >= deadline)
+            return false;
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(10);
+    }
+    return true;
 }
 
 int fail(int code, const juce::String& message)
@@ -112,6 +133,80 @@ bool tamperAudioData(const juce::File& source, const juce::File& destination)
     }
     return false;
 }
+
+bool removeC2paChunk(const juce::File& source, const juce::File& destination)
+{
+    juce::MemoryBlock bytes;
+    if (! source.loadFileAsData(bytes) || bytes.getSize() < 12)
+        return false;
+    const auto* data = static_cast<const std::uint8_t*>(bytes.getData());
+    if (std::memcmp(data, "RIFF", 4) != 0 || std::memcmp(data + 8, "WAVE", 4) != 0)
+        return false;
+    juce::MemoryOutputStream body;
+    body.write("WAVE", 4);
+    std::size_t offset = 12;
+    while (offset + 8 <= bytes.getSize())
+    {
+        const auto size = static_cast<std::uint32_t>(data[offset + 4])
+            | (static_cast<std::uint32_t>(data[offset + 5]) << 8)
+            | (static_cast<std::uint32_t>(data[offset + 6]) << 16)
+            | (static_cast<std::uint32_t>(data[offset + 7]) << 24);
+        const auto total = static_cast<std::size_t>(8 + size + (size & 1u));
+        if (offset + total > bytes.getSize()) return false;
+        const auto isC2pa = std::tolower(data[offset]) == 'c'
+            && data[offset + 1] == '2' && std::tolower(data[offset + 2]) == 'p'
+            && std::tolower(data[offset + 3]) == 'a';
+        if (! isC2pa) body.write(data + offset, total);
+        offset += total;
+    }
+    juce::MemoryOutputStream output;
+    output.write("RIFF", 4);
+    const auto bodySize = static_cast<std::uint32_t>(body.getDataSize());
+    output.writeByte(static_cast<char>(bodySize & 0xff));
+    output.writeByte(static_cast<char>((bodySize >> 8) & 0xff));
+    output.writeByte(static_cast<char>((bodySize >> 16) & 0xff));
+    output.writeByte(static_cast<char>((bodySize >> 24) & 0xff));
+    output.write(body.getData(), body.getDataSize());
+    return destination.replaceWithData(output.getData(), output.getDataSize());
+}
+
+class FakeWatermarkService final : public c2paseq::WatermarkService
+{
+public:
+    bool isAvailable() const override { return available; }
+    juce::String statusDescription() const override
+    {
+        return available ? "Ready (deterministic test double)" : "Setup required";
+    }
+    juce::Result embed(const juce::File& input, const juce::File& output,
+                       const c2paseq::SoftBindingPayload& payload,
+                       c2paseq::WatermarkEmbedResult& details,
+                       const std::function<bool()>& shouldCancel = {}) override
+    {
+        events.push_back("embed");
+        embedded = payload;
+        for (int wait = 0; wait < delayMilliseconds; wait += 10)
+        {
+            if (shouldCancel && shouldCancel())
+                return juce::Result::fail("Export cancelled during deterministic embed");
+            juce::Thread::sleep(10);
+        }
+        if (! input.copyFileTo(output)) return juce::Result::fail("fake embed copy failed");
+        WavReadback wav;
+        if (! readWav(output, wav)) return juce::Result::fail("fake embed readback failed");
+        details.elapsedSeconds = delayMilliseconds / 1000.0;
+        details.sampleRate = static_cast<int>(wav.reader->sampleRate);
+        details.channels = static_cast<int>(wav.reader->numChannels);
+        details.bitsPerSample = static_cast<int>(wav.reader->bitsPerSample);
+        details.frames = wav.reader->lengthInSamples;
+        return juce::Result::ok();
+    }
+
+    bool available = true;
+    int delayMilliseconds = 0;
+    std::optional<c2paseq::SoftBindingPayload> embedded;
+    std::vector<juce::String> events;
+};
 }
 
 int main()
@@ -183,6 +278,9 @@ int main()
         || ! occlusion.credentialsAttached || ! occlusion.credentialsValidated)
         return fail(6, "authenticated occlusion export failed: "
             + occlusion.result.getErrorMessage());
+    if (occlusion.softBindingEnabled
+        || occlusion.outputProvenance.rawManifestJson.contains("c2pa.soft-binding"))
+        return fail(6, "disabled AudioWMark path changed the existing export manifest");
     WavReadback first;
     if (! readWav(occlusionFile, first) || first.reader->numChannels != 2
         || first.reader->bitsPerSample != 24)
@@ -305,13 +403,180 @@ int main()
     if (tamperedInspection.assetIntact)
         return fail(22, "tampered protected audio still reported intact");
 
+    const auto softConfiguration = temporary.root.getChildFile("soft-signing-configuration");
+    const auto softOutboxDirectory = temporary.root.getChildFile("soft-binding-outbox");
+    auto fake = std::make_unique<FakeWatermarkService>();
+    auto* fakePtr = fake.get();
+    c2paseq::AudioEngine softEngine(
+        std::make_unique<c2paseq::ConformanceTestSigningProvider>(
+            softConfiguration, false),
+        temporary.root.getChildFile("soft-vst3-cache.xml"), false,
+        std::move(fake), softOutboxDirectory);
+    if (softEngine.configureSigningCredential(testBundle).failed())
+        return fail(23, "could not configure soft-binding signing fixture");
+    const auto softProject = temporary.root.getChildFile("Soft Binding.c2paseq");
+    if (softEngine.createProject(softProject, "Soft Binding").failed()
+        || softEngine.importAudio(sourceA, 0, 0.0).failed())
+        return fail(24, "could not create deterministic soft-binding arrangement");
+    softEngine.setSoftBindingEnabled(true);
+    fakePtr->events.clear();
+    fakePtr->delayMilliseconds = 150;
+    const auto softSigned = temporary.root.getChildFile("soft-signed.wav");
+    std::atomic_bool workerStarted { false };
+    auto softFuture = std::async(std::launch::async, [&]
+    {
+        workerStarted.store(true);
+        return softEngine.exportMix(softSigned);
+    });
+    while (! workerStarted.load()) juce::Thread::yield();
+    if (softFuture.wait_for(std::chrono::milliseconds(25)) != std::future_status::timeout)
+        return fail(25, "background export fixture did not exercise a responsive wait");
+    if (! waitWhileDispatching(softFuture, 30000))
+        return fail(25, "background export did not complete while the UI loop remained responsive");
+    const auto softResult = softFuture.get();
+    if (softResult.result.failed() || ! softResult.softBindingEnabled
+        || ! softResult.audioPropertiesVerified
+        || softResult.softBindingPayloadHex.length() != 32
+        || fakePtr->events.size() != 1 || fakePtr->events[0] != "embed")
+        return fail(26, "soft-binding export ordering failed: "
+            + softResult.result.getErrorMessage());
+    const auto expectedPayload = c2paseq::SoftBindingPayload::fromHex(
+        softResult.softBindingPayloadHex);
+    if (! expectedPayload.has_value()
+        || ! softResult.outputProvenance.rawManifestJson.contains("c2pa.watermarked.bound")
+        || ! softResult.outputProvenance.rawManifestJson.contains("c2pa.soft-binding")
+        || ! softResult.outputProvenance.rawManifestJson.contains(
+            c2paseq::audioWMarkAlgorithm.data())
+        || ! c2paseq::ProvenanceService::hasMatchingSoftBinding(
+            softResult.outputProvenance, *expectedPayload))
+        return fail(27, "signed manifest did not contain exact AudioWMark C2PA assertions");
+    const auto package = softOutboxDirectory.getChildFile(softResult.softBindingPayloadHex);
+    const auto binding = juce::JSON::parse(
+        package.getChildFile("binding.json").loadFileAsString());
+    if (! package.isDirectory() || ! package.getChildFile("manifest.c2pa").existsAsFile()
+        || ! binding.isObject()
+        || binding["algorithm"].toString() != c2paseq::audioWMarkAlgorithm.data()
+        || binding["value"].toString() != softResult.softBindingPayloadHex
+        || binding["manifestId"].toString() != softResult.softBindingManifestId)
+        return fail(28, "export did not publish a complete exact-manifest outbox package");
+    WavReadback softWav;
+    if (! readWav(softSigned, softWav) || softWav.reader->numChannels != 2
+        || softWav.reader->sampleRate != first.reader->sampleRate
+        || ! approximately(softWav.reader->lengthInSamples / softWav.reader->sampleRate,
+                           2.0, 0.02))
+        return fail(29, "soft-binding export did not preserve stereo/native-rate duration");
+
+    const auto cancelledFile = temporary.root.getChildFile("cancelled-soft-binding.wav");
+    std::atomic_bool cancel { false };
+    auto cancelFuture = std::async(std::launch::async, [&]
+    {
+        return softEngine.exportMix(cancelledFile, {}, [&] { return cancel.load(); });
+    });
+    juce::Thread::sleep(25);
+    cancel.store(true);
+    if (! waitWhileDispatching(cancelFuture, 30000))
+        return fail(30, "cancelled background export did not return promptly");
+    const auto cancelled = cancelFuture.get();
+    if (cancelled.result.wasOk() || cancelledFile.existsAsFile()
+        || cancelled.stage != c2paseq::ExportStage::cancelled)
+        return fail(30, "cancelled background export did not fail closed");
+
+    if (juce::SystemStats::getEnvironmentVariable(
+            "C2PASEQ_RUN_REAL_AUDIOWMARK_TEST", {}) == "1")
+    {
+        const auto realInput = temporary.root.getChildFile("real-audiowmark-input.wav");
+        const auto realOutput = temporary.root.getChildFile("real-audiowmark-signed.wav");
+        const auto derivative = temporary.root.getChildFile("real-audiowmark-derivative.wav");
+        const auto realOutbox = temporary.root.getChildFile("real-audiowmark-outbox");
+        const auto resolverRepository = temporary.root.getChildFile("real-resolver-repository");
+        if (! writeTone(realInput, 0.1f, 10.0, 2))
+            return fail(31, "could not prepare real AudioWMark fixture");
+        c2paseq::AudioEngine realEngine(
+            std::make_unique<c2paseq::ConformanceTestSigningProvider>(
+                temporary.root.getChildFile("real-signing"), false),
+            temporary.root.getChildFile("real-vst3-cache.xml"), false, {}, realOutbox);
+        if (realEngine.configureSigningCredential(testBundle).failed()
+            || realEngine.createProject(
+                temporary.root.getChildFile("Real AudioWMark.c2paseq"), "Real AudioWMark").failed()
+            || realEngine.importAudio(realInput, 0, 0.0).failed())
+            return fail(31, "could not prepare real AudioWMark export project");
+        realEngine.setSoftBindingEnabled(true);
+        const auto realResult = realEngine.exportMix(realOutput);
+        WavReadback realAudio;
+        if (realResult.result.failed() || ! realResult.credentialsValidated
+            || ! realResult.audioPropertiesVerified || ! readWav(realOutput, realAudio)
+            || realAudio.reader->numChannels != 2 || realAudio.reader->bitsPerSample != 24
+            || ! approximately(realAudio.reader->lengthInSamples
+                    / realAudio.reader->sampleRate, 10.0, 0.02)
+            || realResult.softBindingPayloadHex.length() != 32)
+            return fail(32, "real AudioWMark signed export failed: "
+                + realResult.result.getErrorMessage());
+        if (! removeC2paChunk(realOutput, derivative)
+            || realEngine.inspectProvenance(derivative).c2paPresent)
+            return fail(32, "could not create the manifestless real-watermark derivative");
+        juce::ChildProcess resolverCheck;
+        const juce::StringArray command {
+            "python3",
+            juce::File(C2PASEQ_SOURCE_DIR).getChildFile(
+                "tools/softbinding-resolver/integration_check.py").getFullPathName(),
+            "--outbox", realOutbox.getFullPathName(),
+            "--repository", resolverRepository.getFullPathName(),
+            "--audio", derivative.getFullPathName(),
+            "--value", realResult.softBindingPayloadHex,
+            "--manifest-id", realResult.softBindingManifestId
+        };
+        if (! resolverCheck.start(command)
+            || ! resolverCheck.waitForProcessToFinish(30000)
+            || resolverCheck.getExitCode() != 0)
+            return fail(32, "external resolver integration failed: "
+                + resolverCheck.readAllProcessOutput());
+        std::cout << "real AudioWMark: signed export, manifestless derivative, exact 128-bit "
+                     "decode, resolver lookup, and exact manifest retrieval passed\n";
+    }
+
+    if (juce::SystemStats::getEnvironmentVariable(
+            "C2PASEQ_RUN_AUDIOWMARK_BENCHMARK", {}) == "1")
+    {
+        std::cout << "| Audio duration | Render | AudioWMark embed | C2PA sign/validate | Total |\n"
+                     "|---:|---:|---:|---:|---:|\n";
+        for (const auto duration : { 10, 60, 180 })
+        {
+            const auto prefix = "benchmark-" + juce::String(duration);
+            const auto input = temporary.root.getChildFile(prefix + "-input.wav");
+            const auto output = temporary.root.getChildFile(prefix + "-output.wav");
+            if (! writeTone(input, 0.1f, duration, 2))
+                return fail(34, "could not create AudioWMark benchmark source");
+            c2paseq::AudioEngine benchmarkEngine(
+                std::make_unique<c2paseq::ConformanceTestSigningProvider>(
+                    temporary.root.getChildFile(prefix + "-signing"), false),
+                temporary.root.getChildFile(prefix + "-vst3-cache.xml"), false, {},
+                temporary.root.getChildFile(prefix + "-outbox"));
+            if (benchmarkEngine.configureSigningCredential(testBundle).failed()
+                || benchmarkEngine.createProject(
+                    temporary.root.getChildFile(prefix + ".c2paseq"), prefix).failed()
+                || benchmarkEngine.importAudio(input, 0, 0.0).failed())
+                return fail(35, "could not prepare AudioWMark benchmark project");
+            benchmarkEngine.setSoftBindingEnabled(true);
+            const auto result = benchmarkEngine.exportMix(output);
+            if (result.result.failed() || ! result.credentialsValidated
+                || ! result.audioPropertiesVerified)
+                return fail(36, "AudioWMark benchmark export failed: "
+                    + result.result.getErrorMessage());
+            std::cout << "| " << duration << " s | " << result.renderSeconds << " s | "
+                      << result.watermarkEmbedSeconds << " s | "
+                      << result.signingAndValidationSeconds << " s | "
+                      << result.totalSeconds << " s |\n";
+        }
+    }
+
     const auto example = juce::SystemStats::getEnvironmentVariable(
         "C2PASEQ_EXAMPLE_SIGNED_WAV", {});
     if (example.isNotEmpty() && ! signedFile.copyFileTo(juce::File(example)))
-        return fail(23, "could not preserve requested example signed WAV");
+        return fail(33, "could not preserve requested example signed WAV");
 
     std::cout << "export pipeline: stereo 24-bit render, timing, duration, same-track "
                  "occlusion, multitrack mix, exact/mixed ingredients, mandatory signing, "
-                 "reimport, persistence, reopen, and tamper detection passed\n";
+                 "reimport, persistence, tamper detection, 128-bit soft-binding embed, "
+                 "responsive worker execution, cancellation, and exact outbox publication passed\n";
     return 0;
 }

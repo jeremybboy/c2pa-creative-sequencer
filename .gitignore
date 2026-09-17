@@ -13,3 +13,5 @@ DerivedData/
 *.crt
 c2pa-test-signing-bundle*.zip
 /local/
+__pycache__/
+*.pyc
