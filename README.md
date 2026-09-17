@@ -53,3 +53,8 @@ Each track header has a **+ VST** control. Choose **Scan VST3** explicitly to in
 The POC still has no recording, MIDI/instrument hosting, warping, time stretching, automation, plug-in chains, advanced routing, plug-in sandboxing, or detailed plug-in/edit provenance. `io.github.jeremybboy.audiowmark.1` is an experimental project identifier, not an official C2PA SBAL registration; the resolver is SBR-inspired, not a conformant or production trust service, and recovery never proves the derivative satisfies the original hard binding. The supplied C2PA Conformance credential is a **test credential only**, not the future production identity; external trust recognition depends on the verifier's trust configuration. The private PEM is stored outside projects and Git at `~/Library/Application Support/C2PA Creative Sequencer/Signing/signing-bundle.pem` with mode `0600` inside a `0700` directory. Added Places are machine-local, imported media is copied byte-for-byte into `Media/`, and editing remains non-destructive. On one track, a later clip has priority in overlaps; different tracks mix normally, and export uses that same arrangement.
 
 <img width="1536" height="1024" alt="Evolution_Build_C2PA_DAW" src="https://github.com/user-attachments/assets/e24c84d3-37cb-4d3a-8b19-58ef5cd38e3a" />
+
+
+
+<img width="1536" height="1024" alt="ChatGPT Image Sep 16, 2026, 09_53_25 PM" src="https://github.com/user-attachments/assets/7824ae5b-dd52-4cc9-ada5-1ba9cf59d014" />
+
