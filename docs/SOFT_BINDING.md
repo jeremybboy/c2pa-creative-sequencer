@@ -1,77 +1,59 @@
 # Audio Soft-Binding Authoring and Recovery Demo
 
-PR 011 separates the claim generator from the recovery consumer. It is a local architecture
-demonstration, not a production C2PA Soft Binding Resolution Service and not a claim of C2PA SBR
-API conformance.
+This is a local, SBR-inspired architecture experiment, not a production resolver and not a claim of C2PA SBR conformance. Watermark and fingerprint discovery share one exact manifest repository but are deliberately different:
+
+- **Watermark:** something is added to the content. AudioWMark embeds a random 128-bit lookup identifier; recovery decodes it and performs exact repository membership lookup.
+- **Fingerprint:** something is calculated from the content. audfprint derives acoustic landmarks; recovery performs a similarity search against registered references.
 
 ```text
-AUTHORING SIDE
-Creative Sequencer -> render -> AudioWMark embed -> C2PA soft-binding assertion
-                   -> C2PA sign/embed -----> signed WAV
-                                      `----> publication outbox
-                                             (binding + exact .c2pa)
+AUTHORING
+Sequencer -> render -> [optional AudioWMark embed] -> verify audio
+          -> fingerprint final audio essence -> C2PA soft-binding assertion(s)
+          -> sign/embed -> validate -> signed WAV + publication outbox
 
-RECOVERY SIDE
-Manifestless derivative -> browser -> POST /matches/byContent -> local resolver
-                                                               |- AudioWMark decode
-                                                               `- exact binding lookup
-                                         -> manifest repository -> recovered .c2pa
+RECOVERY — WATERMARK
+Derivative -> AudioWMark decoder -> exact identifier lookup -> manifest repository -> .c2pa
+
+RECOVERY — FINGERPRINT
+Derivative -> audfprint landmarks -> similarity index -> manifest repository -> .c2pa
 ```
 
-## Authoring side
+## External runtimes
 
-Run `scripts/setup_audiowmark.sh` once. It builds AudioWMark 0.6.5 at commit
-`c204998c92931285efdf6670c81cefd199298895` outside the repository and app bundle under:
+Run `scripts/setup_audiowmark.sh` and `scripts/setup_audfprint.sh`. The pinned runtimes live outside Git and the app bundle under Application Support. AudioWMark 0.6.5 (`c204998c92931285efdf6670c81cefd199298895`) is GPL-3.0-or-later. dpwe/audfprint (`cb03ba99feafd41b8874307f0f4e808a6ce34362`) is MIT-licensed and uses FFmpeg, NumPy, and SciPy. Neither implementation is linked into the Sequencer or used on its realtime audio thread.
+
+The experimental identifiers are `io.github.jeremybboy.audiowmark.1` and `io.github.jeremybboy.audfprint.1`; neither is an official C2PA SBAL registration. C2PA 2.4 assigns one `alg` to a soft-binding assertion, so the app emits separate `c2pa.soft-binding` assertions for the two algorithms. Only a real watermark adds `c2pa.watermarked.bound`; there is no invented fingerprint action.
+
+## Export and publication
+
+With both controls enabled, the worker-thread sequence is:
 
 ```text
-~/Library/Application Support/C2PA Creative Sequencer/AudioWMark/
+render stereo WAV -> AudioWMark embed -> verify stereo/rate/duration/24-bit
+-> compute audfprint .afpt from watermarked PCM -> construct assertions
+-> C2PA sign/embed -> reopen/validate -> publish -> atomic final WAV commit
 ```
 
-AudioWMark is GPL-3.0-or-later. The Sequencer does not link it; `AudioWMarkService` invokes its
-native executable as an external process. Enabled export generates 16 random bytes, represents
-them as 32 lowercase hexadecimal characters, and performs exactly one watermark operation:
-`audiowmark add`. The experimental identifier is
-`io.github.jeremybboy.audiowmark.1`; it is **not** an official C2PA Soft Binding Algorithm List
-registration.
+Signing changes container metadata after the fingerprint is calculated; it does not alter PCM. With only fingerprint enabled, render goes directly to fingerprinting. With neither enabled, the pre-existing signed export behavior is unchanged.
 
-The background export sequence is render -> watermark embed -> format verification -> create
-the C2PA 2.4 `blocks` soft-binding assertion and `c2pa.watermarked.bound` action -> sign/embed ->
-reopen/validate -> publish -> atomically commit. The final WAV remains stereo, 24-bit, at the
-render sample rate and duration. No watermark decode occurs in production export and PCM is not
-changed after signing.
-
-After signing, the Sequencer writes the exact manifest-store bytes returned by `c2pa-cpp`:
+Version-2 publication packages remain backward-compatible with PR 011:
 
 ```text
-~/Library/Application Support/C2PA Creative Sequencer/SoftBindingOutbox/<binding-id>/
-  manifest.c2pa
-  binding.json
+SoftBindingOutbox/<publication-id>/
+  manifest.c2pa              exact bytes returned by c2pa-cpp
+  binding.json               versioned list of bindings; legacy watermark fields retained
+  fingerprint.json           audfprint profile, commit, hash count, registration value
+  fingerprint-data.afpt      landmark hashes only
 ```
 
-The package contains no key, PEM, audio, or project media. It is a publisher handoff, not the
-resolver repository.
+Packages contain no WAV, project media, private key, or PEM. The fingerprint value in the C2PA assertion is the SHA-256 identifier of the exact `.afpt` registration bytes; similarity comes from audfprint's aligned landmark search, not from comparing that identifier.
 
-## Recovery side
+## Resolver and matching rule
 
-The independent resolver owns:
+Start `python3 tools/softbinding-resolver/server.py` and open `http://127.0.0.1:8787`. `/watermark` uses exact identifier lookup; `/fingerprint` uses a separate audfprint database. Both import the same outbox idempotently and return exact bytes from `repository/manifests/`.
 
-```text
-~/Library/Application Support/C2PA Soft Binding Demo/repository/
-  index.json
-  manifests/<sha256>.c2pa
-```
+The fingerprint acceptance rule is fixed at **at least 10 time-aligned landmark hashes** using audfprint's exact-count matcher. The UI also reports raw common hashes, query hash count, query coverage, offset, and matched time support. The threshold is stricter than audfprint's default 5 and was selected before the MP3 result; it was not lowered to make the test pass. A match can be false-positive evidence and a non-match can be a false negative; neither is cryptographic verification.
 
-Start it with `python3 tools/softbinding-resolver/server.py`, open
-`http://127.0.0.1:8787`, import Sequencer publications, and drop a derivative into the browser.
-The service runs `audiowmark get`, checks every 128-bit candidate against its repository, and
-reports recovery only on exact membership. It implements `POST /manifests`, `POST /bindings`,
-`POST /matches/byContent`, `POST /imports/sequencer`, `GET /matches/byBinding`,
-`GET /manifests/{manifestId}`, and `GET /services/supportedAlgorithms`.
+Measured opt-in result on 2026-09-18: a signed, watermarked, fingerprinted 12-second WAV was transcoded with libmp3lame at 192 kbps. The MP3 matched with **229 aligned hashes**, 265 raw common hashes, 659 query hashes, 34.75% query coverage, and 10.52 seconds of support. Exact manifest bytes were recovered. Deterministic unrelated noise returned zero matches. On that same MP3, AudioWMark decoded eight candidates but none matched the registered identifier; its failure is reported rather than hidden or retuned.
 
-AudioWMark can emit false candidate patterns. The first candidate is never treated as
-provenance; only a repository match counts. A recovered signed manifest remains evidence linked
-through a soft binding: the derivative has not passed the original asset's cryptographic hard
-binding. A future production publisher can replace the local outbox with remote
-`POST /manifests` and `POST /bindings` without changing the Sequencer's provenance semantics.
-
-See `docs/BENCHMARKS.md` for measured export timings and `docs/DEMO.md` for acceptance steps.
+Recovery wording is intentionally limited: **Content Credentials recovered via audio fingerprint** or **Content Credentials recovered via audio watermark**. The derivative has not passed the original asset's cryptographic hard binding.

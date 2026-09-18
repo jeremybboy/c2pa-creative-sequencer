@@ -5,7 +5,7 @@ import pathlib
 import tempfile
 import threading
 
-from constants import ALGORITHM
+from constants import ALGORITHM, FINGERPRINT_ALGORITHM
 
 
 def default_repository_root():
@@ -24,12 +24,21 @@ class Repository:
     def __init__(self, root=None):
         self.root = pathlib.Path(root or default_repository_root())
         self.manifests = self.root / "manifests"
+        self.fingerprints = self.root / "fingerprints"
         self.index_path = self.root / "index.json"
         self.lock = threading.RLock()
         self.root.mkdir(parents=True, exist_ok=True)
         self.manifests.mkdir(parents=True, exist_ok=True)
+        self.fingerprints.mkdir(parents=True, exist_ok=True)
         if not self.index_path.exists():
-            self._write({"version": 1, "manifests": {}, "bindings": {}, "imports": {}})
+            self._write({"version": 2, "manifests": {}, "bindings": {},
+                         "fingerprints": {}, "imports": {}})
+        else:
+            data = self._read()
+            if "fingerprints" not in data:
+                data["fingerprints"] = {}
+                data["version"] = 2
+                self._write(data)
 
     def _read(self):
         try:
@@ -39,6 +48,7 @@ class Repository:
         for key in ("manifests", "bindings", "imports"):
             if not isinstance(data.get(key), dict):
                 raise ValueError(f"resolver repository index has no {key} map")
+        data.setdefault("fingerprints", {})
         return data
 
     def _write(self, data):
@@ -103,6 +113,47 @@ class Repository:
         with self.lock:
             return list(self._read()["bindings"].get(key, []))
 
+    def add_fingerprint(self, algorithm, value, manifest_id, artifact, metadata=None):
+        value = value.lower()
+        artifact = pathlib.Path(artifact)
+        if algorithm != FINGERPRINT_ALGORITHM or len(value) != 64:
+            raise ValueError("unsupported fingerprint algorithm or value")
+        data = artifact.read_bytes()
+        if hashlib.sha256(data).hexdigest() != value or not data.startswith(b"audfprinthashV00"):
+            raise ValueError("fingerprint artifact does not match its registration value")
+        registration_id = hashlib.sha256(f"{manifest_id}:{value}".encode()).hexdigest()
+        destination = self.fingerprints / f"{registration_id}.afpt"
+        with self.lock:
+            index = self._read()
+            if manifest_id not in index["manifests"]:
+                raise ValueError("fingerprint references an unknown manifest")
+            if not destination.exists():
+                destination.write_bytes(data)
+            key = f"{algorithm}:{value}"
+            entries = index["fingerprints"].setdefault(key, [])
+            entry = {
+                "registrationId": registration_id,
+                "manifestId": manifest_id,
+                "value": value,
+                "algorithm": algorithm,
+                "path": f"fingerprints/{destination.name}",
+                "metadata": metadata or {},
+            }
+            if not any(item.get("registrationId") == registration_id for item in entries):
+                entries.append(entry)
+            self._write(index)
+
+    def fingerprint_registrations(self):
+        with self.lock:
+            return [item for entries in self._read()["fingerprints"].values()
+                    for item in entries]
+
+    def fingerprint_registration(self, registration_id):
+        for item in self.fingerprint_registrations():
+            if item.get("registrationId") == registration_id:
+                return item
+        return None
+
     def get_manifest(self, manifest_id):
         with self.lock:
             entry = self._read()["manifests"].get(manifest_id)
@@ -123,19 +174,31 @@ class Repository:
             try:
                 binding = json.loads((package / "binding.json").read_text())
                 manifest = (package / binding.get("manifestFile", "manifest.c2pa")).read_bytes()
-                fingerprint = hashlib.sha256(
-                    (package / "binding.json").read_bytes() + manifest
-                ).hexdigest()
+                package_bytes = (package / "binding.json").read_bytes() + manifest
+                for optional in ("fingerprint.json", "fingerprint-data.afpt"):
+                    if (package / optional).exists():
+                        package_bytes += (package / optional).read_bytes()
+                fingerprint = hashlib.sha256(package_bytes).hexdigest()
                 with self.lock:
                     index = self._read()
                     if index["imports"].get(str(package)) == fingerprint:
                         result["alreadyImported"] += 1
                         continue
-                algorithm = binding.get("algorithm", "")
-                value = binding.get("value", "").lower()
                 manifest_id = binding.get("manifestId", "")
                 self.store_manifest(manifest, manifest_id)
-                self.add_binding(algorithm, value, manifest_id, binding)
+                bindings = binding.get("bindings")
+                if not isinstance(bindings, list):
+                    bindings = [{"type": "watermark", "algorithm": binding.get("algorithm", ""),
+                                 "value": binding.get("value", "")}]
+                for item in bindings:
+                    algorithm = item.get("algorithm", "")
+                    value = item.get("value", "").lower()
+                    if item.get("type") == "fingerprint":
+                        registration_file = item.get("registrationFile", "fingerprint-data.afpt")
+                        self.add_fingerprint(algorithm, value, manifest_id,
+                                             package / registration_file, binding)
+                    elif item.get("type") == "watermark":
+                        self.add_binding(algorithm, value, manifest_id, binding)
                 with self.lock:
                     index = self._read()
                     index["imports"][str(package)] = fingerprint

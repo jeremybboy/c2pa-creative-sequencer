@@ -9,6 +9,7 @@ class ProvenanceService;
 class TracktionAdapter;
 class WatermarkService;
 class SoftBindingOutbox;
+class FingerprintService;
 
 class ExportController final
 {
@@ -17,6 +18,8 @@ public:
                      WatermarkService* watermark = nullptr,
                      SoftBindingOutbox* outbox = nullptr,
                      bool softBindingEnabled = false,
+                     FingerprintService* fingerprint = nullptr,
+                     bool fingerprintEnabled = false,
                      ExportProgressCallback progress = {},
                      ExportCancellationCheck shouldCancel = {});
 
@@ -30,6 +33,8 @@ private:
     WatermarkService* watermarkService = nullptr;
     SoftBindingOutbox* publicationOutbox = nullptr;
     bool useSoftBinding = false;
+    FingerprintService* fingerprintService = nullptr;
+    bool useFingerprint = false;
     ExportProgressCallback progressCallback;
     ExportCancellationCheck cancellationCheck;
 };

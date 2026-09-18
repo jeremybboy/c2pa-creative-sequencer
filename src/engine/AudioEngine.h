@@ -5,6 +5,7 @@
 #include "export/ExportResult.h"
 #include "provenance/ProvenanceService.h"
 #include "plugins/PluginHost.h"
+#include "fingerprint/AudfprintService.h"
 #include "watermark/AudioWMarkService.h"
 #include "watermark/SoftBindingOutbox.h"
 
@@ -19,7 +20,8 @@ public:
                          juce::File pluginCacheFile = {},
                          bool showPluginWindows = true,
                          std::unique_ptr<WatermarkService> watermarkService = {},
-                         juce::File softBindingOutboxDirectory = {});
+                         juce::File softBindingOutboxDirectory = {},
+                         std::unique_ptr<FingerprintService> fingerprintService = {});
 
     [[nodiscard]] bool isInitialised() const noexcept;
     [[nodiscard]] juce::String status() const;
@@ -72,6 +74,9 @@ public:
     void setSoftBindingEnabled(bool enabled) noexcept;
     [[nodiscard]] bool softBindingEnabled() const noexcept;
     [[nodiscard]] juce::String watermarkStatus() const;
+    void setFingerprintEnabled(bool enabled) noexcept;
+    [[nodiscard]] bool fingerprintEnabled() const noexcept;
+    [[nodiscard]] juce::String fingerprintStatus() const;
     [[nodiscard]] ExportResult exportMix(
         const juce::File& destination,
         ExportProgressCallback progress = {},
@@ -88,9 +93,11 @@ private:
     TracktionAdapter tracktion;
     ProvenanceService provenance;
     std::unique_ptr<WatermarkService> watermark;
+    std::unique_ptr<FingerprintService> fingerprint;
     SoftBindingOutbox softBindingOutbox;
     ProjectEngine projectEngine;
     PluginHost pluginHost;
     bool useSoftBinding = false;
+    bool useFingerprint = false;
 };
 }

@@ -26,10 +26,13 @@ public:
                                        const std::vector<ContributingIngredient>& ingredients,
                                        const juce::String& outputTitle,
                                        IngredientInfo& validation,
-                                       const std::optional<SoftBindingClaim>& softBinding = {},
+                                       const std::vector<SoftBindingClaim>& softBindings = {},
                                        std::vector<std::uint8_t>* manifestStore = nullptr) const;
     [[nodiscard]] static bool hasMatchingSoftBinding(
         const IngredientInfo&, const SoftBindingPayload&);
+    [[nodiscard]] static bool hasMatchingSoftBinding(
+        const IngredientInfo&, const juce::String& algorithm,
+        const std::vector<std::uint8_t>& value);
 
 private:
     std::unique_ptr<SigningProvider> signingProvider;

@@ -12,6 +12,7 @@ enum class ExportStage
     planning,
     audioRender,
     watermarkEmbedding,
+    fingerprintComputation,
     signingConfiguration,
     creatingContentCredentials,
     signingAndEmbedding,
@@ -34,12 +35,15 @@ struct ExportResult
     bool credentialsValidated = false;
     bool externallyTrusted = false;
     bool softBindingEnabled = false;
+    bool fingerprintEnabled = false;
     bool audioPropertiesVerified = false;
     juce::String softBindingPayloadHex;
     juce::String softBindingManifestId;
+    juce::String fingerprintValueHex;
     juce::File publicationPackage;
     double renderSeconds = 0.0;
     double watermarkEmbedSeconds = 0.0;
+    double fingerprintSeconds = 0.0;
     double signingAndValidationSeconds = 0.0;
     double publicationSeconds = 0.0;
     double totalSeconds = 0.0;

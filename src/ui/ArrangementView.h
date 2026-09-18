@@ -101,6 +101,7 @@ private:
     juce::TextButton credentialsButton { "Credentials" };
     juce::TextButton signingButton { "Signing" };
     juce::TextButton audioSoftBindingButton { "Audio SB" };
+    juce::TextButton fingerprintButton { "FP SB" };
     juce::TextButton undoButton { "Undo" };
     juce::TextButton redoButton { "Redo" };
     juce::TextButton playPause { "Play" };

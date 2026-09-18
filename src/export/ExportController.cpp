@@ -1,6 +1,7 @@
 #include "ExportController.h"
 
 #include "app/AppInfo.h"
+#include "fingerprint/FingerprintService.h"
 #include "provenance/ProvenanceService.h"
 #include "watermark/SoftBindingOutbox.h"
 #include "watermark/WatermarkService.h"
@@ -13,6 +14,19 @@ namespace c2paseq
 {
 namespace
 {
+std::vector<std::uint8_t> bytesFromHex(const juce::String& text)
+{
+    std::vector<std::uint8_t> bytes;
+    if (text.length() % 2 != 0) return bytes;
+    bytes.reserve(static_cast<std::size_t>(text.length() / 2));
+    for (int index = 0; index < text.length(); index += 2)
+    {
+        const auto value = text.substring(index, index + 2).getHexValue32();
+        bytes.push_back(static_cast<std::uint8_t>(value));
+    }
+    return bytes;
+}
+
 struct AudioProperties
 {
     double sampleRate = 0.0;
@@ -38,10 +52,13 @@ ExportController::ExportController(TracktionAdapter& adapter, ProvenanceService&
                                    WatermarkService* watermark,
                                    SoftBindingOutbox* outbox,
                                    bool softBindingEnabled,
+                                   FingerprintService* fingerprint,
+                                   bool fingerprintEnabled,
                                    ExportProgressCallback progress,
                                    ExportCancellationCheck shouldCancel)
     : tracktion(adapter), provenance(service), watermarkService(watermark),
       publicationOutbox(outbox), useSoftBinding(softBindingEnabled),
+      fingerprintService(fingerprint), useFingerprint(fingerprintEnabled),
       progressCallback(std::move(progress)), cancellationCheck(std::move(shouldCancel))
 {
 }
@@ -54,6 +71,7 @@ ExportResult ExportController::exportMix(const Project& project,
     const auto totalStart = juce::Time::getMillisecondCounterHiRes();
     output.outputFile = destination;
     output.softBindingEnabled = useSoftBinding;
+    output.fingerprintEnabled = useFingerprint;
     const auto setStage = [&](ExportStage stage)
     {
         output.stage = stage;
@@ -91,7 +109,8 @@ ExportResult ExportController::exportMix(const Project& project,
 
     juce::TemporaryFile watermarkedRender(destination);
     juce::File signingInput = unsignedRender.getFile();
-    std::optional<SoftBindingClaim> softBinding;
+    std::optional<SoftBindingPayload> watermarkPayload;
+    std::vector<SoftBindingClaim> softBindings;
     if (useSoftBinding)
     {
         if (watermarkService == nullptr || publicationOutbox == nullptr
@@ -146,9 +165,45 @@ ExportResult ExportController::exportMix(const Project& project,
         }
         output.audioPropertiesVerified = true;
         output.softBindingPayloadHex = payload.toHex();
-        softBinding = SoftBindingClaim { payload, 0,
-            static_cast<std::uint64_t>(std::llround(plan.endSeconds * 1000.0)) };
+        watermarkPayload = payload;
+        softBindings.push_back(makeAudioWMarkClaim(payload,
+            static_cast<std::uint64_t>(std::llround(plan.endSeconds * 1000.0))));
         signingInput = watermarkedRender.getFile();
+    }
+
+    juce::TemporaryFile fingerprintArtifact(
+        destination.getSiblingFile(destination.getFileNameWithoutExtension() + ".afpt"));
+    std::optional<FingerprintRegistration> fingerprintRegistration;
+    if (useFingerprint)
+    {
+        if (fingerprintService == nullptr || publicationOutbox == nullptr
+            || ! fingerprintService->isAvailable())
+        {
+            setStage(ExportStage::fingerprintComputation);
+            output.result = juce::Result::fail(fingerprintService != nullptr
+                ? fingerprintService->statusDescription()
+                : "audfprint soft binding is not configured");
+            return output;
+        }
+        setStage(ExportStage::fingerprintComputation);
+        FingerprintRegistration registration;
+        output.result = fingerprintService->compute(signingInput,
+            fingerprintArtifact.getFile(), registration, cancellationCheck);
+        output.fingerprintSeconds = registration.elapsedSeconds;
+        if (cancelled() || output.result.failed()) return output;
+        const auto value = bytesFromHex(registration.valueHex);
+        if (value.size() != 32)
+        {
+            output.result = juce::Result::fail(
+                "audfprint registration did not produce a SHA-256 identifier");
+            return output;
+        }
+        output.fingerprintValueHex = registration.valueHex;
+        softBindings.push_back({ juce::String(audfprintAlgorithm.data()),
+            SoftBindingType::fingerprint, value,
+            SoftBindingScope { 0, static_cast<std::uint64_t>(
+                std::llround(plan.endSeconds * 1000.0)) } });
+        fingerprintRegistration = registration;
     }
 
     juce::TemporaryFile signedRender(destination);
@@ -159,7 +214,7 @@ ExportResult ExportController::exportMix(const Project& project,
     std::vector<std::uint8_t> manifestStore;
     output.result = provenance.signWav(signingInput, signedRender.getFile(),
         plan.ingredients, destination.getFileName(), output.outputProvenance,
-        softBinding, useSoftBinding ? &manifestStore : nullptr);
+        softBindings, ! softBindings.empty() ? &manifestStore : nullptr);
     output.signingAndValidationSeconds =
         (juce::Time::getMillisecondCounterHiRes() - signingStart) / 1000.0;
     if (output.result.failed() || cancelled()) return output;
@@ -168,14 +223,19 @@ ExportResult ExportController::exportMix(const Project& project,
     output.externallyTrusted = output.outputProvenance.status == ProvenanceStatus::valid;
     setStage(ExportStage::finalValidation);
 
-    if (useSoftBinding)
+    if (! softBindings.empty())
     {
         setStage(ExportStage::publicationOutbox);
         const auto publicationStart = juce::Time::getMillisecondCounterHiRes();
         SoftBindingPublication publication;
-        output.result = publicationOutbox->publish(softBinding->payload, manifestStore,
-            destination.getFileName(), juce::String(appInfo::name.data()),
-            output.outputProvenance.activeManifest, publication);
+        SoftBindingPublicationRequest request;
+        request.watermark = watermarkPayload;
+        request.fingerprint = fingerprintRegistration;
+        request.manifestBytes = manifestStore;
+        request.title = destination.getFileName();
+        request.claimGenerator = juce::String(appInfo::name.data());
+        request.activeManifest = output.outputProvenance.activeManifest;
+        output.result = publicationOutbox->publish(request, publication);
         output.publicationSeconds =
             (juce::Time::getMillisecondCounterHiRes() - publicationStart) / 1000.0;
         if (output.result.failed()) return output;

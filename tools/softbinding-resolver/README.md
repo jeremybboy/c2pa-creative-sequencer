@@ -1,45 +1,28 @@
-
-
-<img width="1536" height="1024" alt="ChatGPT Image Sep 16, 2026, 09_59_20 PM" src="https://github.com/user-attachments/assets/e5af6076-f5b8-411b-91dd-4d1bf32e2056" />
-
 # C2PA SBR-Inspired Local Demonstration Service
 
-Soft Binding Resolution
-
-This independent local tool imports Creative Sequencer publication packages, owns a manifest
-repository, decodes AudioWMark candidates, resolves exact binding matches, and serves the browser
-demo. It is not part of the DAW and does not claim complete C2PA SBR API conformance.
+One local resolver imports Creative Sequencer publications, owns one manifest repository, and exposes two distinct discovery pages. It is not part of the Sequencer and does not claim C2PA SBR conformance.
 
 ## Run
 
 ```sh
 ./scripts/setup_audiowmark.sh
+./scripts/setup_audfprint.sh
 python3 tools/softbinding-resolver/server.py
 open http://127.0.0.1:8787
 ```
 
-The server imports the default Sequencer outbox at startup. The browser's **Import Sequencer
-Publications** action can repeat that idempotently. Repository state defaults to
-`~/Library/Application Support/C2PA Soft Binding Demo/repository/`; use `--repository`,
-`--outbox`, or `--audiowmark` to override paths.
+The landing page links to `/watermark` (embedded identifier plus exact lookup) and `/fingerprint` (derived landmarks plus similarity search). Repository state defaults to `~/Library/Application Support/C2PA Soft Binding Demo/repository/`; override it with `--repository`, and override external tools with `--audiowmark` or `--audfprint`.
 
-## Routes
+The shared repository keeps `manifestId -> exact manifest bytes`, a watermark exact index, and a separate audfprint database/registration index. Old PR 011 packages and version-2 packages import idempotently.
 
-- `POST /manifests` stores `application/c2pa` bytes; pass the active identifier in
-  `X-C2PA-Manifest-Id`.
-- `POST /bindings` associates the experimental algorithm and 128-bit value with a manifest.
-- `GET /matches/byBinding?algorithm=...&value=...` returns exact repository matches.
-- `POST /matches/byContent` decodes uploaded audio and returns repository-backed candidates only.
-- `GET /manifests/{manifestId}` returns the exact stored manifest bytes.
-- `GET /services/supportedAlgorithms` reports the experimental supported identifier.
-- `POST /imports/sequencer` imports the filesystem publication outbox.
+Key routes are `POST /imports/sequencer`, `POST /matches/byContent/watermark`, `POST /matches/byContent/fingerprint`, `GET /matches/byBinding`, `GET /manifests/{manifestId}`, and `GET /services/supportedAlgorithms`; the legacy `POST /matches/byContent` remains the watermark route.
 
-AudioWMark can return false candidate patterns, so decoded output alone is never provenance.
-Recovery requires exact repository membership and does not validate the derivative against the
-original manifest's hard binding.
+Fingerprint acceptance requires at least 10 time-aligned audfprint hashes. A decoded watermark candidate or generated fingerprint features alone never cause recovery. Any recovery is soft-binding association evidence, not validation of the derivative against the original hard binding.
 
-Run deterministic tests with:
+Run normal deterministic tests with:
 
 ```sh
-python3 -m unittest discover tools/softbinding-resolver/tests
+python3 -m unittest discover -s tools/softbinding-resolver/tests -v
 ```
+
+The real WAV-to-MP3 integration is opt-in through CMake's `C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST` and `C2PASEQ_ENABLE_REAL_AUDFPRINT_TEST` options because normal CI does not require AudioWMark, audfprint, or FFmpeg.

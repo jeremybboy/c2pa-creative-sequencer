@@ -67,3 +67,17 @@ source selection disagrees with the final audible arrangement.
 
 The opt-in real integration test covers real embed, C2PA signing, metadata-only derivative,
 external decode, exact repository match, idempotent import, and byte-exact manifest retrieval.
+
+## PR 012 fingerprint and MP3 acceptance
+
+1. Run `scripts/setup_audiowmark.sh` and `scripts/setup_audfprint.sh`.
+2. Launch the app, enable **Audio SB** and **FP SB**, then export a signed WAV. Confirm the app remains responsive through **Computing audio fingerprint**.
+3. Verify the WAV's C2PA, then inspect its outbox package: `manifest.c2pa`, `binding.json`, `fingerprint.json`, and `fingerprint-data.afpt` must exist; no WAV, project media, PEM, or key may exist there.
+4. Confirm the manifest has separate AudioWMark and audfprint `c2pa.soft-binding` assertions, one `c2pa.watermarked.bound` action, and no fingerprint action.
+5. Start `python3 tools/softbinding-resolver/server.py`, import once and again, and confirm the second import is idempotent. Check `/watermark` and `/fingerprint` from the same process.
+6. Run `python3 scripts/make_mp3_demo_derivative.py signed.wav derivative.mp3`, then submit the MP3 to both pages.
+7. Fingerprint acceptance requires at least 10 aligned hashes and must show the actual evidence. The verified fixture produced 229 aligned / 265 raw common hashes, 659 query hashes, 34.75% coverage, and 10.52 seconds of support; it recovered the byte-exact manifest.
+8. On the same MP3, AudioWMark decoded eight candidates but none matched the registered value. This measured failure is expected to remain visible.
+9. Submit unrelated audio to `/fingerprint`; the verified deterministic noise control produced zero matches and no provenance recovery.
+
+For automated opt-in acceptance, configure with both `C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST=ON` and `C2PASEQ_ENABLE_REAL_AUDFPRINT_TEST=ON`, then run the `real_mp3_soft_binding_pipeline` CTest. Normal CI remains independent of both runtimes and FFmpeg.
