@@ -8,7 +8,10 @@ SCRIPT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SOURCE_ROOT="${RUNTIME_ROOT}/source/audfprint"
 
 command -v git >/dev/null 2>&1 || { echo "git is required" >&2; exit 1; }
-command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg is required (brew install ffmpeg)" >&2; exit 1; }
+FFMPEG_EXECUTABLE=$(command -v ffmpeg) || {
+    echo "ffmpeg is required (brew install ffmpeg)" >&2
+    exit 1
+}
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 
 mkdir -p "${RUNTIME_ROOT}/source" "${RUNTIME_ROOT}/bin" "${RUNTIME_ROOT}/lib"
@@ -24,5 +27,8 @@ python3 -m venv "${RUNTIME_ROOT}/venv"
     "numpy==2.3.3" "scipy==1.16.2" "docopt==0.6.2" "joblib==1.5.2" "psutil==7.1.0"
 install -m 755 "${SCRIPT_ROOT}/audfprint_helper.py" "${RUNTIME_ROOT}/lib/audfprint_helper.py"
 install -m 755 "${SCRIPT_ROOT}/c2paseq-audfprint" "${RUNTIME_ROOT}/bin/c2paseq-audfprint"
+printf '%s\n' "${FFMPEG_EXECUTABLE}" > "${RUNTIME_ROOT}/ffmpeg-path"
+chmod 644 "${RUNTIME_ROOT}/ffmpeg-path"
 
 echo "audfprint runtime ${COMMIT} ready at ${RUNTIME_ROOT}"
+echo "ffmpeg recorded at ${FFMPEG_EXECUTABLE}"

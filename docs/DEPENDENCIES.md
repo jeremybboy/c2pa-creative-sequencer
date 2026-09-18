@@ -85,6 +85,7 @@ This checkpoint is deliberately deferred while the software remains a private, l
 
 - The official `dpwe/audfprint` repository was pinned at `cb03ba99feafd41b8874307f0f4e808a6ce34362` (2019-09-23). Its landmark-hash implementation is MIT-licensed and reads media through FFmpeg.
 - `scripts/setup_audfprint.sh` installs the source, isolated Python environment, and adapter under `~/Library/Application Support/C2PA Creative Sequencer/Fingerprint/`; nothing is linked or bundled into the app.
+- Setup records the verified absolute FFmpeg executable in that runtime. The external adapter restores only its directory to `PATH`, so Finder-launched exports can decode/downmix/resample audio without relying on a Terminal environment. FFmpeg remains an audfprint runtime dependency, not part of the DAW audio engine or its export format.
 - The setup helper requires Git, Python 3, and FFmpeg, and pins NumPy 2.3.3, SciPy 1.16.2, docopt 0.6.2, joblib 1.5.2, and psutil 7.1.0 inside that isolated environment.
 - The registration artifact is audfprint's binary `.afpt` landmark list, not source audio. `io.github.jeremybboy.audfprint.1` and the SHA-256 identifier of the exact artifact are experimental project conventions, not a registered C2PA algorithm or a conformance claim.
 - C2PA 2.4 gives one `alg` to each soft-binding assertion, so watermark and fingerprint are represented as two `c2pa.soft-binding` assertions when both are present. `c2pa.watermarked.bound` is emitted only for AudioWMark.

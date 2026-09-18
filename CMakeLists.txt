@@ -247,6 +247,9 @@ if(BUILD_TESTING)
         add_test(NAME soft_binding_demo_derivative
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/watermark/test_demo_derivative.py")
+        add_test(NAME audfprint_wrapper
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fingerprint/test_audfprint_wrapper.py")
     endif()
 
     add_executable(C2PAArrangementEditingTests
