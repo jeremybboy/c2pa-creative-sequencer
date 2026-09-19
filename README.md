@@ -54,6 +54,23 @@ Each track header has a **+ VST** control. Choose **Scan VST3** explicitly to in
 
 The POC still has no recording, MIDI/instrument hosting, warping, time stretching, automation, plug-in chains, advanced routing, plug-in sandboxing, or detailed plug-in/edit provenance. `io.github.jeremybboy.audiowmark.1` and `io.github.jeremybboy.audfprint.1` are experimental project identifiers, not official C2PA SBAL registrations; the resolver is SBR-inspired, not a conformant or production trust service, and recovery never proves the derivative satisfies the original hard binding. Fingerprint matching is probabilistic and can produce false positives or false negatives. The supplied C2PA Conformance credential is a **test credential only**, not the future production identity; external trust recognition depends on the verifier's trust configuration. The private PEM is stored outside projects and Git at `~/Library/Application Support/C2PA Creative Sequencer/Signing/signing-bundle.pem` with mode `0600` inside a `0700` directory. Added Places are machine-local, imported media is copied byte-for-byte into `Media/`, and editing remains non-destructive. On one track, a later clip has priority in overlaps; different tracks mix normally, and export uses that same arrangement.
 
+## Future work
+
+1. **Sample audition**
+   - Add preview/stop playback for samples in the left library before dragging or importing.
+   - Only one sample preview may play at a time.
+   - This is future DAW UX work and is not part of PR 012.
+2. **Configurable storage**
+   - Replace opaque fixed local demo folders with a user-configurable library/resolver database location.
+   - First support a user-selected local folder or a Dropbox-synced folder already mounted by the OS; do not add Dropbox authentication or direct cloud APIs yet.
+   - Eventually cover resolver manifests, bindings, fingerprint indexes, and related demo repository state coherently.
+3. **Soft-binding scale and ambiguity testing**
+   - Watermark path: test approximately 1,000 unrelated registered bindings plus the correct binding, confirm exact resolution of the intended manifest from a transcoded derivative, and record lookup time and ambiguity.
+   - Fingerprint path: separately test a larger registered audio corpus for database-size effects, false positives, threshold choice, and lookup performance.
+   - Do not treat watermark exact lookup and fingerprint similarity search as equivalent tests.
+
+These items are intentionally deferred from the current proof of concept and should be developed as separate follow-up PRs.
+
 <img width="1536" height="1024" alt="Evolution_Build_C2PA_DAW" src="https://github.com/user-attachments/assets/e24c84d3-37cb-4d3a-8b19-58ef5cd38e3a" />
 
 
