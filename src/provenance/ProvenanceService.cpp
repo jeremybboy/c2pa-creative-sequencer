@@ -133,7 +133,7 @@ IngredientInfo parseManifest(const std::string& manifestJson)
 }
 
 juce::String makeManifestDefinition(const juce::String& title,
-                                    const std::optional<SoftBindingClaim>& softBinding)
+                                    const std::vector<SoftBindingClaim>& softBindings)
 {
     auto root = std::make_unique<juce::DynamicObject>();
     root->setProperty("claim_version", 2);
@@ -153,7 +153,8 @@ juce::String makeManifestDefinition(const juce::String& title,
         "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation");
     juce::Array<juce::var> actions;
     actions.add(action.release());
-    if (softBinding.has_value())
+    if (std::any_of(softBindings.begin(), softBindings.end(), [](const auto& binding)
+        { return binding.type == SoftBindingType::watermark; }))
     {
         auto watermarked = std::make_unique<juce::DynamicObject>();
         watermarked->setProperty("action", "c2pa.watermarked.bound");
@@ -166,22 +167,28 @@ juce::String makeManifestDefinition(const juce::String& title,
     assertion->setProperty("data", actionData.release());
     juce::Array<juce::var> assertions;
     assertions.add(assertion.release());
-    if (softBinding.has_value())
+    for (const auto& softBinding : softBindings)
     {
-        auto timespan = std::make_unique<juce::DynamicObject>();
-        timespan->setProperty("start", static_cast<juce::int64>(softBinding->startMilliseconds));
-        timespan->setProperty("end", static_cast<juce::int64>(softBinding->endMilliseconds));
-        auto scope = std::make_unique<juce::DynamicObject>();
-        scope->setProperty("timespan", timespan.release());
         auto block = std::make_unique<juce::DynamicObject>();
-        block->setProperty("scope", scope.release());
+        if (softBinding.scope.has_value())
+        {
+            auto timespan = std::make_unique<juce::DynamicObject>();
+            timespan->setProperty("start", static_cast<juce::int64>(
+                softBinding.scope->startMilliseconds));
+            timespan->setProperty("end", static_cast<juce::int64>(
+                softBinding.scope->endMilliseconds));
+            auto scope = std::make_unique<juce::DynamicObject>();
+            scope->setProperty("timespan", timespan.release());
+            block->setProperty("scope", scope.release());
+        }
         // c2pa-rs 0.90.15's official SoftBinding JSON test accepts a base64
         // string here and converts the assertion to its CBOR representation.
-        block->setProperty("value", softBinding->payload.toBase64());
+        block->setProperty("value", juce::Base64::toBase64(
+            softBinding.value.data(), softBinding.value.size()));
         juce::Array<juce::var> blocks;
         blocks.add(block.release());
         auto data = std::make_unique<juce::DynamicObject>();
-        data->setProperty("alg", juce::String(SoftBindingClaim::algorithm.data()));
+        data->setProperty("alg", softBinding.algorithm);
         data->setProperty("blocks", blocks);
         auto soft = std::make_unique<juce::DynamicObject>();
         soft->setProperty("label", "c2pa.soft-binding");
@@ -434,7 +441,7 @@ juce::Result ProvenanceService::signWav(
     const std::vector<ContributingIngredient>& ingredients,
     const juce::String& outputTitle,
     IngredientInfo& validation,
-    const std::optional<SoftBindingClaim>& softBinding,
+    const std::vector<SoftBindingClaim>& softBindings,
     std::vector<std::uint8_t>* manifestStore) const
 {
     if (const auto error = signingConfigurationError(); error.isNotEmpty())
@@ -453,7 +460,7 @@ juce::Result ProvenanceService::signWav(
     try
     {
         builder = std::make_unique<c2pa::Builder>(
-            makeContext(), makeManifestDefinition(outputTitle, softBinding).toStdString());
+            makeContext(), makeManifestDefinition(outputTitle, softBindings).toStdString());
         for (const auto& ingredient : ingredients)
             builder->add_ingredient(makeIngredientDefinition(ingredient).toStdString(),
                 std::filesystem::path(ingredient.file.getFullPathName().toStdString()));
@@ -488,6 +495,14 @@ juce::Result ProvenanceService::signWav(
 bool ProvenanceService::hasMatchingSoftBinding(const IngredientInfo& info,
                                                const SoftBindingPayload& payload)
 {
+    return hasMatchingSoftBinding(info, juce::String(audioWMarkAlgorithm.data()),
+        std::vector<std::uint8_t>(payload.bytes.begin(), payload.bytes.end()));
+}
+
+bool ProvenanceService::hasMatchingSoftBinding(const IngredientInfo& info,
+                                               const juce::String& algorithm,
+                                               const std::vector<std::uint8_t>& value)
+{
     juce::var document;
     if (juce::JSON::parse(info.rawManifestJson, document).failed()) return false;
     auto* root = document.getDynamicObject();
@@ -507,12 +522,12 @@ bool ProvenanceService::hasMatchingSoftBinding(const IngredientInfo& info,
         auto* data = assertion->getProperty("data").getDynamicObject();
         auto* blocks = data != nullptr ? data->getProperty("blocks").getArray() : nullptr;
         if (data == nullptr || blocks == nullptr
-            || data->getProperty("alg").toString()
-                != juce::String(SoftBindingClaim::algorithm.data()))
+            || data->getProperty("alg").toString() != algorithm)
             continue;
         for (const auto& blockValue : *blocks)
             if (auto* block = blockValue.getDynamicObject(); block != nullptr
-                && block->getProperty("value").toString() == payload.toBase64())
+                && block->getProperty("value").toString()
+                    == juce::Base64::toBase64(value.data(), value.size()))
                 return true;
     }
     return false;

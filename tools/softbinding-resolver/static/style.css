@@ -19,4 +19,7 @@ dt { color: #91a4ac; } dd { margin: 0; }
 .warning { color: #ffd18a; }
 a { color: #48d7e8; }
 #status { color: #9fb0b7; }
+.method-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 32px 0; }
+.method { display: block; padding: 24px; border: 1px solid #53616a; border-radius: 12px; color: inherit; text-decoration: none; background: #1c2428; }
+.method:hover { border-color: #46b6d6; }
 @media (max-width: 650px) { #steps { grid-template-columns: 1fr; } }

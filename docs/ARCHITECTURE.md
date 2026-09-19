@@ -196,3 +196,11 @@ handoff is separate from `tools/softbinding-resolver`, which owns decoding, repo
 manifest retrieval, and the browser UI. The resolver imports the outbox idempotently, checks
 every decoded candidate by exact 128-bit repository membership, and never treats soft-binding
 recovery as proof that a derivative passes the original cryptographic hard binding.
+
+## PR 012 dual soft-binding boundary
+
+`SoftBindingClaim` is algorithm-neutral: it carries algorithm, type, bytes, and optional scope. C2PA 2.4 gives one algorithm to each soft-binding assertion, so watermark and fingerprint are separate `c2pa.soft-binding` assertions. The actions assertion adds `c2pa.watermarked.bound` only when the watermark service actually ran; fingerprinting adds no invented action.
+
+`AudfprintService` is another worker-only external-process boundary. Export order is render → optional AudioWMark → format verification → audfprint registration from the final PCM essence → C2PA sign/embed → validation → versioned outbox publication → atomic commit. The app never queries a fingerprint database and exposes no recovery UI.
+
+The same resolver imports both registration types into one repository. `bindings` remains the exact watermark index; `fingerprints` maps audfprint `.afpt` registrations to manifest IDs, and the resolver materializes audfprint's natural database for similarity queries. Both paths converge only after discovery at the byte-exact manifest store.

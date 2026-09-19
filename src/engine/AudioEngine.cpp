@@ -8,10 +8,13 @@ AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider,
                          juce::File pluginCacheFile,
                          bool showPluginWindows,
                          std::unique_ptr<WatermarkService> watermarkService,
-                         juce::File softBindingOutboxDirectory)
+                         juce::File softBindingOutboxDirectory,
+                         std::unique_ptr<FingerprintService> fingerprintService)
     : provenance(std::move(signingProvider)),
       watermark(watermarkService != nullptr
           ? std::move(watermarkService) : std::make_unique<AudioWMarkService>()),
+      fingerprint(fingerprintService != nullptr
+          ? std::move(fingerprintService) : std::make_unique<AudfprintService>()),
       softBindingOutbox(softBindingOutboxDirectory == juce::File()
           ? SoftBindingOutbox::defaultDirectory() : std::move(softBindingOutboxDirectory)),
       projectEngine(tracktion, provenance),
@@ -207,6 +210,21 @@ juce::String AudioEngine::watermarkStatus() const
     return watermark->statusDescription();
 }
 
+void AudioEngine::setFingerprintEnabled(bool enabled) noexcept
+{
+    useFingerprint = enabled;
+}
+
+bool AudioEngine::fingerprintEnabled() const noexcept
+{
+    return useFingerprint;
+}
+
+juce::String AudioEngine::fingerprintStatus() const
+{
+    return fingerprint->statusDescription();
+}
+
 ExportResult AudioEngine::exportMix(const juce::File& destination,
                                     ExportProgressCallback progress,
                                     ExportCancellationCheck shouldCancel)
@@ -216,6 +234,7 @@ ExportResult AudioEngine::exportMix(const juce::File& destination,
         {
             ExportController controller(tracktion, provenance, watermark.get(),
                                         &softBindingOutbox, useSoftBinding,
+                                        fingerprint.get(), useFingerprint,
                                         std::move(progress), std::move(shouldCancel));
             return controller.exportMix(*project, *paths, destination);
         }

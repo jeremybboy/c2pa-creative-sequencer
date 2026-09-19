@@ -23,7 +23,14 @@ struct ScopedTestDirectory
     {
         ready = root.createDirectory().wasOk();
     }
-    ~ScopedTestDirectory() { root.deleteRecursively(); }
+    ~ScopedTestDirectory()
+    {
+        if (juce::SystemStats::getEnvironmentVariable(
+                "C2PASEQ_KEEP_TEST_OUTPUT", {}) == "1")
+            std::cout << "Retained integration fixtures: " << root.getFullPathName() << '\n';
+        else
+            root.deleteRecursively();
+    }
     juce::File root;
     bool ready = false;
 };
@@ -43,6 +50,56 @@ bool writeTone(const juce::File& file, float amplitude, double seconds = 2.0,
     juce::WavAudioFormat format;
     auto writer = std::unique_ptr<juce::AudioFormatWriter>(
         format.createWriterFor(stream.release(), sampleRate, channels, 24, {}, 0));
+    return writer != nullptr && writer->writeFromAudioSampleBuffer(source, 0, sampleCount);
+}
+
+bool writeNoise(const juce::File& file, double seconds = 10.0)
+{
+    constexpr double sampleRate = 48000.0;
+    const auto sampleCount = static_cast<int>(sampleRate * seconds);
+    juce::AudioBuffer<float> source(2, sampleCount);
+    juce::Random random(0x5a17);
+    for (int sample = 0; sample < sampleCount; ++sample)
+        for (int channel = 0; channel < 2; ++channel)
+            source.setSample(channel, sample, (random.nextFloat() * 2.0f - 1.0f) * 0.08f);
+    auto stream = file.createOutputStream();
+    juce::WavAudioFormat format;
+    auto writer = std::unique_ptr<juce::AudioFormatWriter>(
+        format.createWriterFor(stream.release(), sampleRate, 2, 24, {}, 0));
+    return writer != nullptr && writer->writeFromAudioSampleBuffer(source, 0, sampleCount);
+}
+
+bool writeFingerprintFixture(const juce::File& file, double seconds = 12.0)
+{
+    constexpr double sampleRate = 48000.0;
+    const auto sampleCount = static_cast<int>(sampleRate * seconds);
+    const std::array<double, 8> notes { 110.0, 146.83, 196.0, 246.94,
+                                       164.81, 220.0, 293.66, 369.99 };
+    juce::AudioBuffer<float> source(2, sampleCount);
+    juce::Random random(0x12c2a);
+    for (int sample = 0; sample < sampleCount; ++sample)
+    {
+        const auto time = sample / sampleRate;
+        const auto segment = static_cast<std::size_t>(time / 0.5) % notes.size();
+        const auto phaseInBeat = std::fmod(time, 0.25);
+        const auto envelope = std::exp(-phaseInBeat * 8.0);
+        for (int channel = 0; channel < 2; ++channel)
+        {
+            double value = 0.0;
+            for (int harmonic = 1; harmonic <= 5; ++harmonic)
+                value += std::sin(juce::MathConstants<double>::twoPi
+                    * notes[segment] * harmonic * time + channel * 0.17)
+                    / harmonic;
+            if (phaseInBeat < 0.018)
+                value += (random.nextFloat() * 2.0 - 1.0) * 0.7;
+            source.setSample(channel, sample,
+                static_cast<float>(juce::jlimit(-0.9, 0.9, value * envelope * 0.18)));
+        }
+    }
+    auto stream = file.createOutputStream();
+    juce::WavAudioFormat format;
+    auto writer = std::unique_ptr<juce::AudioFormatWriter>(
+        format.createWriterFor(stream.release(), sampleRate, 2, 24, {}, 0));
     return writer != nullptr && writer->writeFromAudioSampleBuffer(source, 0, sampleCount);
 }
 
@@ -185,6 +242,7 @@ public:
     {
         events.push_back("embed");
         embedded = payload;
+        lastOutput = output;
         for (int wait = 0; wait < delayMilliseconds; wait += 10)
         {
             if (shouldCancel && shouldCancel())
@@ -205,6 +263,44 @@ public:
     bool available = true;
     int delayMilliseconds = 0;
     std::optional<c2paseq::SoftBindingPayload> embedded;
+    std::vector<juce::String> events;
+    juce::File lastOutput;
+};
+
+class FakeFingerprintService final : public c2paseq::FingerprintService
+{
+public:
+    explicit FakeFingerprintService(FakeWatermarkService* expected = nullptr)
+        : expectedWatermark(expected) {}
+    bool isAvailable() const override { return available; }
+    juce::String statusDescription() const override
+    {
+        return available ? "Ready (deterministic fingerprint double)" : "Setup required";
+    }
+    juce::Result compute(const juce::File& input, const juce::File& output,
+                         c2paseq::FingerprintRegistration& registration,
+                         const std::function<bool()>& shouldCancel = {}) override
+    {
+        events.push_back("fingerprint");
+        inputWasWatermarked = expectedWatermark != nullptr
+            && input == expectedWatermark->lastOutput;
+        if (shouldCancel && shouldCancel())
+            return juce::Result::fail("cancelled");
+        const std::string artifact = "audfprinthashV00deterministic-registration";
+        if (! output.replaceWithData(artifact.data(), artifact.size()))
+            return juce::Result::fail("could not write deterministic fingerprint");
+        juce::FileInputStream stream(output);
+        registration.artifact = output;
+        registration.valueHex = juce::SHA256(stream).toHexString();
+        registration.engineVersion = juce::String(c2paseq::audfprintCommit.data());
+        registration.hashCount = 41;
+        registration.durationSeconds = 2.0;
+        registration.elapsedSeconds = 0.01;
+        return juce::Result::ok();
+    }
+    bool available = true;
+    bool inputWasWatermarked = false;
+    FakeWatermarkService* expectedWatermark = nullptr;
     std::vector<juce::String> events;
 };
 }
@@ -407,11 +503,13 @@ int main()
     const auto softOutboxDirectory = temporary.root.getChildFile("soft-binding-outbox");
     auto fake = std::make_unique<FakeWatermarkService>();
     auto* fakePtr = fake.get();
+    auto fakeFingerprint = std::make_unique<FakeFingerprintService>(fakePtr);
+    auto* fakeFingerprintPtr = fakeFingerprint.get();
     c2paseq::AudioEngine softEngine(
         std::make_unique<c2paseq::ConformanceTestSigningProvider>(
             softConfiguration, false),
         temporary.root.getChildFile("soft-vst3-cache.xml"), false,
-        std::move(fake), softOutboxDirectory);
+        std::move(fake), softOutboxDirectory, std::move(fakeFingerprint));
     if (softEngine.configureSigningCredential(testBundle).failed())
         return fail(23, "could not configure soft-binding signing fixture");
     const auto softProject = temporary.root.getChildFile("Soft Binding.c2paseq");
@@ -419,6 +517,19 @@ int main()
         || softEngine.importAudio(sourceA, 0, 0.0).failed())
         return fail(24, "could not create deterministic soft-binding arrangement");
     softEngine.setSoftBindingEnabled(true);
+    const auto watermarkOnly = temporary.root.getChildFile("watermark-only.wav");
+    const auto watermarkOnlyResult = softEngine.exportMix(watermarkOnly);
+    if (watermarkOnlyResult.result.failed()
+        || ! watermarkOnlyResult.outputProvenance.rawManifestJson.contains(
+            c2paseq::audioWMarkAlgorithm.data())
+        || ! watermarkOnlyResult.outputProvenance.rawManifestJson.contains(
+            "c2pa.watermarked.bound")
+        || watermarkOnlyResult.outputProvenance.rawManifestJson.contains(
+            c2paseq::audfprintAlgorithm.data())
+        || watermarkOnlyResult.publicationPackage.getChildFile(
+            "fingerprint-data.afpt").exists())
+        return fail(24, "PR 011 watermark-only export compatibility failed");
+    softEngine.setFingerprintEnabled(true);
     fakePtr->events.clear();
     fakePtr->delayMilliseconds = 150;
     const auto softSigned = temporary.root.getChildFile("soft-signed.wav");
@@ -435,30 +546,62 @@ int main()
         return fail(25, "background export did not complete while the UI loop remained responsive");
     const auto softResult = softFuture.get();
     if (softResult.result.failed() || ! softResult.softBindingEnabled
+        || ! softResult.fingerprintEnabled
         || ! softResult.audioPropertiesVerified
         || softResult.softBindingPayloadHex.length() != 32
-        || fakePtr->events.size() != 1 || fakePtr->events[0] != "embed")
+        || softResult.fingerprintValueHex.length() != 64
+        || fakePtr->events.size() != 1 || fakePtr->events[0] != "embed"
+        || fakeFingerprintPtr->events.size() != 1
+        || ! fakeFingerprintPtr->inputWasWatermarked)
         return fail(26, "soft-binding export ordering failed: "
             + softResult.result.getErrorMessage());
     const auto expectedPayload = c2paseq::SoftBindingPayload::fromHex(
         softResult.softBindingPayloadHex);
+    const auto firstSoftBinding = softResult.outputProvenance.rawManifestJson.indexOf(
+        "c2pa.soft-binding");
+    const auto lastSoftBinding = softResult.outputProvenance.rawManifestJson.lastIndexOf(
+        "c2pa.soft-binding");
     if (! expectedPayload.has_value()
         || ! softResult.outputProvenance.rawManifestJson.contains("c2pa.watermarked.bound")
-        || ! softResult.outputProvenance.rawManifestJson.contains("c2pa.soft-binding")
+        || firstSoftBinding < 0 || firstSoftBinding == lastSoftBinding
         || ! softResult.outputProvenance.rawManifestJson.contains(
             c2paseq::audioWMarkAlgorithm.data())
+        || ! softResult.outputProvenance.rawManifestJson.contains(
+            c2paseq::audfprintAlgorithm.data())
+        || softResult.outputProvenance.rawManifestJson.contains("c2pa.fingerprinted")
         || ! c2paseq::ProvenanceService::hasMatchingSoftBinding(
             softResult.outputProvenance, *expectedPayload))
-        return fail(27, "signed manifest did not contain exact AudioWMark C2PA assertions");
+        return fail(27, "signed manifest did not contain separate valid soft-binding assertions");
     const auto package = softOutboxDirectory.getChildFile(softResult.softBindingPayloadHex);
     const auto binding = juce::JSON::parse(
         package.getChildFile("binding.json").loadFileAsString());
+    juce::Array<juce::File> publishedFiles;
+    package.findChildFiles(publishedFiles, juce::File::findFiles, true);
+    const auto leakedSensitiveFile = std::any_of(
+        publishedFiles.begin(), publishedFiles.end(), [](const auto& file)
+        {
+            return file.hasFileExtension("wav;mp3;pem;key");
+        });
     if (! package.isDirectory() || ! package.getChildFile("manifest.c2pa").existsAsFile()
+        || ! package.getChildFile("fingerprint.json").existsAsFile()
+        || ! package.getChildFile("fingerprint-data.afpt").existsAsFile()
+        || leakedSensitiveFile
         || ! binding.isObject()
         || binding["algorithm"].toString() != c2paseq::audioWMarkAlgorithm.data()
         || binding["value"].toString() != softResult.softBindingPayloadHex
         || binding["manifestId"].toString() != softResult.softBindingManifestId)
         return fail(28, "export did not publish a complete exact-manifest outbox package");
+
+    softEngine.setSoftBindingEnabled(false);
+    const auto fingerprintOnly = temporary.root.getChildFile("fingerprint-only.wav");
+    const auto fingerprintOnlyResult = softEngine.exportMix(fingerprintOnly);
+    if (fingerprintOnlyResult.result.failed()
+        || fingerprintOnlyResult.outputProvenance.rawManifestJson.contains(
+            "c2pa.watermarked.bound")
+        || ! fingerprintOnlyResult.outputProvenance.rawManifestJson.contains(
+            c2paseq::audfprintAlgorithm.data()))
+        return fail(28, "fingerprint-only export emitted incorrect C2PA actions");
+    softEngine.setSoftBindingEnabled(true);
     WavReadback softWav;
     if (! readWav(softSigned, softWav) || softWav.reader->numChannels != 2
         || softWav.reader->sampleRate != first.reader->sampleRate
@@ -489,7 +632,13 @@ int main()
         const auto derivative = temporary.root.getChildFile("real-audiowmark-derivative.wav");
         const auto realOutbox = temporary.root.getChildFile("real-audiowmark-outbox");
         const auto resolverRepository = temporary.root.getChildFile("real-resolver-repository");
-        if (! writeTone(realInput, 0.1f, 10.0, 2))
+        const auto unrelatedInput = temporary.root.getChildFile("real-unrelated-noise.wav");
+        const auto runFingerprint = juce::SystemStats::getEnvironmentVariable(
+            "C2PASEQ_RUN_REAL_AUDFPRINT_TEST", {}) == "1";
+        const auto sourceWritten = runFingerprint
+            ? writeFingerprintFixture(realInput)
+            : writeTone(realInput, 0.1f, 12.0, 2);
+        if (! sourceWritten || ! writeNoise(unrelatedInput, 12.0))
             return fail(31, "could not prepare real AudioWMark fixture");
         c2paseq::AudioEngine realEngine(
             std::make_unique<c2paseq::ConformanceTestSigningProvider>(
@@ -501,37 +650,66 @@ int main()
             || realEngine.importAudio(realInput, 0, 0.0).failed())
             return fail(31, "could not prepare real AudioWMark export project");
         realEngine.setSoftBindingEnabled(true);
+        realEngine.setFingerprintEnabled(runFingerprint);
         const auto realResult = realEngine.exportMix(realOutput);
         WavReadback realAudio;
         if (realResult.result.failed() || ! realResult.credentialsValidated
             || ! realResult.audioPropertiesVerified || ! readWav(realOutput, realAudio)
             || realAudio.reader->numChannels != 2 || realAudio.reader->bitsPerSample != 24
             || ! approximately(realAudio.reader->lengthInSamples
-                    / realAudio.reader->sampleRate, 10.0, 0.02)
+                    / realAudio.reader->sampleRate, 12.0, 0.02)
             || realResult.softBindingPayloadHex.length() != 32)
             return fail(32, "real AudioWMark signed export failed: "
                 + realResult.result.getErrorMessage());
         if (! removeC2paChunk(realOutput, derivative)
             || realEngine.inspectProvenance(derivative).c2paPresent)
             return fail(32, "could not create the manifestless real-watermark derivative");
-        juce::ChildProcess resolverCheck;
-        const juce::StringArray command {
-            "python3",
-            juce::File(C2PASEQ_SOURCE_DIR).getChildFile(
-                "tools/softbinding-resolver/integration_check.py").getFullPathName(),
-            "--outbox", realOutbox.getFullPathName(),
-            "--repository", resolverRepository.getFullPathName(),
-            "--audio", derivative.getFullPathName(),
-            "--value", realResult.softBindingPayloadHex,
-            "--manifest-id", realResult.softBindingManifestId
-        };
-        if (! resolverCheck.start(command)
-            || ! resolverCheck.waitForProcessToFinish(30000)
-            || resolverCheck.getExitCode() != 0)
-            return fail(32, "external resolver integration failed: "
-                + resolverCheck.readAllProcessOutput());
-        std::cout << "real AudioWMark: signed export, manifestless derivative, exact 128-bit "
-                     "decode, resolver lookup, and exact manifest retrieval passed\n";
+        if (! runFingerprint)
+        {
+            juce::ChildProcess resolverCheck;
+            const juce::StringArray command {
+                "python3",
+                juce::File(C2PASEQ_SOURCE_DIR).getChildFile(
+                    "tools/softbinding-resolver/integration_check.py").getFullPathName(),
+                "--outbox", realOutbox.getFullPathName(),
+                "--repository", resolverRepository.getFullPathName(),
+                "--audio", derivative.getFullPathName(),
+                "--value", realResult.softBindingPayloadHex,
+                "--manifest-id", realResult.softBindingManifestId
+            };
+            if (! resolverCheck.start(command)
+                || ! resolverCheck.waitForProcessToFinish(30000)
+                || resolverCheck.getExitCode() != 0)
+                return fail(32, "external resolver integration failed: "
+                    + resolverCheck.readAllProcessOutput());
+            std::cout << "real AudioWMark: signed export, manifestless derivative, exact 128-bit "
+                         "decode, resolver lookup, and exact manifest retrieval passed\n";
+        }
+        else
+        {
+            const auto mp3 = temporary.root.getChildFile("real-soft-binding-derivative.mp3");
+            juce::ChildProcess fingerprintCheck;
+            const juce::StringArray fingerprintCommand {
+                "python3",
+                juce::File(C2PASEQ_SOURCE_DIR).getChildFile(
+                    "tools/softbinding-resolver/fingerprint_integration_check.py")
+                    .getFullPathName(),
+                "--outbox", realOutbox.getFullPathName(),
+                "--repository", temporary.root.getChildFile(
+                    "real-fingerprint-repository").getFullPathName(),
+                "--source", realOutput.getFullPathName(),
+                "--mp3", mp3.getFullPathName(),
+                "--unrelated", unrelatedInput.getFullPathName(),
+                "--manifest-id", realResult.softBindingManifestId,
+                "--watermark-value", realResult.softBindingPayloadHex
+            };
+            if (! fingerprintCheck.start(fingerprintCommand)
+                || ! fingerprintCheck.waitForProcessToFinish(180000)
+                || fingerprintCheck.getExitCode() != 0)
+                return fail(33, "real MP3 fingerprint integration failed: "
+                    + fingerprintCheck.readAllProcessOutput());
+            std::cout << fingerprintCheck.readAllProcessOutput() << '\n';
+        }
     }
 
     if (juce::SystemStats::getEnvironmentVariable(

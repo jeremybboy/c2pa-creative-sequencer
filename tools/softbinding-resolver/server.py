@@ -12,7 +12,8 @@ ROOT = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from audiowmark_decoder import AudioWMarkDecoder
-from constants import ALGORITHM
+from audfprint_matcher import AudfprintMatcher
+from constants import ALGORITHM, FINGERPRINT_ALGORITHM
 from repository import Repository, default_outbox_root
 from service import ResolverService
 
@@ -43,7 +44,9 @@ def handler_factory(repository, service, outbox, static_root=None):
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path == "/services/supportedAlgorithms":
-                return self.send_json(200, {"algorithms": [ALGORITHM], "conformant": False})
+                return self.send_json(200, {
+                    "algorithms": [ALGORITHM, FINGERPRINT_ALGORITHM], "conformant": False
+                })
             if parsed.path == "/matches/byBinding":
                 query = urllib.parse.parse_qs(parsed.query)
                 algorithm = query.get("algorithm", [""])[0]
@@ -68,7 +71,9 @@ def handler_factory(repository, service, outbox, static_root=None):
                 self.end_headers()
                 self.wfile.write(data)
                 return
-            relative = "index.html" if parsed.path == "/" else parsed.path.lstrip("/")
+            page_routes = {"/": "index.html", "/watermark": "watermark.html",
+                           "/fingerprint": "fingerprint.html"}
+            relative = page_routes.get(parsed.path, parsed.path.lstrip("/"))
             file = (static_root / relative).resolve()
             if static_root.resolve() not in file.parents or not file.is_file():
                 return self.send_json(404, {"error": "not found"})
@@ -97,6 +102,16 @@ def handler_factory(repository, service, outbox, static_root=None):
                     filename = self.headers.get("X-Filename", "audio.wav")
                     suffix = pathlib.Path(filename).suffix or ".wav"
                     return self.send_json(200, service.match_content_bytes(self.read_body(), suffix))
+                if parsed.path == "/matches/byContent/watermark":
+                    filename = self.headers.get("X-Filename", "audio.wav")
+                    suffix = pathlib.Path(filename).suffix or ".wav"
+                    return self.send_json(200, service.match_watermark_content_bytes(
+                        self.read_body(), suffix))
+                if parsed.path == "/matches/byContent/fingerprint":
+                    filename = self.headers.get("X-Filename", "audio.wav")
+                    suffix = pathlib.Path(filename).suffix or ".wav"
+                    return self.send_json(200, service.match_fingerprint_content_bytes(
+                        self.read_body(), suffix))
                 if parsed.path == "/imports/sequencer":
                     return self.send_json(200, repository.import_outbox(outbox))
                 return self.send_json(404, {"error": "not found"})
@@ -108,10 +123,12 @@ def handler_factory(repository, service, outbox, static_root=None):
     return Handler
 
 
-def make_server(host, port, repository=None, decoder=None, outbox=None, static_root=None):
+def make_server(host, port, repository=None, decoder=None, outbox=None, static_root=None,
+                fingerprint_matcher=None):
     repository = repository or Repository()
     decoder = decoder or AudioWMarkDecoder()
-    service = ResolverService(repository, decoder)
+    service = ResolverService(repository, decoder,
+                              fingerprint_matcher or AudfprintMatcher())
     return ThreadingHTTPServer(
         (host, port), handler_factory(repository, service, outbox or default_outbox_root(), static_root)
     )
@@ -124,13 +141,15 @@ def main():
     parser.add_argument("--repository")
     parser.add_argument("--outbox")
     parser.add_argument("--audiowmark")
+    parser.add_argument("--audfprint")
     args = parser.parse_args()
     repository = Repository(args.repository)
     outbox = pathlib.Path(args.outbox) if args.outbox else default_outbox_root()
     imported = repository.import_outbox(outbox)
     server = make_server(
         args.host, args.port, repository,
-        AudioWMarkDecoder(args.audiowmark) if args.audiowmark else None, outbox
+        AudioWMarkDecoder(args.audiowmark) if args.audiowmark else None, outbox,
+        fingerprint_matcher=AudfprintMatcher(args.audfprint) if args.audfprint else None
     )
     print(f"Imported {imported['imported']} Sequencer publication(s); repository ready")
     print(f"Audio Soft-Binding Recovery Demo: http://{args.host}:{server.server_port}")

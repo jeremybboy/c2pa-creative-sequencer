@@ -2,6 +2,8 @@
 
 #include <juce_core/juce_core.h>
 
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "watermark/SoftBindingPayload.h"
@@ -33,13 +35,28 @@ struct IngredientInfo
     std::vector<juce::String> validationIssues;
 };
 
-struct SoftBindingClaim
+enum class SoftBindingType
 {
-    static constexpr std::string_view algorithm = audioWMarkAlgorithm;
-    SoftBindingPayload payload;
+    watermark,
+    fingerprint
+};
+
+struct SoftBindingScope
+{
     std::uint64_t startMilliseconds = 0;
     std::uint64_t endMilliseconds = 0;
 };
+
+struct SoftBindingClaim
+{
+    juce::String algorithm;
+    SoftBindingType type = SoftBindingType::fingerprint;
+    std::vector<std::uint8_t> value;
+    std::optional<SoftBindingScope> scope;
+};
+
+[[nodiscard]] SoftBindingClaim makeAudioWMarkClaim(
+    const SoftBindingPayload&, std::uint64_t endMilliseconds);
 
 struct ContributingIngredient
 {

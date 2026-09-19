@@ -194,6 +194,15 @@ ArrangementView::ArrangementView(AudioEngine& engine)
             + " | Runtime: " + audioEngine.watermarkStatus();
         refreshTransport();
     };
+    fingerprintButton.setClickingTogglesState(true);
+    fingerprintButton.onClick = [this]
+    {
+        audioEngine.setFingerprintEnabled(fingerprintButton.getToggleState());
+        projectMessage = "Fingerprint soft binding "
+            + juce::String(audioEngine.fingerprintEnabled() ? "enabled" : "disabled")
+            + " | Runtime: " + audioEngine.fingerprintStatus();
+        refreshTransport();
+    };
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     playPause.onClick = [this] { togglePlayback(); };
@@ -235,6 +244,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
 
     for (auto* button : { &newProject, &openProjectButton, &saveProjectButton,
                           &exportButton, &credentialsButton, &signingButton, &audioSoftBindingButton,
+                          &fingerprintButton,
                           &undoButton, &redoButton, &playPause, &stop, &loop,
                           &zoomOut, &zoomIn, &audioSettings })
     {
@@ -245,6 +255,8 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     loop.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(197, 151, 49));
     audioSoftBindingButton.setColour(juce::TextButton::buttonOnColourId,
                                      juce::Colour::fromRGB(42, 139, 157));
+    fingerprintButton.setColour(juce::TextButton::buttonOnColourId,
+                                juce::Colour::fromRGB(80, 125, 183));
 
     addAndMakeVisible(browser);
     addAndMakeVisible(*timelineSurface);
@@ -297,7 +309,8 @@ void ArrangementView::resized()
     placeButton(newProject, 45); placeButton(openProjectButton, 48); placeButton(saveProjectButton, 46);
     placeButton(exportButton, 56); placeButton(credentialsButton, 82);
     placeButton(signingButton, 62);
-    placeButton(audioSoftBindingButton, 72);
+    placeButton(audioSoftBindingButton, 68);
+    placeButton(fingerprintButton, 58);
     top.removeFromLeft(6);
     placeButton(undoButton, 48); placeButton(redoButton, 48);
     top.removeFromLeft(10);
@@ -544,6 +557,8 @@ void ArrangementView::updateExportProgress(ExportStage stage)
         case ExportStage::planning: projectMessage = "Preparing export…"; break;
         case ExportStage::audioRender: projectMessage = "Rendering audio…"; break;
         case ExportStage::watermarkEmbedding: projectMessage = "Embedding AudioWMark…"; break;
+        case ExportStage::fingerprintComputation:
+            projectMessage = "Computing audio fingerprint…"; break;
         case ExportStage::creatingContentCredentials:
             projectMessage = "Creating Content Credentials…"; break;
         case ExportStage::signingAndEmbedding: projectMessage = "Signing…"; break;
@@ -581,6 +596,8 @@ void ArrangementView::completeBackgroundExport(ExportResult result)
         : "Export complete | Content Credentials attached | Asset integrity validated | External trust issue";
     if (lastExport->softBindingEnabled)
         projectMessage += " | Audio soft binding " + lastExport->softBindingPayloadHex;
+    if (lastExport->fingerprintEnabled)
+        projectMessage += " | Fingerprint soft binding " + lastExport->fingerprintValueHex;
     refreshTransport();
     showExportCompletion();
 }
@@ -596,6 +613,7 @@ void ArrangementView::setExportInProgress(bool active)
                              static_cast<juce::Component*>(&credentialsButton),
                              static_cast<juce::Component*>(&signingButton),
                              static_cast<juce::Component*>(&audioSoftBindingButton),
+                             static_cast<juce::Component*>(&fingerprintButton),
                              static_cast<juce::Component*>(&undoButton),
                              static_cast<juce::Component*>(&redoButton),
                              static_cast<juce::Component*>(&playPause),
@@ -702,11 +720,17 @@ void ArrangementView::showExportCredentials()
         + "\nIngredients: " + juce::String(result.ingredients.size());
     if (result.softBindingEnabled)
         details += "\nAudio soft binding: Published"
-            "\nAlgorithm: " + juce::String(SoftBindingClaim::algorithm.data())
+            "\nAlgorithm: " + juce::String(audioWMarkAlgorithm.data())
             + "\nBinding: " + result.softBindingPayloadHex
             + "\nPublication package: " + result.publicationPackage.getFullPathName()
             + "\nAudioWMark embed: " + juce::String(result.watermarkEmbedSeconds, 3) + " s"
             + "\nTotal export: " + juce::String(result.totalSeconds, 3) + " s";
+    if (result.fingerprintEnabled)
+        details += "\nFingerprint soft binding: Published"
+            "\nAlgorithm: " + juce::String(audfprintAlgorithm.data())
+            + "\nRegistration: " + result.fingerprintValueHex
+            + "\nFingerprint time: " + juce::String(result.fingerprintSeconds, 3) + " s"
+            + "\nPublication package: " + result.publicationPackage.getFullPathName();
     if (result.outputProvenance.activeManifest.isNotEmpty())
         details += "\nManifest: " + result.outputProvenance.activeManifest;
     for (const auto& ingredient : result.ingredients)

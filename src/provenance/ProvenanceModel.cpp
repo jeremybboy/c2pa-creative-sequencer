@@ -2,6 +2,14 @@
 
 namespace c2paseq
 {
+SoftBindingClaim makeAudioWMarkClaim(const SoftBindingPayload& payload,
+                                    std::uint64_t endMilliseconds)
+{
+    return { juce::String(audioWMarkAlgorithm.data()), SoftBindingType::watermark,
+             std::vector<std::uint8_t>(payload.bytes.begin(), payload.bytes.end()),
+             SoftBindingScope { 0, endMilliseconds } };
+}
+
 juce::String provenanceStatusId(ProvenanceStatus status)
 {
     switch (status)

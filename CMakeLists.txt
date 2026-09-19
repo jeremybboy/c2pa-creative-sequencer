@@ -15,8 +15,13 @@ include(cmake/Dependencies.cmake)
 
 option(C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST
        "Enable opt-in tests that require scripts/setup_audiowmark.sh" OFF)
+option(C2PASEQ_ENABLE_REAL_AUDFPRINT_TEST
+       "Enable opt-in tests that require scripts/setup_audfprint.sh and ffmpeg" OFF)
 
 set(C2PASEQ_WATERMARK_SOURCES
+    src/fingerprint/AudfprintService.cpp
+    src/fingerprint/AudfprintService.h
+    src/fingerprint/FingerprintService.h
     src/watermark/AudioWMarkService.cpp
     src/watermark/AudioWMarkService.h
     src/watermark/SoftBindingOutbox.cpp
@@ -242,6 +247,9 @@ if(BUILD_TESTING)
         add_test(NAME soft_binding_demo_derivative
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/watermark/test_demo_derivative.py")
+        add_test(NAME audfprint_wrapper
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fingerprint/test_audfprint_wrapper.py")
     endif()
 
     add_executable(C2PAArrangementEditingTests
@@ -414,6 +422,13 @@ if(BUILD_TESTING)
             ENVIRONMENT "C2PASEQ_RUN_AUDIOWMARK_BENCHMARK=1"
             LABELS "audiowmark;benchmark"
             TIMEOUT 600)
+    endif()
+    if(C2PASEQ_ENABLE_REAL_AUDFPRINT_TEST)
+        add_test(NAME real_mp3_soft_binding_pipeline COMMAND C2PAExportPipelineTests)
+        set_tests_properties(real_mp3_soft_binding_pipeline PROPERTIES
+            ENVIRONMENT "C2PASEQ_RUN_REAL_AUDIOWMARK_TEST=1;C2PASEQ_RUN_REAL_AUDFPRINT_TEST=1"
+            LABELS "audiowmark;audfprint;ffmpeg;integration"
+            TIMEOUT 300)
     endif()
 
     add_executable(C2PAPluginHostingTests

@@ -1,6 +1,6 @@
 # Dependency Verification
 
-Core dependencies were verified on 2026-09-11 and AudioWMark on 2026-09-16, on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xcode 26.4, Git 2.54.0, and CMake 4.3.2. This is an engineering dependency record, not legal advice.
+Core dependencies were verified on 2026-09-11, AudioWMark on 2026-09-16, and audfprint on 2026-09-18, on Apple silicon with macOS 26.6, Apple Clang 21.0.0, Xcode 26.4, Git 2.54.0, and CMake 4.3.2. This is an engineering dependency record, not legal advice.
 
 ## Decision summary
 
@@ -11,6 +11,7 @@ Core dependencies were verified on 2026-09-11 and AudioWMark on 2026-09-16, on A
 | VST 3 SDK | 3.8.1 build 84 (`3cdf9ca5`) | JUCE 8.0.6 bundled VST3 host interfaces in PR 008; standalone SDK integration remains deferred | MIT; Steinberg trademark/compatibility usage guidelines still apply | JUCE discovery, instantiation, editor, state, realtime processing, and offline render pass on Apple silicon with a deterministic VST3 fixture |
 | `c2pa-cpp` | v0.26.9 (`26f7c8cd`), backed by `c2pa-rs` 0.90.15 | Integrated in PR 006 at v0.26.9 | MIT or Apache-2.0; transitive components require their own notices | Built on macOS arm64; WAV read, ingredient, ES256 sign/embed, reopen, validation, and tamper detection pass locally |
 | AudioWMark | 0.6.5 (`c204998c`) | exact commit `c204998c92931285efdf6670c81cefd199298895` | GPL-3.0-or-later | Built outside the app and invoked as a native executable; normal 128-bit payload, stereo/native-rate/24-bit output verified |
+| dpwe/audfprint | HEAD (`cb03ba99`) | exact commit `cb03ba99feafd41b8874307f0f4e808a6ce34362` | MIT | External Python runtime; `.afpt` landmark generation, local index, 192 kbps MP3 match, and unrelated-audio negative control verified |
 
 ## Architecture consequences
 
@@ -20,6 +21,7 @@ Core dependencies were verified on 2026-09-11 and AudioWMark on 2026-09-16, on A
 4. Use JUCE/Tracktion plug-in hosting rather than coupling application code directly to Steinberg interfaces. PR 008 uses the VST3 interfaces bundled by the pinned JUCE 8.0.6 dependency; if a later distribution build adds the standalone SDK, test JUCE's custom-SDK path against the pinned MIT SDK.
 5. Set the POC deployment target to macOS 13.3 because `c2pa-cpp` v0.26.9 sets that minimum and distributes an `aarch64-apple-darwin` prebuilt runtime.
 6. Keep GPL AudioWMark outside the app bundle and realtime graph and invoke it only as an external executable. Normal CI does not require it; opt-in tests build the pinned runtime and validate real recovery.
+7. Keep MIT audfprint outside the app binary and realtime graph. The Sequencer authors `.afpt` registration material; only the resolver owns the similarity index and query path.
 
 ## Deferred distribution checkpoint
 
@@ -30,6 +32,7 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - The current standalone VST 3 SDK source is MIT-licensed. Product naming, documentation, package, and compatibility claims remain subject to Steinberg's published trademark usage guidelines.
 - `c2pa-cpp` is dual MIT/Apache-2.0. Its prebuilt runtime comes from `c2pa-rs`; preserve the transitive license inventory before distribution.
 - AudioWMark is GPL-3.0-or-later. This POC neither links nor bundles it, but any future distribution strategy still needs a deliberate legal review of executable delivery and source obligations.
+- audfprint is MIT-licensed; its Python/Numpy/SciPy/FFmpeg runtime remains an external optional installation and requires a transitive-license review before distribution.
 - Commercial license tier and seat counts depend on the owner, revenue/funding, developer count, and distribution model. Those facts are not available in this repository, so exact commercial cost is intentionally unresolved.
 
 ## API and feature evidence
@@ -78,6 +81,16 @@ This checkpoint is deliberately deferred while the software remains a private, l
   `c2pa.watermarked.bound`. `io.github.jeremybboy.audiowmark.1` is deliberately experimental
   and is not represented as an official SBAL registration.
 
+### audfprint fingerprint experiment
+
+- The official `dpwe/audfprint` repository was pinned at `cb03ba99feafd41b8874307f0f4e808a6ce34362` (2019-09-23). Its landmark-hash implementation is MIT-licensed and reads media through FFmpeg.
+- `scripts/setup_audfprint.sh` installs the source, isolated Python environment, and adapter under `~/Library/Application Support/C2PA Creative Sequencer/Fingerprint/`; nothing is linked or bundled into the app.
+- Setup records the verified absolute FFmpeg executable in that runtime. The external adapter restores only its directory to `PATH`, so Finder-launched exports can decode/downmix/resample audio without relying on a Terminal environment. FFmpeg remains an audfprint runtime dependency, not part of the DAW audio engine or its export format.
+- The setup helper requires Git, Python 3, and FFmpeg, and pins NumPy 2.3.3, SciPy 1.16.2, docopt 0.6.2, joblib 1.5.2, and psutil 7.1.0 inside that isolated environment.
+- The registration artifact is audfprint's binary `.afpt` landmark list, not source audio. `io.github.jeremybboy.audfprint.1` and the SHA-256 identifier of the exact artifact are experimental project conventions, not a registered C2PA algorithm or a conformance claim.
+- C2PA 2.4 gives one `alg` to each soft-binding assertion, so watermark and fingerprint are represented as two `c2pa.soft-binding` assertions when both are present. `c2pa.watermarked.bound` is emitted only for AudioWMark.
+- The real opt-in test kept the fixed 10-aligned-hash rule: the 192 kbps MP3 produced 229 aligned hashes from 659 query hashes (34.75% query coverage), recovered the exact manifest, and unrelated deterministic noise produced zero matches. AudioWMark decoded eight candidates from the same MP3 but none matched the registered 128-bit value.
+
 ## PR 001 build evidence
 
 - CMake configured the selected Tracktion Engine v3.2.0/JUCE 8.0.6 pair with Apple Clang 21 using the Unix Makefiles generator.
@@ -105,4 +118,5 @@ This checkpoint is deliberately deferred while the software remains a private, l
 - [`c2pa-cpp` v0.26.9](https://github.com/contentauth/c2pa-cpp/releases/tag/v0.26.9)
 - [C2PA supported formats](https://opensource.contentauthenticity.org/docs/c2pa-node/docs/supported-formats/)
 - [AudioWMark repository](https://github.com/swesterfeld/audiowmark)
+- [dpwe/audfprint repository](https://github.com/dpwe/audfprint)
 - [C2PA 2.4 soft-binding assertion](https://spec.c2pa.org/specifications/specifications/2.4/specs/C2PA_Specification.html#_soft_binding_2)
