@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the PR 012 realistic 192 kbps MP3 derivative with ffmpeg."""
+"""Create the PR 012 strong 64 kbps MP3 derivative with ffmpeg."""
 
 import argparse
 import pathlib
@@ -19,10 +19,10 @@ def main():
     subprocess.run([
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
         "-i", str(args.input), "-map_metadata", "-1", "-c:a", "libmp3lame",
-        "-b:a", "192k", str(args.output),
+        "-b:a", "64k", str(args.output),
     ], check=True)
     print(f"Source WAV: {args.input}")
-    print(f"MP3 derivative (libmp3lame 192 kbps): {args.output}")
+    print(f"MP3 derivative (libmp3lame 64 kbps): {args.output}")
 
 
 if __name__ == "__main__":
