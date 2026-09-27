@@ -18,6 +18,8 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     solo.setClickingTogglesState(true);
     mute.onClick = [this] { if (onMuteChanged) onMuteChanged(trackIndex, mute.getToggleState()); };
     solo.onClick = [this] { if (onSoloChanged) onSoloChanged(trackIndex, solo.getToggleState()); };
+    deleteTrack.setTooltip("Delete audio track");
+    deleteTrack.onClick = [this] { if (onDeleteTrack) onDeleteTrack(trackIndex); };
     for (auto* slider : { &gain, &panControl })
     {
         slider->setSliderStyle(juce::Slider::LinearHorizontal);
@@ -89,6 +91,7 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     addAndMakeVisible(mute);
     addAndMakeVisible(solo);
     addAndMakeVisible(pluginMenu);
+    addAndMakeVisible(deleteTrack);
     addAndMakeVisible(gain);
     addAndMakeVisible(panControl);
 }
@@ -140,7 +143,8 @@ void TrackHeaderView::resized()
     number.setBounds(top.removeFromLeft(24));
     solo.setBounds(top.removeFromRight(27).reduced(1));
     mute.setBounds(top.removeFromRight(27).reduced(1));
-    pluginMenu.setBounds(top.removeFromRight(62).reduced(1));
+    deleteTrack.setBounds(top.removeFromRight(24).reduced(1));
+    pluginMenu.setBounds(top.removeFromRight(58).reduced(1));
     nameEditor.setBounds(top.reduced(3, 0));
     auto gainRow = area.removeFromTop(22);
     gain.setBounds(gainRow);

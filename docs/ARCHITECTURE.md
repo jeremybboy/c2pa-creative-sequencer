@@ -102,6 +102,13 @@ device without creating a clip or changing project transport. Replacing, stoppin
 dragging, or importing clears the active preview. Places are intentionally machine-local
 and do not enter the portable project bundle.
 
+Audio-track creation and deletion are project-model mutations rather than UI-only lanes.
+Adding a track assigns a stable UUID and the next default `Audio N` name; deleting a track
+also removes any VST3 state owned by that UUID, while leaving source media untouched. Each
+mutation rebuilds the mirrored Tracktion Edit, persists through `project.json`, and enters
+the same undo/redo history as clip edits. The UI confirms deletion whenever a track owns
+clips or a plug-in and prevents removal of the final audio track.
+
 ## PR 005 verification
 
 - Timeline tests prove seconds/pixel round trips, beat/bar duration, snap behavior,

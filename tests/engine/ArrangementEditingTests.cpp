@@ -164,8 +164,41 @@ int main()
         || ! close(right.lengthSeconds, 0.75))
         return fail(19, "split clip timing or source offsets did not survive reopen");
 
+    if (engine.addAudioTrack().failed())
+        return fail(20, "could not add an audio track");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks.back().name != "Audio 5")
+        return fail(21, "added track did not receive stable default state");
+    const auto addedTrackId = tracks.back().id;
+    if (engine.importAudio(source, 4, 1.0).failed()
+        || engine.saveProject().failed() || engine.openProject(projectFolder).failed())
+        return fail(22, "added track could not accept audio or survive save/reopen");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks.back().id != addedTrackId
+        || tracks.back().clips.size() != 1)
+        return fail(23, "added track identity or clip did not survive save/reopen");
+
+    if (engine.deleteAudioTrack(4).failed() || engine.arrangementSnapshot().size() != 4)
+        return fail(24, "track deletion did not remove the populated track");
+    if (! engine.undo())
+        return fail(25, "track deletion could not be undone");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks.back().id != addedTrackId
+        || tracks.back().clips.size() != 1 || ! engine.redo())
+        return fail(26, "undo/redo did not restore deleted track content exactly");
+    if (engine.arrangementSnapshot().size() != 4
+        || engine.deleteAudioTrack(99).wasOk())
+        return fail(27, "invalid track deletion changed the arrangement");
+
+    if (engine.deleteAudioTrack(3).failed() || engine.deleteAudioTrack(2).failed()
+        || engine.deleteAudioTrack(1).failed()
+        || engine.arrangementSnapshot().size() != 1
+        || engine.deleteAudioTrack(0).wasOk()
+        || engine.arrangementSnapshot().size() != 1)
+        return fail(28, "the final audio track was not protected from deletion");
+
     std::cout << "arrangement editing: import, move, trim, split, duplicate, delete, "
                  "live loop range, mute/solo transport preservation, track controls, undo/redo, "
-                 "and reopen passed\n";
+                 "dynamic track add/delete, and reopen passed\n";
     return 0;
 }
