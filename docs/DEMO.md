@@ -75,9 +75,9 @@ external decode, exact repository match, idempotent import, and byte-exact manif
 3. Verify the WAV's C2PA, then inspect its outbox package: `manifest.c2pa`, `binding.json`, `fingerprint.json`, and `fingerprint-data.afpt` must exist; no WAV, project media, PEM, or key may exist there.
 4. Confirm the manifest has separate AudioWMark and audfprint `c2pa.soft-binding` assertions, one `c2pa.watermarked.bound` action, and no fingerprint action.
 5. Start `python3 tools/softbinding-resolver/server.py`, import once and again, and confirm the second import is idempotent. Check `/watermark` and `/fingerprint` from the same process.
-6. Run `python3 scripts/make_mp3_demo_derivative.py signed.wav derivative.mp3`, then submit the MP3 to both pages.
-7. Fingerprint acceptance requires at least 10 aligned hashes and must show the actual evidence. The verified fixture produced 229 aligned / 265 raw common hashes, 659 query hashes, 34.75% coverage, and 10.52 seconds of support; it recovered the byte-exact manifest.
-8. On the same MP3, AudioWMark decoded eight candidates but none matched the registered value. This measured failure is expected to remain visible.
-9. Submit unrelated audio to `/fingerprint`; the verified deterministic noise control produced zero matches and no provenance recovery.
+6. Run `python3 scripts/make_mp3_demo_derivative.py signed.wav derivative.mp3`. This creates the measured PR 013 transformation: a 64 kbps MP3 with a 12 kHz low-pass and stripped metadata. Submit that same MP3 to both pages.
+7. Fingerprint acceptance requires at least 10 aligned hashes and must show the actual evidence. The manually verified PR 013 fixture produced 49 aligned / 200 raw common hashes, 177 query hashes, 27.68% coverage, and 6.36 seconds of support; it recovered the correct manifest.
+8. On that same MP3, AudioWMark decoded eight candidates but none matched the registered 128-bit value. Report this as "the registered watermark identifier was not recoverable by the configured decoder," not as proof that the watermark was physically removed or destroyed.
+9. Submit unrelated audio to `/fingerprint`; the verified deterministic noise control produced 678 query hashes, zero matches, and no provenance recovery.
 
 For automated opt-in acceptance, configure with both `C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST=ON` and `C2PASEQ_ENABLE_REAL_AUDFPRINT_TEST=ON`, then run the `real_mp3_soft_binding_pipeline` CTest. Normal CI remains independent of both runtimes and FFmpeg.
