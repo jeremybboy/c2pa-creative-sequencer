@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/ProjectEngine.h"
+#include "engine/SampleAuditionPlayer.h"
 #include "export/ExportResult.h"
 #include "timeline/TimelineGeometry.h"
 #include "ui/PlacesBrowser.h"
@@ -61,6 +62,7 @@ private:
     void showExportCredentials();
     void showSelectedCredentials();
     void togglePlayback();
+    void stopSampleAudition(const juce::String& message = {});
     void scanPlugins();
     void undoEdit();
     void redoEdit();
@@ -82,6 +84,7 @@ private:
     [[nodiscard]] juce::Colour colourForTrack(int index) const;
 
     AudioEngine& audioEngine;
+    SampleAuditionPlayer sampleAudition;
     PlacesStore placesStore;
     PlacesBrowser browser;
     std::unique_ptr<TimelineSurface> timelineSurface;

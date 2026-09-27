@@ -10,14 +10,23 @@ class PlaceItem final : public juce::TreeViewItem
 {
 public:
     PlaceItem(juce::File itemFile, bool removableRoot,
-              std::function<void(const juce::File&)> remove)
-        : item(std::move(itemFile)), removable(removableRoot), onRemove(std::move(remove)) {}
+              std::function<void(const juce::File&)> remove,
+              std::function<void(const juce::File&)> select,
+              std::function<void()> dragStarted)
+        : item(std::move(itemFile)), removable(removableRoot), onRemove(std::move(remove)),
+          onSelect(std::move(select)), onDragStarted(std::move(dragStarted)) {}
 
     bool mightContainSubItems() override { return item.isDirectory(); }
     juce::String getUniqueName() const override { return item.getFullPathName(); }
 
     void paintItem(juce::Graphics& g, int width, int height) override
     {
+        if (isSelected())
+        {
+            g.setColour(juce::Colour::fromRGB(52, 116, 139));
+            g.fillRoundedRectangle(0.0f, 1.0f, static_cast<float>(width),
+                                   static_cast<float>(height - 2), 3.0f);
+        }
         g.setColour(item.exists() ? juce::Colour::fromRGB(218, 221, 224)
                                   : juce::Colour::fromRGB(125, 128, 132));
         g.setFont(juce::FontOptions(12.5f, removable ? juce::Font::bold : juce::Font::plain));
@@ -34,13 +43,22 @@ public:
         children.sort();
         for (const auto& child : children)
             if (child.isDirectory() || AudioEngine::isSupportedAudioFile(child))
-                addSubItem(new PlaceItem(child, false, onRemove));
+                addSubItem(new PlaceItem(child, false, onRemove, onSelect, onDragStarted));
     }
 
     juce::var getDragSourceDescription() override
     {
-        return AudioEngine::isSupportedAudioFile(item)
-            ? juce::var("c2paseq-audio:" + item.getFullPathName()) : juce::var();
+        if (! AudioEngine::isSupportedAudioFile(item))
+            return {};
+        if (onDragStarted)
+            onDragStarted();
+        return juce::var("c2paseq-audio:" + item.getFullPathName());
+    }
+
+    void itemSelectionChanged(bool isNowSelected) override
+    {
+        if (isNowSelected && onSelect)
+            onSelect(AudioEngine::isSupportedAudioFile(item) ? item : juce::File());
     }
 
     void itemClicked(const juce::MouseEvent& event) override
@@ -62,6 +80,8 @@ private:
     juce::File item;
     bool removable = false;
     std::function<void(const juce::File&)> onRemove;
+    std::function<void(const juce::File&)> onSelect;
+    std::function<void()> onDragStarted;
 };
 
 class RootItem final : public juce::TreeViewItem
@@ -91,9 +111,30 @@ PlacesBrowser::PlacesBrowser(PlacesStore& store) : places(store)
     addAndMakeVisible(addFolder);
     tree.setRootItemVisible(false);
     tree.setDefaultOpenness(true);
+    tree.setMultiSelectEnabled(false);
     tree.setIndentSize(14);
     tree.setColour(juce::TreeView::backgroundColourId, juce::Colours::transparentBlack);
     addAndMakeVisible(tree);
+    selectedSample.setText("No sample selected", juce::dontSendNotification);
+    selectedSample.setFont(juce::FontOptions(11.5f));
+    selectedSample.setColour(juce::Label::textColourId, juce::Colour::fromRGB(173, 179, 184));
+    selectedSample.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(selectedSample);
+    previewButton.setEnabled(false);
+    previewButton.setWantsKeyboardFocus(false);
+    previewButton.setTooltip("Preview the selected sample without importing it");
+    previewButton.onClick = [this]
+    {
+        if (previewPlaying && previewFile == selectedFile)
+        {
+            if (onPreviewStopRequested)
+                onPreviewStopRequested();
+            return;
+        }
+        if (selectedFile.existsAsFile() && onPreviewRequested)
+            onPreviewRequested(selectedFile);
+    };
+    addAndMakeVisible(previewButton);
     rebuildTree();
 }
 
@@ -113,7 +154,27 @@ void PlacesBrowser::resized()
     placesTitle.setBounds(area.removeFromTop(24));
     addFolder.setBounds(area.removeFromTop(28));
     area.removeFromTop(4);
+    auto previewArea = area.removeFromBottom(58);
     tree.setBounds(area);
+    previewArea.removeFromTop(4);
+    selectedSample.setBounds(previewArea.removeFromTop(22));
+    previewButton.setBounds(previewArea.removeFromTop(28));
+}
+
+void PlacesBrowser::setPreviewState(const juce::File& activeFile, bool playing)
+{
+    previewFile = activeFile;
+    previewPlaying = playing && activeFile.existsAsFile();
+    previewButton.setButtonText(previewPlaying && previewFile == selectedFile
+                                    ? "Stop" : "Preview");
+    previewButton.setEnabled(selectedFile.existsAsFile());
+    if (selectedFile.existsAsFile())
+        selectedSample.setText((previewPlaying && previewFile == selectedFile
+                                    ? "Playing: " : "Selected: ")
+                                   + selectedFile.getFileName(),
+                               juce::dontSendNotification);
+    else
+        selectedSample.setText("No sample selected", juce::dontSendNotification);
 }
 
 void PlacesBrowser::chooseFolder()
@@ -147,6 +208,14 @@ void PlacesBrowser::rebuildTree()
                 onStatus(result.wasOk() ? "Removed " + target.getFileName()
                                         : result.getErrorMessage());
             rebuildTree();
+        }, [this](const juce::File& selection)
+        {
+            selectedFile = selection;
+            setPreviewState(previewFile, previewPlaying);
+        }, [this]
+        {
+            if (onAudioDragStarted)
+                onAudioDragStarted();
         }));
     tree.setRootItem(rootItem.get());
 }

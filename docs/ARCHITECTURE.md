@@ -96,8 +96,11 @@ same `ArrangementView` command methods used by visible controls where those exis
 `PlacesStore` persists multiple absolute sample-folder roots in the user's application
 data directory. `PlacesBrowser` reads folders lazily, displays only directories and
 supported audio files, and emits file references for drag placement; it never writes
-to or deletes from the source tree. Places are intentionally machine-local and do not
-enter the portable project bundle.
+to or deletes from the source tree. `SampleAuditionPlayer` decodes the explicitly
+selected file through JUCE and mixes one non-looping preview into the existing output
+device without creating a clip or changing project transport. Replacing, stopping,
+dragging, or importing clears the active preview. Places are intentionally machine-local
+and do not enter the portable project bundle.
 
 ## PR 005 verification
 

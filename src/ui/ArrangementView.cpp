@@ -147,7 +147,9 @@ private:
 };
 
 ArrangementView::ArrangementView(AudioEngine& engine)
-    : audioEngine(engine), browser(placesStore), timelineSurface(std::make_unique<TimelineSurface>())
+    : audioEngine(engine),
+      sampleAudition(engine.audioDeviceManager(), engine.audioFormatManager()),
+      browser(placesStore), timelineSurface(std::make_unique<TimelineSurface>())
 {
     setWantsKeyboardFocus(true);
     setFocusContainerType(juce::Component::FocusContainerType::keyboardFocusContainer);
@@ -157,6 +159,18 @@ ArrangementView::ArrangementView(AudioEngine& engine)
         projectMessage = message;
         refreshTransport();
     };
+    browser.onPreviewRequested = [this](const juce::File& file)
+    {
+        const auto result = sampleAudition.preview(file);
+        if (result.failed())
+            projectMessage = "Preview error: " + result.getErrorMessage();
+        else
+            projectMessage = "Previewing " + file.getFileName();
+        browser.setPreviewState(sampleAudition.currentFile(), sampleAudition.isPlaying());
+        refreshTransport();
+    };
+    browser.onPreviewStopRequested = [this] { stopSampleAudition("Preview stopped"); };
+    browser.onAudioDragStarted = [this] { stopSampleAudition("Preview stopped for drag"); };
 
     timelineSurface->onSeek = [this](double seconds)
     {
@@ -398,6 +412,8 @@ void ArrangementView::itemDropped(const SourceDetails& details)
 
 void ArrangementView::timerCallback()
 {
+    if (sampleAudition.currentFile() != juce::File() && ! sampleAudition.isPlaying())
+        stopSampleAudition("Preview finished");
     refreshTransport();
 }
 
@@ -773,6 +789,16 @@ void ArrangementView::togglePlayback()
     refreshTransport();
 }
 
+void ArrangementView::stopSampleAudition(const juce::String& message)
+{
+    const auto hadPreview = sampleAudition.currentFile() != juce::File();
+    sampleAudition.stop();
+    browser.setPreviewState(juce::File(), false);
+    if (hadPreview && message.isNotEmpty())
+        projectMessage = message;
+    refreshTransport();
+}
+
 void ArrangementView::undoEdit()
 {
     if (audioEngine.undo())
@@ -793,6 +819,7 @@ void ArrangementView::redoEdit()
 
 void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files, int x, int y)
 {
+    stopSampleAudition();
     if (! audioEngine.hasProject())
     {
         projectMessage = "Create or open a project before placing audio";

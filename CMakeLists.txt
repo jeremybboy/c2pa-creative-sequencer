@@ -55,6 +55,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/engine/NativeAudioClipPolicy.h
     src/engine/ProjectEngine.cpp
     src/engine/ProjectEngine.h
+    src/engine/SampleAuditionPlayer.cpp
+    src/engine/SampleAuditionPlayer.h
     src/engine/TracktionAdapter.cpp
     src/engine/TracktionAdapter.h
     src/export/ExportController.cpp
@@ -177,6 +179,21 @@ if(BUILD_TESTING)
         tracktion::tracktion_engine
         juce::juce_recommended_config_flags)
     add_test(NAME transport_foundation COMMAND C2PATransportTests)
+
+    add_executable(C2PASampleAuditionTests
+        tests/engine/SampleAuditionTests.cpp
+        src/engine/SampleAuditionPlayer.cpp
+        src/engine/SampleAuditionPlayer.h)
+    target_include_directories(C2PASampleAuditionTests PRIVATE src)
+    target_compile_features(C2PASampleAuditionTests PRIVATE cxx_std_20)
+    target_compile_definitions(C2PASampleAuditionTests PRIVATE
+        JUCE_USE_MP3AUDIOFORMAT=1
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0)
+    target_link_libraries(C2PASampleAuditionTests PRIVATE
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags)
+    add_test(NAME sample_audition COMMAND C2PASampleAuditionTests)
 
     add_executable(C2PAProjectModelTests
         tests/project/ProjectModelTests.cpp
