@@ -40,7 +40,7 @@ The first configure downloads the exact JUCE, Tracktion Engine, `c2pa-cpp`, and 
 
 ## Arrangement controls
 
-Add sample roots with **Places → Add Folder…**, expand their folders, and drag supported audio directly to a track and musical position. Clips snap to beats by default; hold **Option** while dragging to bypass snap. **Loop** repeats the selected clip, or the full arrangement when no clip is selected; the active range is highlighted in the ruler. **Space** toggles play/pause at the current playhead, **Command-S** saves, and **Command-Z** / **Shift-Command-Z** undo and redo. Use **Delete**, **Command-D**, and **Command-E** for delete, duplicate, and split-at-playhead; use the **−/+** buttons or Command-scroll to zoom, Shift-scroll to move horizontally, and ordinary scroll to move vertically.
+Add sample roots with **Places → Add Folder…** and expand their folders. Select a supported audio file and click **Preview** to audition it without importing; **Stop** ends audition, starting another preview replaces the first, and dragging/importing stops preview automatically. Preview does not loop or alter arrangement transport, so **Space** remains play/pause for the arrangement. Drag supported audio directly to a track and musical position; clips snap to beats by default, and holding **Option** bypasses snap. **Loop** repeats the selected clip, or the full arrangement when no clip is selected; the active range is highlighted in the ruler. **Command-S** saves, and **Command-Z** / **Shift-Command-Z** undo and redo. Use **Delete**, **Command-D**, and **Command-E** for delete, duplicate, and split-at-playhead; use the **−/+** buttons or Command-scroll to zoom, Shift-scroll to move horizontally, and ordinary scroll to move vertically.
 
 Imported files are inspected automatically and clips show **CC**, **No CC**, or **CC ?**; select a clip and click **Credentials** for the validation summary. The first **Export** asks for a PEM signing bundle, validates it with `c2pa-cpp`, stores a machine-local copy with restrictive permissions, and continues automatically. Later Finder launches reuse that credential; **Signing** shows configured state and provides replace/remove actions. Normal Export never silently falls back to unsigned WAV, while `C2PASEQ_SIGNING_BUNDLE_PEM` remains a developer-only override.
 
@@ -56,15 +56,11 @@ The POC still has no recording, MIDI/instrument hosting, warping, time stretchin
 
 ## Future work
 
-1. **Sample audition**
-   - Add preview/stop playback for samples in the left library before dragging or importing.
-   - Only one sample preview may play at a time.
-   - This is future DAW UX work and is not part of PR 012.
-2. **Configurable storage**
+1. **Configurable storage**
    - Replace opaque fixed local demo folders with a user-configurable library/resolver database location.
    - First support a user-selected local folder or a Dropbox-synced folder already mounted by the OS; do not add Dropbox authentication or direct cloud APIs yet.
    - Eventually cover resolver manifests, bindings, fingerprint indexes, and related demo repository state coherently.
-3. **Soft-binding scale and ambiguity testing**
+2. **Soft-binding scale and ambiguity testing**
    - Watermark path: test approximately 1,000 unrelated registered bindings plus the correct binding, confirm exact resolution of the intended manifest from a transcoded derivative, and record lookup time and ambiguity.
    - Fingerprint path: separately test a larger registered audio corpus for database-size effects, false positives, threshold choice, and lookup performance.
    - Do not treat watermark exact lookup and fingerprint similarity search as equivalent tests.
