@@ -45,6 +45,11 @@ TransportSnapshot AudioEngine::transportSnapshot() const
     return tracktion.transportSnapshot();
 }
 
+TrackLevelSnapshot AudioEngine::trackLevelSnapshot(int trackIndex) noexcept
+{
+    return tracktion.trackLevelSnapshot(trackIndex);
+}
+
 juce::AudioDeviceManager& AudioEngine::audioDeviceManager() noexcept
 {
     return tracktion.audioDeviceManager();

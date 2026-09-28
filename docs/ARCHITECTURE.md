@@ -109,6 +109,22 @@ mutation rebuilds the mirrored Tracktion Edit, persists through `project.json`, 
 the same undo/redo history as clip edits. The UI confirms deletion whenever a track owns
 clips or a plug-in and prevents removal of the final audio track.
 
+## PR 016 realtime meter and visual boundary
+
+Each Tracktion audio track ends with an application-owned pass-through meter plug-in after
+the hosted effect and volume/pan stages. Its realtime callback only reads the current audio
+buffer and updates lock-free atomic peaks; it allocates nothing, takes no locks, performs no
+I/O, and never changes samples. The message thread consumes those peaks at 30 Hz and applies
+display-only scaling and release ballistics. Stopped, muted, and excluded-by-solo tracks decay
+to silence, while offline rendering deliberately bypasses meter capture so export remains
+unchanged.
+
+`SequencerLookAndFeel` and `IconButton` provide the reusable visual layer for compact controls,
+grouped toolbar hierarchy, and vector transport/history/zoom/audio/close icons. This layer owns
+presentation only: existing Arrangement commands remain the single behavior path for mouse and
+keyboard actions, and clip, browser, plug-in, project, export, and provenance semantics are not
+changed.
+
 ## PR 005 verification
 
 - Timeline tests prove seconds/pixel round trips, beat/bar duration, snap behavior,

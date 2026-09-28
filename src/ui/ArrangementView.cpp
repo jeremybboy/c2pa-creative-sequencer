@@ -151,6 +151,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
       sampleAudition(engine.audioDeviceManager(), engine.audioFormatManager()),
       browser(placesStore), timelineSurface(std::make_unique<TimelineSurface>())
 {
+    setLookAndFeel(&lookAndFeel);
     setWantsKeyboardFocus(true);
     setFocusContainerType(juce::Component::FocusContainerType::keyboardFocusContainer);
 
@@ -238,6 +239,15 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     audioSettings.onClick = [this] { showAudioSettings(); };
     addTrackButton.onClick = [this] { addAudioTrack(); };
 
+    undoButton.setTooltip("Undo (Command-Z)");
+    redoButton.setTooltip("Redo (Shift-Command-Z)");
+    playPause.setTooltip("Play or pause (Space)");
+    stop.setTooltip("Stop and return to the beginning");
+    loop.setTooltip("Loop the selected clip or full arrangement");
+    zoomOut.setTooltip("Zoom out (Command-minus)");
+    zoomIn.setTooltip("Zoom in (Command-plus)");
+    audioSettings.setTooltip("Audio device settings");
+
     position.setFont(juce::FontOptions(14.0f, juce::Font::bold));
     position.setJustificationType(juce::Justification::centred);
     projectName.setFont(juce::FontOptions(13.0f, juce::Font::bold));
@@ -257,11 +267,13 @@ ArrangementView::ArrangementView(AudioEngine& engine)
         layoutArrangement();
     };
 
-    for (auto* button : { &newProject, &openProjectButton, &saveProjectButton,
-                          &exportButton, &credentialsButton, &signingButton, &audioSoftBindingButton,
-                          &fingerprintButton,
-                          &undoButton, &redoButton, &playPause, &stop, &loop,
-                          &zoomOut, &zoomIn, &audioSettings, &addTrackButton })
+    const std::array<juce::Button*, 17> buttons {
+        &newProject, &openProjectButton, &saveProjectButton, &exportButton,
+        &credentialsButton, &signingButton, &audioSoftBindingButton, &fingerprintButton,
+        &undoButton, &redoButton, &playPause, &stop, &loop,
+        &zoomOut, &zoomIn, &audioSettings, &addTrackButton
+    };
+    for (auto* button : buttons)
     {
         button->setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(66, 70, 74));
         button->setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(231, 233, 235));
@@ -298,6 +310,7 @@ ArrangementView::~ArrangementView()
     if (exportThread.joinable()) exportThread.join();
     horizontalScroll.removeListener(this);
     verticalScroll.removeListener(this);
+    setLookAndFeel(nullptr);
 }
 
 void ArrangementView::paint(juce::Graphics& g)
@@ -308,6 +321,9 @@ void ArrangementView::paint(juce::Graphics& g)
     g.setColour(juce::Colour::fromRGB(76, 80, 84));
     g.drawHorizontalLine(topBarHeight - 1, 0.0f, static_cast<float>(getWidth()));
     g.drawHorizontalLine(getHeight() - statusHeight, 0.0f, static_cast<float>(getWidth()));
+    g.setColour(juce::Colour::fromRGB(91, 97, 102));
+    for (const auto x : toolbarDividers)
+        g.drawVerticalLine(x, 8.0f, static_cast<float>(topBarHeight - 8));
 }
 
 void ArrangementView::resized()
@@ -321,21 +337,30 @@ void ArrangementView::resized()
     {
         component.setBounds(top.removeFromLeft(width).reduced(1));
     };
-    placeButton(newProject, 45); placeButton(openProjectButton, 48); placeButton(saveProjectButton, 46);
-    placeButton(exportButton, 56); placeButton(credentialsButton, 82);
-    placeButton(signingButton, 62);
-    placeButton(audioSoftBindingButton, 68);
-    placeButton(fingerprintButton, 58);
-    top.removeFromLeft(6);
-    placeButton(undoButton, 48); placeButton(redoButton, 48);
-    top.removeFromLeft(10);
-    placeButton(playPause, 52); placeButton(stop, 44); placeButton(loop, 46);
-    placeButton(position, 104);
-    bpm.setBounds(top.removeFromLeft(138).reduced(2, 0));
-    audioSettings.setBounds(top.removeFromRight(56).reduced(1));
+    auto divider = [this, &top](std::size_t index)
+    {
+        top.removeFromLeft(6);
+        toolbarDividers[index] = top.getX() - 3;
+    };
+
+    placeButton(newProject, 38); placeButton(openProjectButton, 40);
+    placeButton(saveProjectButton, 38); placeButton(exportButton, 48);
+    divider(0);
+    placeButton(undoButton, 30); placeButton(redoButton, 30);
+    divider(1);
+    placeButton(playPause, 32); placeButton(stop, 32); placeButton(loop, 32);
+    placeButton(position, 84);
+    bpm.setBounds(top.removeFromLeft(110).reduced(2, 0));
+    divider(2);
+    placeButton(credentialsButton, 78); placeButton(signingButton, 58);
+    placeButton(audioSoftBindingButton, 62); placeButton(fingerprintButton, 52);
+
+    audioSettings.setBounds(top.removeFromRight(32).reduced(1));
     zoomIn.setBounds(top.removeFromRight(30).reduced(1));
     zoomOut.setBounds(top.removeFromRight(30).reduced(1));
-    addTrackButton.setBounds(top.removeFromRight(64).reduced(1));
+    addTrackButton.setBounds(top.removeFromRight(58).reduced(1));
+    toolbarDividers[3] = top.getRight() - 3;
+    top.removeFromRight(6);
     projectName.setBounds(top.reduced(8, 0));
 
     verticalScroll.setBounds(area.removeFromRight(scrollBarSize));
@@ -417,6 +442,22 @@ void ArrangementView::timerCallback()
     if (sampleAudition.currentFile() != juce::File() && ! sampleAudition.isPlaying())
         stopSampleAudition("Preview finished");
     refreshTransport();
+    refreshTrackMeters();
+}
+
+void ArrangementView::refreshTrackMeters()
+{
+    const auto playing = audioEngine.transportSnapshot().playing;
+    const auto anySolo = std::any_of(snapshots.begin(), snapshots.end(),
+        [](const auto& track) { return track.soloed; });
+    const auto count = std::min(trackHeaders.size(), snapshots.size());
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const auto peak = audioEngine.trackLevelSnapshot(static_cast<int>(index));
+        const auto& track = snapshots[index];
+        const auto audible = playing && ! track.muted && (! anySolo || track.soloed);
+        trackHeaders[index]->setMeterPeak(peak, audible);
+    }
 }
 
 void ArrangementView::scrollBarMoved(juce::ScrollBar* bar, double start)
@@ -430,7 +471,8 @@ void ArrangementView::scrollBarMoved(juce::ScrollBar* bar, double start)
 void ArrangementView::refreshTransport()
 {
     const auto snapshot = audioEngine.transportSnapshot();
-    playPause.setButtonText(snapshot.playing ? "Pause" : "Play");
+    playPause.setIcon(snapshot.playing ? IconButton::Icon::pause : IconButton::Icon::play);
+    playPause.setTooltip(snapshot.playing ? "Pause (Space)" : "Play (Space)");
     loop.setToggleState(snapshot.looping, juce::dontSendNotification);
     position.setText(transport::formatPosition(snapshot.positionSeconds).c_str(),
                      juce::dontSendNotification);

@@ -27,6 +27,7 @@ public:
     [[nodiscard]] juce::String status() const;
     [[nodiscard]] AudioDeviceSnapshot audioDeviceSnapshot() const;
     [[nodiscard]] TransportSnapshot transportSnapshot() const;
+    [[nodiscard]] TrackLevelSnapshot trackLevelSnapshot(int trackIndex) noexcept;
     [[nodiscard]] juce::AudioDeviceManager& audioDeviceManager() noexcept;
 
     void play();

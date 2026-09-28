@@ -6,9 +6,11 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
 {
     number.setFont(juce::FontOptions(11.0f, juce::Font::bold));
     number.setJustificationType(juce::Justification::centred);
+    number.setColour(juce::Label::textColourId, juce::Colour::fromRGB(179, 186, 191));
     number.setText(juce::String(index + 1), juce::dontSendNotification);
     nameEditor.setEditable(false, true, false);
     nameEditor.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    nameEditor.setColour(juce::Label::textColourId, juce::Colour::fromRGB(239, 241, 243));
     nameEditor.onTextChange = [this]
     {
         if (onNameChanged)
@@ -127,18 +129,48 @@ void TrackHeaderView::setState(const juce::String& trackName, double gainDb, dou
     repaint();
 }
 
+void TrackHeaderView::setMeterPeak(TrackLevelSnapshot peak, bool audible)
+{
+    const auto ignored = meterBallistics.update(peak, audible);
+    juce::ignoreUnused(ignored);
+    repaint(meterBounds.expanded(1));
+}
+
 void TrackHeaderView::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour::fromRGB(62, 65, 69));
+    g.fillAll(juce::Colour::fromRGB(53, 57, 61));
+    g.setColour(juce::Colour::fromRGB(47, 51, 55));
+    g.fillRect(4, 0, getWidth() - 4, 34);
     g.setColour(accent);
     g.fillRect(0, 0, 4, getHeight());
-    g.setColour(juce::Colour::fromRGB(88, 92, 97));
+    g.setColour(juce::Colour::fromRGB(75, 80, 85));
     g.drawHorizontalLine(getHeight() - 1, 0.0f, static_cast<float>(getWidth()));
+
+    g.setColour(juce::Colour::fromRGB(31, 33, 35));
+    g.fillRoundedRectangle(meterBounds.toFloat(), 2.0f);
+    const auto levels = meterBallistics.current();
+    const auto drawChannel = [&g](juce::Rectangle<int> channel, float level)
+    {
+        const auto height = juce::roundToInt(level * static_cast<float>(channel.getHeight()));
+        if (height <= 0)
+            return;
+        auto fill = channel.removeFromBottom(height).toFloat();
+        g.setColour(level > 0.92f ? juce::Colour::fromRGB(238, 96, 72)
+                                  : level > 0.74f ? juce::Colour::fromRGB(232, 190, 71)
+                                                  : juce::Colour::fromRGB(71, 190, 137));
+        g.fillRoundedRectangle(fill, 1.0f);
+    };
+    auto channels = meterBounds.reduced(2);
+    drawChannel(channels.removeFromLeft(3), levels.left);
+    channels.removeFromLeft(1);
+    drawChannel(channels.removeFromLeft(3), levels.right);
 }
 
 void TrackHeaderView::resized()
 {
     auto area = getLocalBounds().reduced(7, 5);
+    meterBounds = area.removeFromRight(11).reduced(1, 2);
+    area.removeFromRight(4);
     auto top = area.removeFromTop(25);
     number.setBounds(top.removeFromLeft(24));
     solo.setBounds(top.removeFromRight(27).reduced(1));
