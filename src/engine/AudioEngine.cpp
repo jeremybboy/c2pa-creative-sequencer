@@ -98,6 +98,60 @@ juce::Result AudioEngine::importAudio(const juce::File& source,
     return projectEngine.importAudio(source, trackIndex, startSeconds);
 }
 
+juce::Result AudioEngine::createMidiClip(int trackIndex, double startBeats,
+                                         double lengthBeats)
+{
+    return projectEngine.createMidiClip(trackIndex, startBeats, lengthBeats);
+}
+
+juce::Result AudioEngine::moveMidiClip(const juce::String& id, int trackIndex,
+                                       double startBeats)
+{
+    return projectEngine.moveMidiClip(id, trackIndex, startBeats);
+}
+
+juce::Result AudioEngine::trimMidiClip(const juce::String& id, double startBeats,
+                                       double lengthBeats)
+{
+    return projectEngine.trimMidiClip(id, startBeats, lengthBeats);
+}
+
+juce::Result AudioEngine::addMidiNote(const juce::String& clipId, int noteNumber,
+                                      double startBeats, double durationBeats, int velocity)
+{
+    return projectEngine.addMidiNote(clipId, noteNumber, startBeats,
+                                     durationBeats, velocity);
+}
+
+juce::Result AudioEngine::updateMidiNote(const juce::String& clipId,
+                                         const juce::String& noteId,
+                                         int noteNumber, double startBeats,
+                                         double durationBeats, int velocity)
+{
+    return projectEngine.updateMidiNote(clipId, noteId, noteNumber,
+                                        startBeats, durationBeats, velocity);
+}
+
+juce::Result AudioEngine::deleteMidiNote(const juce::String& clipId,
+                                         const juce::String& noteId)
+{
+    return projectEngine.deleteMidiNote(clipId, noteId);
+}
+
+juce::Result AudioEngine::insertMidiNotes(
+    const juce::String& clipId,
+    const std::vector<ArrangementMidiNoteSnapshot>& notes)
+{
+    return projectEngine.insertMidiNotes(clipId, notes);
+}
+
+juce::Result AudioEngine::deleteMidiNotes(
+    const juce::String& clipId,
+    const std::vector<juce::String>& noteIds)
+{
+    return projectEngine.deleteMidiNotes(clipId, noteIds);
+}
+
 juce::Result AudioEngine::moveClip(const juce::String& id, int trackIndex, double start)
 {
     return projectEngine.moveClip(id, trackIndex, start);

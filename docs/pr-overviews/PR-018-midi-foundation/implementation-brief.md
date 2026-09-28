@@ -6,7 +6,7 @@
 - **Base:** `main` after PR 017
 - **Branch:** `pr/018-midi-foundation`
 - **Pull request:** [#18](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/18)
-- **Current checkpoint:** foundation complete; piano-roll editing is next
+- **Current checkpoint:** foundation and piano-roll editing complete; VST3 instrument hosting is next
 - **Merge rule:** remain open and unmerged until all checkpoints and human acceptance pass
 
 ## Goal
@@ -20,14 +20,14 @@ export pipeline. Planned checkpoints are targets, not claims about current behav
 
 | Area | Current PR 018 status |
 | --- | --- |
-| Current state | The foundation checkpoint is complete: explicit Audio/MIDI tracks, beat-based MIDI model, schema migration, and Audio/MIDI track creation/persistence. |
+| Current state | Foundation and piano-roll checkpoints are complete: beat-based MIDI clips/notes are visible, editable, undoable, and persistent, but intentionally silent. |
 | Target user-visible change | Complete a basic MIDI workflow through separately verified piano-roll, instrument, live-input, recording, and render/C2PA checkpoints. |
 | Code/data layers to touch | Project model, arrangement and piano-roll UI, Tracktion MIDI scheduling, VST3 instrument hosting, keyboard input, recording, offline render, tests, and documentation. |
 | Explicitly untouched | Audio recording, warping, time stretching, automation, complex routing, cloud services, MPE, CLAP, and full-DAW expansion. |
 | Persistence/undo impact | Foundation persistence and migration are complete. Each later editing/recording gesture must have explicit persistence and undo tests. |
-| Audio/realtime impact | None in the completed foundation. Later instrument/input checkpoints must prove realtime safety and preserve existing Audio behavior. |
+| Audio/realtime impact | None in the completed foundation or piano roll. The next instrument/input checkpoints must prove realtime safety and preserve existing Audio behavior. |
 | C2PA/provenance impact | None in the completed foundation. The final checkpoint must reuse the existing export/sign/validate path and document MIDI/instrument output truthfully. |
-| Verification evidence | Foundation: clean Release build, 16/16 local tests, successful GitHub macOS check, and local Audio/MIDI track-create/rename/save/reopen checks. Later evidence is not yet available. |
+| Verification evidence | Foundation evidence is recorded below. Piano roll: clean Release build, focused arrangement-editing test, and full 16/16 normal CTest passed; human UI acceptance remains pending. |
 | Human acceptance | Required after every checkpoint and again for the complete end-to-end MIDI workflow before merge. |
 
 ## IMPLEMENTED
@@ -40,15 +40,22 @@ export pipeline. Planned checkpoints are targets, not claims about current behav
 - **+ Track** creates Audio or MIDI tracks; MIDI tracks support rename, delete, undo/redo, and
   save/reopen without presenting fake audio controls.
 - Existing Audio tracks and clips coexist with the MIDI foundation.
+- Double-clicking an empty MIDI lane creates a snapped four-bar MIDI clip.
+- MIDI clips are visible and support arrangement select, move, trim, delete, copy, cut, paste,
+  duplicate, loop, undo/redo, and save/reopen.
+- Double-clicking a MIDI clip opens a piano roll with pitch keys, beat/bar grid, clip boundaries,
+  pitch scrolling, horizontal scrolling/zoom, and a velocity lane.
+- Notes support draw, select/multi-select, pitch/time move, resize, velocity edit, delete,
+  **Command-A/C/X/V/D**, beat snapping, and one undo entry per committed edit.
+- MIDI data remains beat-based across BPM changes. There is intentionally no MIDI sound yet.
 
 ## NOT YET IMPLEMENTED
 
-1. **Current checkpoint — piano roll:** MIDI clip creation, note grid, note/velocity editing, and
-   arrangement editing of MIDI clips.
-2. **Planned — VST3 instrument:** instrument selection/state, MIDI scheduling, realtime playback.
-3. **Planned — live keyboard:** laptop-key mapping, monitoring, octave control, all-notes-off safety.
-4. **Planned — recording:** record arm, note capture during transport, editable recorded clips.
-5. **Planned — render + C2PA:** offline instrument audio in the mix and truthful integration with
+1. **Current checkpoint — VST3 instrument:** instrument selection/state, MIDI scheduling, and
+   realtime playback.
+2. **Planned — live keyboard:** laptop-key mapping, monitoring, octave control, all-notes-off safety.
+3. **Planned — recording:** record arm, note capture during transport, editable recorded clips.
+4. **Planned — render + C2PA:** offline instrument audio in the mix and truthful integration with
    the existing C2PA export pipeline.
 
 ## UNCHANGED
@@ -78,6 +85,16 @@ segfaulted during device initialization after passing in the prior run. The isol
 then passed, followed by the clean 16/16 full-suite result. No product code changed. No later
 checkpoint may begin until this checkpoint is pushed, reported, and explicitly approved by the
 human reviewer.
+
+Checkpoint 2 piano-roll evidence:
+
+- clean Release build succeeded;
+- focused `C2PAArrangementEditingTests` passed, covering four-bar default creation, MIDI clip and
+  note editing, velocity, multi-note clipboard/delete, duplication with fresh identities,
+  beat preservation across BPM changes, loop derivation, undo/redo, and save/reopen;
+- final full normal CTest passed 16/16 in 15.88 seconds;
+- manual UI acceptance remains pending before this checkpoint is approved;
+- no MIDI audio execution, instrument hosting, recording, or C2PA behavior was added.
 
 ## Planned final acceptance
 

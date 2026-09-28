@@ -107,6 +107,10 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/ui/ArrangementShortcuts.h
     src/ui/IconButton.cpp
     src/ui/IconButton.h
+    src/ui/MidiClipView.cpp
+    src/ui/MidiClipView.h
+    src/ui/PianoRollView.cpp
+    src/ui/PianoRollView.h
     src/ui/PlacesBrowser.cpp
     src/ui/PlacesBrowser.h
     src/ui/PlacesStore.cpp

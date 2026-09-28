@@ -41,6 +41,27 @@ public:
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
                                            double startSeconds);
+    [[nodiscard]] juce::Result createMidiClip(int trackIndex, double startBeats,
+                                              double lengthBeats = 16.0);
+    [[nodiscard]] juce::Result moveMidiClip(const juce::String&, int trackIndex,
+                                            double startBeats);
+    [[nodiscard]] juce::Result trimMidiClip(const juce::String&, double startBeats,
+                                            double lengthBeats);
+    [[nodiscard]] juce::Result addMidiNote(const juce::String& clipId, int noteNumber,
+                                           double startBeats, double durationBeats,
+                                           int velocity);
+    [[nodiscard]] juce::Result updateMidiNote(const juce::String& clipId,
+                                              const juce::String& noteId,
+                                              int noteNumber, double startBeats,
+                                              double durationBeats, int velocity);
+    [[nodiscard]] juce::Result deleteMidiNote(const juce::String& clipId,
+                                              const juce::String& noteId);
+    [[nodiscard]] juce::Result insertMidiNotes(
+        const juce::String& clipId,
+        const std::vector<ArrangementMidiNoteSnapshot>& notes);
+    [[nodiscard]] juce::Result deleteMidiNotes(
+        const juce::String& clipId,
+        const std::vector<juce::String>& noteIds);
     [[nodiscard]] juce::Result moveClip(const juce::String&, int trackIndex, double startSeconds);
     [[nodiscard]] juce::Result trimClip(const juce::String&, double startSeconds,
                                         double sourceOffsetSeconds, double lengthSeconds);

@@ -8,6 +8,8 @@
 #include "ui/PlacesBrowser.h"
 #include "ui/PlacesStore.h"
 #include "ui/IconButton.h"
+#include "ui/MidiClipView.h"
+#include "ui/PianoRollView.h"
 #include "ui/SequencerLookAndFeel.h"
 #include "ui/WaveformView.h"
 
@@ -84,6 +86,10 @@ private:
     void zoomBy(double factor, double anchorX);
     void handleWheel(const juce::MouseEvent&, const juce::MouseWheelDetails&);
     void selectClip(const juce::String& id);
+    void createMidiClipAt(double seconds, int trackIndex);
+    void openPianoRoll(const juce::String& clipId);
+    void closePianoRoll();
+    void refreshPianoRoll();
     void selectAllClips();
     [[nodiscard]] std::vector<juce::String> selectedClipVector() const;
     [[nodiscard]] bool textEditorHasFocus() const;
@@ -96,6 +102,8 @@ private:
     void clearTimeSelection();
     void handleClipGesture(WaveformView&, WaveformView::DragMode,
                            int deltaX, int deltaY, bool finished, bool bypassSnap);
+    void handleMidiClipGesture(MidiClipView&, MidiClipView::DragMode,
+                               int deltaX, int deltaY, bool finished, bool bypassSnap);
     void showProjectResult(const juce::Result&, const juce::String& successMessage);
     void applyEditResult(const juce::Result&, const juce::String& successMessage);
     void deferTrackEdit(std::function<juce::Result(AudioEngine&)>,
@@ -114,6 +122,7 @@ private:
     PlacesStore placesStore;
     PlacesBrowser browser;
     std::unique_ptr<TimelineSurface> timelineSurface;
+    std::unique_ptr<PianoRollView> pianoRoll;
     juce::Component headerContainer;
     juce::ScrollBar horizontalScroll { false };
     juce::ScrollBar verticalScroll { true };
@@ -155,7 +164,9 @@ private:
     std::optional<ExportResult> lastExport;
     std::vector<ArrangementTrackSnapshot> snapshots;
     std::vector<std::unique_ptr<WaveformView>> waveformViews;
+    std::vector<std::unique_ptr<MidiClipView>> midiClipViews;
     std::vector<std::unique_ptr<TrackHeaderView>> trackHeaders;
+    juce::String openPianoRollClipId;
     std::atomic_bool exportCancellationRequested { false };
     bool exportInProgress = false;
     std::thread exportThread;

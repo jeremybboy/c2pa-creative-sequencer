@@ -35,6 +35,23 @@ struct ArrangementClipSnapshot
     IngredientInfo provenance;
 };
 
+struct ArrangementMidiNoteSnapshot
+{
+    juce::String id;
+    int noteNumber = 60;
+    double startBeats = 0.0;
+    double durationBeats = 1.0;
+    int velocity = 100;
+};
+
+struct ArrangementMidiClipSnapshot
+{
+    juce::String id;
+    double startBeats = 0.0;
+    double lengthBeats = 4.0;
+    std::vector<ArrangementMidiNoteSnapshot> notes;
+};
+
 struct ArrangementTrackSnapshot
 {
     juce::String id;
@@ -46,6 +63,7 @@ struct ArrangementTrackSnapshot
     bool soloed = false;
     std::optional<TrackPluginSnapshot> plugin;
     std::vector<ArrangementClipSnapshot> clips;
+    std::vector<ArrangementMidiClipSnapshot> midiClips;
     std::size_t midiClipCount = 0;
 };
 
@@ -66,6 +84,34 @@ public:
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
                                            double startSeconds);
+    [[nodiscard]] juce::Result createMidiClip(int trackIndex,
+                                              double startBeats,
+                                              double lengthBeats = 16.0);
+    [[nodiscard]] juce::Result moveMidiClip(const juce::String& clipId,
+                                            int trackIndex,
+                                            double startBeats);
+    [[nodiscard]] juce::Result trimMidiClip(const juce::String& clipId,
+                                            double startBeats,
+                                            double lengthBeats);
+    [[nodiscard]] juce::Result addMidiNote(const juce::String& clipId,
+                                           int noteNumber,
+                                           double startBeats,
+                                           double durationBeats,
+                                           int velocity);
+    [[nodiscard]] juce::Result updateMidiNote(const juce::String& clipId,
+                                              const juce::String& noteId,
+                                              int noteNumber,
+                                              double startBeats,
+                                              double durationBeats,
+                                              int velocity);
+    [[nodiscard]] juce::Result deleteMidiNote(const juce::String& clipId,
+                                              const juce::String& noteId);
+    [[nodiscard]] juce::Result insertMidiNotes(
+        const juce::String& clipId,
+        const std::vector<ArrangementMidiNoteSnapshot>& notes);
+    [[nodiscard]] juce::Result deleteMidiNotes(
+        const juce::String& clipId,
+        const std::vector<juce::String>& noteIds);
     [[nodiscard]] juce::Result moveClip(const juce::String& clipId,
                                         int trackIndex,
                                         double startSeconds);
@@ -136,6 +182,13 @@ private:
         double relativeStartSeconds = 0.0;
     };
 
+    struct ClipboardMidiClip
+    {
+        MidiClipModel clip;
+        int relativeTrack = 0;
+        double relativeStartSeconds = 0.0;
+    };
+
     [[nodiscard]] juce::Result fillClipboardFromClips(
         const std::vector<juce::String>& clipIds);
     [[nodiscard]] juce::Result fillClipboardFromTimeRange(
@@ -148,7 +201,9 @@ private:
     std::vector<Project> undoHistory;
     std::vector<Project> redoHistory;
     std::vector<ClipboardClip> clipboard;
+    std::vector<ClipboardMidiClip> midiClipboard;
     int clipboardBaseTrack = 0;
+    double clipboardOriginSeconds = 0.0;
     double clipboardDurationSeconds = 0.0;
     std::optional<Project> trackMixGestureBefore;
     int trackMixGestureTrack = -1;

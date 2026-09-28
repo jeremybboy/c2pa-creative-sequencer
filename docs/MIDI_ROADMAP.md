@@ -16,14 +16,14 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 - Legacy schema-1 tracks migrate to Audio.
 - Audio/MIDI track creation, rename, delete, undo/redo, and save/reopen.
 
-## Checkpoint 2 — MIDI Clip + Piano Roll Editing — CURRENT
+## Checkpoint 2 — MIDI Clip + Piano Roll Editing — COMPLETE
 
 - Create and open MIDI clips; show a piano keyboard, beat grid, and velocity lane.
 - Draw, select, move, resize, delete, and velocity-edit notes.
 - Copy, paste, and duplicate notes.
 - Move, trim, copy, paste, and duplicate MIDI clips in the arrangement.
 
-## Checkpoint 3 — VST3 Instrument Hosting + MIDI Playback — PLANNED
+## Checkpoint 3 — VST3 Instrument Hosting + MIDI Playback — CURRENT
 
 - Allow one VST3 instrument on a MIDI track and schedule project MIDI notes into Tracktion.
 - Use a deterministic test synthesizer for realtime audible playback.

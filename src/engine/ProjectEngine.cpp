@@ -38,6 +38,12 @@ bool isAudioTrack(const Project& project, int index)
     return juce::isPositiveAndBelow(index, static_cast<int>(project.tracks.size()))
         && project.tracks[static_cast<std::size_t>(index)].type == TrackType::audio;
 }
+
+bool isMidiTrack(const Project& project, int index)
+{
+    return juce::isPositiveAndBelow(index, static_cast<int>(project.tracks.size()))
+        && project.tracks[static_cast<std::size_t>(index)].type == TrackType::midi;
+}
 }
 
 ProjectEngine::ProjectEngine(TracktionAdapter& tracktionAdapter,
@@ -72,6 +78,7 @@ juce::Result ProjectEngine::createProject(const juce::File& projectFolder,
     undoHistory.clear();
     redoHistory.clear();
     clipboard.clear();
+    midiClipboard.clear();
     trackMixGestureBefore.reset();
     trackMixGestureTrack = -1;
     if (auto result = rebuildEditFromProject(); result.failed())
@@ -128,6 +135,7 @@ juce::Result ProjectEngine::openProject(const juce::File& projectFolder)
     undoHistory.clear();
     redoHistory.clear();
     clipboard.clear();
+    midiClipboard.clear();
     trackMixGestureBefore.reset();
     trackMixGestureTrack = -1;
     if (auto result = rebuildEditFromProject(); result.failed())
@@ -145,6 +153,7 @@ void ProjectEngine::closeProject()
     undoHistory.clear();
     redoHistory.clear();
     clipboard.clear();
+    midiClipboard.clear();
     trackMixGestureBefore.reset();
     trackMixGestureTrack = -1;
     tracktion.closeProjectEdit();
@@ -233,6 +242,235 @@ juce::Result ProjectEngine::importAudio(const juce::File& source,
     return result;
 }
 
+juce::Result ProjectEngine::createMidiClip(int trackIndex, double startBeats,
+                                           double lengthBeats)
+{
+    return mutateProject([&](Project& value)
+    {
+        if (! isMidiTrack(value, trackIndex) || ! std::isfinite(startBeats)
+            || ! std::isfinite(lengthBeats) || startBeats < 0.0 || lengthBeats <= 0.0)
+            return juce::Result::fail("MIDI clips require a MIDI track and valid beat range");
+        MidiClipModel clip;
+        clip.id = juce::Uuid().toString();
+        clip.start.beats = startBeats;
+        clip.length.beats = lengthBeats;
+        value.tracks[static_cast<std::size_t>(trackIndex)].midiClips.push_back(std::move(clip));
+        return juce::Result::ok();
+    });
+}
+
+juce::Result ProjectEngine::moveMidiClip(const juce::String& clipId,
+                                         int trackIndex,
+                                         double startBeats)
+{
+    return mutateProject([&](Project& value)
+    {
+        if (! isMidiTrack(value, trackIndex) || ! std::isfinite(startBeats)
+            || startBeats < 0.0)
+            return juce::Result::fail("MIDI clips can only be moved onto a MIDI track");
+        for (auto& track : value.tracks)
+        {
+            const auto found = std::find_if(track.midiClips.begin(), track.midiClips.end(),
+                [&](const auto& clip) { return clip.id == clipId; });
+            if (found == track.midiClips.end())
+                continue;
+            auto moved = *found;
+            moved.start.beats = startBeats;
+            track.midiClips.erase(found);
+            value.tracks[static_cast<std::size_t>(trackIndex)].midiClips.push_back(
+                std::move(moved));
+            return juce::Result::ok();
+        }
+        return juce::Result::fail("MIDI clip was not found");
+    });
+}
+
+juce::Result ProjectEngine::trimMidiClip(const juce::String& clipId,
+                                         double startBeats,
+                                         double lengthBeats)
+{
+    return mutateProject([&](Project& value)
+    {
+        if (! std::isfinite(startBeats) || ! std::isfinite(lengthBeats)
+            || startBeats < 0.0 || lengthBeats <= 0.0)
+            return juce::Result::fail("Invalid MIDI clip trim");
+        for (auto& track : value.tracks)
+            for (auto& clip : track.midiClips)
+                if (clip.id == clipId)
+                {
+                    const auto previousStart = clip.start.beats;
+                    const auto newEnd = startBeats + lengthBeats;
+                    std::vector<MidiNote> retained;
+                    retained.reserve(clip.notes.size());
+                    for (auto note : clip.notes)
+                    {
+                        const auto absoluteStart = previousStart + note.start.beats;
+                        const auto absoluteEnd = absoluteStart + note.duration.beats;
+                        const auto keptStart = std::max(absoluteStart, startBeats);
+                        const auto keptEnd = std::min(absoluteEnd, newEnd);
+                        if (keptEnd <= keptStart + 0.000001)
+                            continue;
+                        note.start.beats = keptStart - startBeats;
+                        note.duration.beats = keptEnd - keptStart;
+                        retained.push_back(std::move(note));
+                    }
+                    clip.start.beats = startBeats;
+                    clip.length.beats = lengthBeats;
+                    clip.notes = std::move(retained);
+                    return juce::Result::ok();
+                }
+        return juce::Result::fail("MIDI clip was not found");
+    });
+}
+
+juce::Result ProjectEngine::addMidiNote(const juce::String& clipId,
+                                        int noteNumber,
+                                        double startBeats,
+                                        double durationBeats,
+                                        int velocity)
+{
+    return mutateProject([&](Project& value)
+    {
+        for (auto& track : value.tracks)
+            for (auto& clip : track.midiClips)
+                if (clip.id == clipId)
+                {
+                    if (noteNumber < 0 || noteNumber > 127 || velocity < 1 || velocity > 127
+                        || ! std::isfinite(startBeats) || ! std::isfinite(durationBeats)
+                        || startBeats < 0.0 || durationBeats <= 0.0
+                        || startBeats + durationBeats > clip.length.beats + 0.000001)
+                        return juce::Result::fail("MIDI note is outside the clip or invalid");
+                    MidiNote note;
+                    note.id = juce::Uuid().toString();
+                    note.noteNumber = noteNumber;
+                    note.start.beats = startBeats;
+                    note.duration.beats = durationBeats;
+                    note.velocity = velocity;
+                    clip.notes.push_back(std::move(note));
+                    return juce::Result::ok();
+                }
+        return juce::Result::fail("MIDI clip was not found");
+    });
+}
+
+juce::Result ProjectEngine::updateMidiNote(const juce::String& clipId,
+                                           const juce::String& noteId,
+                                           int noteNumber,
+                                           double startBeats,
+                                           double durationBeats,
+                                           int velocity)
+{
+    return mutateProject([&](Project& value)
+    {
+        for (auto& track : value.tracks)
+            for (auto& clip : track.midiClips)
+                if (clip.id == clipId)
+                {
+                    if (noteNumber < 0 || noteNumber > 127 || velocity < 1 || velocity > 127
+                        || ! std::isfinite(startBeats) || ! std::isfinite(durationBeats)
+                        || startBeats < 0.0 || durationBeats <= 0.0
+                        || startBeats + durationBeats > clip.length.beats + 0.000001)
+                        return juce::Result::fail("MIDI note is outside the clip or invalid");
+                    const auto found = std::find_if(clip.notes.begin(), clip.notes.end(),
+                        [&](const auto& note) { return note.id == noteId; });
+                    if (found == clip.notes.end())
+                        return juce::Result::fail("MIDI note was not found");
+                    found->noteNumber = noteNumber;
+                    found->start.beats = startBeats;
+                    found->duration.beats = durationBeats;
+                    found->velocity = velocity;
+                    return juce::Result::ok();
+                }
+        return juce::Result::fail("MIDI clip was not found");
+    });
+}
+
+juce::Result ProjectEngine::deleteMidiNote(const juce::String& clipId,
+                                           const juce::String& noteId)
+{
+    return mutateProject([&](Project& value)
+    {
+        for (auto& track : value.tracks)
+            for (auto& clip : track.midiClips)
+                if (clip.id == clipId)
+                {
+                    const auto previousSize = clip.notes.size();
+                    std::erase_if(clip.notes,
+                        [&](const auto& note) { return note.id == noteId; });
+                    return clip.notes.size() != previousSize
+                        ? juce::Result::ok()
+                        : juce::Result::fail("MIDI note was not found");
+                }
+        return juce::Result::fail("MIDI clip was not found");
+    });
+}
+
+juce::Result ProjectEngine::insertMidiNotes(
+    const juce::String& clipId,
+    const std::vector<ArrangementMidiNoteSnapshot>& notes)
+{
+    if (notes.empty())
+        return juce::Result::fail("No MIDI notes are available to insert");
+    return mutateProject([&](Project& value)
+    {
+        for (auto& track : value.tracks)
+            for (auto& clip : track.midiClips)
+                if (clip.id == clipId)
+                {
+                    for (const auto& source : notes)
+                    {
+                        if (source.noteNumber < 0 || source.noteNumber > 127
+                            || source.velocity < 1 || source.velocity > 127
+                            || ! std::isfinite(source.startBeats)
+                            || ! std::isfinite(source.durationBeats)
+                            || source.startBeats < 0.0 || source.durationBeats <= 0.0
+                            || source.startBeats + source.durationBeats
+                                > clip.length.beats + 0.000001)
+                            return juce::Result::fail(
+                                "A pasted MIDI note is outside the clip or invalid");
+                    }
+                    for (const auto& source : notes)
+                    {
+                        MidiNote note;
+                        note.id = juce::Uuid().toString();
+                        note.noteNumber = source.noteNumber;
+                        note.start.beats = source.startBeats;
+                        note.duration.beats = source.durationBeats;
+                        note.velocity = source.velocity;
+                        clip.notes.push_back(std::move(note));
+                    }
+                    return juce::Result::ok();
+                }
+        return juce::Result::fail("MIDI clip was not found");
+    });
+}
+
+juce::Result ProjectEngine::deleteMidiNotes(
+    const juce::String& clipId,
+    const std::vector<juce::String>& noteIds)
+{
+    if (noteIds.empty())
+        return juce::Result::fail("No MIDI notes are selected");
+    return mutateProject([&](Project& value)
+    {
+        for (auto& track : value.tracks)
+            for (auto& clip : track.midiClips)
+                if (clip.id == clipId)
+                {
+                    const auto previousSize = clip.notes.size();
+                    std::erase_if(clip.notes, [&](const auto& note)
+                    {
+                        return std::find(noteIds.begin(), noteIds.end(), note.id)
+                            != noteIds.end();
+                    });
+                    return clip.notes.size() != previousSize
+                        ? juce::Result::ok()
+                        : juce::Result::fail("Selected MIDI notes were not found");
+                }
+        return juce::Result::fail("MIDI clip was not found");
+    });
+}
+
 juce::Result ProjectEngine::moveClip(const juce::String& clipId,
                                      int trackIndex,
                                      double startSeconds)
@@ -288,9 +526,14 @@ juce::Result ProjectEngine::deleteClip(const juce::String& clipId)
     {
         for (auto& track : value.tracks)
         {
-            const auto before = track.clips.size();
+            const auto audioBefore = track.clips.size();
             std::erase_if(track.clips, [&](const auto& clip) { return clip.id == clipId; });
-            if (track.clips.size() != before)
+            if (track.clips.size() != audioBefore)
+                return juce::Result::ok();
+            const auto midiBefore = track.midiClips.size();
+            std::erase_if(track.midiClips,
+                [&](const auto& clip) { return clip.id == clipId; });
+            if (track.midiClips.size() != midiBefore)
                 return juce::Result::ok();
         }
         return juce::Result::fail("Clip was not found");
@@ -304,12 +547,18 @@ juce::Result ProjectEngine::deleteClips(const std::vector<juce::String>& clipIds
         auto removed = 0;
         for (auto& track : value.tracks)
         {
-            const auto before = track.clips.size();
+            const auto audioBefore = track.clips.size();
             std::erase_if(track.clips, [&](const auto& clip)
             {
                 return std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end();
             });
-            removed += static_cast<int>(before - track.clips.size());
+            removed += static_cast<int>(audioBefore - track.clips.size());
+            const auto midiBefore = track.midiClips.size();
+            std::erase_if(track.midiClips, [&](const auto& clip)
+            {
+                return std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end();
+            });
+            removed += static_cast<int>(midiBefore - track.midiClips.size());
         }
         return removed > 0 ? juce::Result::ok()
                            : juce::Result::fail("No selected clips were found");
@@ -324,13 +573,26 @@ juce::Result ProjectEngine::duplicateClip(const juce::String& clipId)
         {
             const auto found = std::find_if(track.clips.begin(), track.clips.end(),
                 [&](const auto& clip) { return clip.id == clipId; });
-            if (found == track.clips.end())
-                continue;
-            auto duplicate = *found;
-            duplicate.id = juce::Uuid().toString();
-            duplicate.startSeconds += duplicate.lengthSeconds;
-            track.clips.push_back(std::move(duplicate));
-            return juce::Result::ok();
+            if (found != track.clips.end())
+            {
+                auto duplicate = *found;
+                duplicate.id = juce::Uuid().toString();
+                duplicate.startSeconds += duplicate.lengthSeconds;
+                track.clips.push_back(std::move(duplicate));
+                return juce::Result::ok();
+            }
+            const auto midiFound = std::find_if(track.midiClips.begin(), track.midiClips.end(),
+                [&](const auto& clip) { return clip.id == clipId; });
+            if (midiFound != track.midiClips.end())
+            {
+                auto duplicate = *midiFound;
+                duplicate.id = juce::Uuid().toString();
+                duplicate.start.beats += duplicate.length.beats;
+                for (auto& note : duplicate.notes)
+                    note.id = juce::Uuid().toString();
+                track.midiClips.push_back(std::move(duplicate));
+                return juce::Result::ok();
+            }
         }
         return juce::Result::fail("Clip was not found");
     });
@@ -343,6 +605,8 @@ juce::Result ProjectEngine::fillClipboardFromClips(
         return juce::Result::fail("No clips are selected");
 
     clipboard.clear();
+    midiClipboard.clear();
+    const MusicalTimeConverter converter(project->bpm);
     auto minimumTrack = static_cast<int>(project->tracks.size());
     auto minimumStart = std::numeric_limits<double>::max();
     auto maximumEnd = 0.0;
@@ -356,17 +620,35 @@ juce::Result ProjectEngine::fillClipboardFromClips(
                 minimumStart = std::min(minimumStart, clip.startSeconds);
                 maximumEnd = std::max(maximumEnd, clip.startSeconds + clip.lengthSeconds);
             }
+    for (std::size_t trackIndex = 0; trackIndex < project->tracks.size(); ++trackIndex)
+        for (const auto& clip : project->tracks[trackIndex].midiClips)
+            if (std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end())
+            {
+                foundAny = true;
+                const auto start = converter.toSeconds(clip.start);
+                const auto end = start + converter.toSeconds(clip.length);
+                minimumTrack = std::min(minimumTrack, static_cast<int>(trackIndex));
+                minimumStart = std::min(minimumStart, start);
+                maximumEnd = std::max(maximumEnd, end);
+            }
 
     if (! foundAny)
         return juce::Result::fail("No selected clips were found");
 
     clipboardBaseTrack = minimumTrack;
+    clipboardOriginSeconds = minimumStart;
     clipboardDurationSeconds = maximumEnd - minimumStart;
     for (std::size_t trackIndex = 0; trackIndex < project->tracks.size(); ++trackIndex)
         for (const auto& clip : project->tracks[trackIndex].clips)
             if (std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end())
                 clipboard.push_back({ clip, static_cast<int>(trackIndex) - minimumTrack,
                                       clip.startSeconds - minimumStart });
+    for (std::size_t trackIndex = 0; trackIndex < project->tracks.size(); ++trackIndex)
+        for (const auto& clip : project->tracks[trackIndex].midiClips)
+            if (std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end())
+                midiClipboard.push_back({ clip,
+                    static_cast<int>(trackIndex) - minimumTrack,
+                    converter.toSeconds(clip.start) - minimumStart });
     return juce::Result::ok();
 }
 
@@ -377,7 +659,9 @@ juce::Result ProjectEngine::fillClipboardFromTimeRange(
         return juce::Result::fail("No valid time selection");
 
     clipboard.clear();
+    midiClipboard.clear();
     clipboardBaseTrack = selection.firstTrack;
+    clipboardOriginSeconds = selection.startSeconds;
     clipboardDurationSeconds = selection.endSeconds - selection.startSeconds;
     const auto lastTrack = std::min(selection.lastTrack,
         static_cast<int>(project->tracks.size()) - 1);
@@ -471,7 +755,8 @@ juce::Result ProjectEngine::cutTimeRange(const ArrangementTimeSelection& selecti
 
 juce::Result ProjectEngine::pasteClipboard(double destinationSeconds, int destinationTrack)
 {
-    if (! project.has_value() || clipboard.empty() || destinationSeconds < 0.0)
+    if (! project.has_value() || (clipboard.empty() && midiClipboard.empty())
+        || destinationSeconds < 0.0)
         return juce::Result::fail("Nothing valid is available to paste");
     const auto baseTrack = destinationTrack >= 0 ? destinationTrack : clipboardBaseTrack;
     return mutateProject([&](Project& value)
@@ -479,10 +764,15 @@ juce::Result ProjectEngine::pasteClipboard(double destinationSeconds, int destin
         auto maximumTrack = baseTrack;
         for (const auto& item : clipboard)
             maximumTrack = std::max(maximumTrack, baseTrack + item.relativeTrack);
+        for (const auto& item : midiClipboard)
+            maximumTrack = std::max(maximumTrack, baseTrack + item.relativeTrack);
         ensureTrackCount(maximumTrack + 1);
         for (const auto& item : clipboard)
             if (! isAudioTrack(value, baseTrack + item.relativeTrack))
                 return juce::Result::fail("Audio clips can only be pasted onto Audio tracks");
+        for (const auto& item : midiClipboard)
+            if (! isMidiTrack(value, baseTrack + item.relativeTrack))
+                return juce::Result::fail("MIDI clips can only be pasted onto MIDI tracks");
         for (const auto& item : clipboard)
         {
             auto pasted = item.clip;
@@ -490,6 +780,18 @@ juce::Result ProjectEngine::pasteClipboard(double destinationSeconds, int destin
             pasted.startSeconds = destinationSeconds + item.relativeStartSeconds;
             value.tracks[static_cast<std::size_t>(baseTrack + item.relativeTrack)]
                 .clips.push_back(std::move(pasted));
+        }
+        const MusicalTimeConverter converter(value.bpm);
+        for (const auto& item : midiClipboard)
+        {
+            auto pasted = item.clip;
+            pasted.id = juce::Uuid().toString();
+            pasted.start = converter.toBeatPosition(
+                destinationSeconds + item.relativeStartSeconds);
+            for (auto& note : pasted.notes)
+                note.id = juce::Uuid().toString();
+            value.tracks[static_cast<std::size_t>(baseTrack + item.relativeTrack)]
+                .midiClips.push_back(std::move(pasted));
         }
         return juce::Result::ok();
     });
@@ -499,12 +801,8 @@ juce::Result ProjectEngine::duplicateClips(const std::vector<juce::String>& clip
 {
     if (auto result = fillClipboardFromClips(clipIds); result.failed())
         return result;
-    auto minimumStart = std::numeric_limits<double>::max();
-    for (const auto& track : project->tracks)
-        for (const auto& clip : track.clips)
-            if (std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end())
-                minimumStart = std::min(minimumStart, clip.startSeconds);
-    return pasteClipboard(minimumStart + clipboardDurationSeconds, clipboardBaseTrack);
+    return pasteClipboard(clipboardOriginSeconds + clipboardDurationSeconds,
+                          clipboardBaseTrack);
 }
 
 juce::Result ProjectEngine::duplicateTimeRange(const ArrangementTimeSelection& selection)
@@ -516,7 +814,7 @@ juce::Result ProjectEngine::duplicateTimeRange(const ArrangementTimeSelection& s
 
 bool ProjectEngine::hasClipboard() const noexcept
 {
-    return ! clipboard.empty();
+    return ! clipboard.empty() || ! midiClipboard.empty();
 }
 
 juce::Result ProjectEngine::splitClip(const juce::String& clipId,
@@ -919,6 +1217,17 @@ std::vector<ArrangementTrackSnapshot> ProjectEngine::arrangementSnapshot() const
                 clip.lengthSeconds,
                 media->provenance
             });
+        }
+        for (const auto& clip : track.midiClips)
+        {
+            ArrangementMidiClipSnapshot midiClip {
+                clip.id, clip.start.beats, clip.length.beats, {}
+            };
+            midiClip.notes.reserve(clip.notes.size());
+            for (const auto& note : clip.notes)
+                midiClip.notes.push_back({ note.id, note.noteNumber, note.start.beats,
+                                           note.duration.beats, note.velocity });
+            trackSnapshot.midiClips.push_back(std::move(midiClip));
         }
         snapshot.push_back(std::move(trackSnapshot));
     }

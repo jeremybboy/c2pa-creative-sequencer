@@ -8,7 +8,7 @@
   <rect x="1190" y="22" width="372" height="98" rx="8" fill="#eaf2f8"/>
   <text x="1213" y="53" font-family="Arial, sans-serif" font-size="23" font-weight="700" fill="#132333">CURRENT TRUTH</text>
   <text x="1213" y="82" font-family="Arial, sans-serif" font-size="18" fill="#132333">✓ Foundation complete</text>
-  <text x="1213" y="106" font-family="Arial, sans-serif" font-size="18" fill="#132333">→ Piano roll is next; all else planned</text>
+  <text x="1213" y="106" font-family="Arial, sans-serif" font-size="18" fill="#132333">✓ Piano roll complete  → Instrument next</text>
 
   <text x="36" y="184" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#132333">CHECKPOINT FLOW</text>
   <text x="330" y="184" font-family="Arial, sans-serif" font-size="18" fill="#526273">Build → test → document → commit → push → human approval → next checkpoint</text>
@@ -25,10 +25,10 @@
     <text x="48" y="437" font-size="15" fill="#526273">Verified: Release + 16 tests</text>
 
     <text x="283" y="342" font-size="34" font-weight="700" fill="#132333">→</text>
-    <rect x="320" y="207" width="244" height="250" rx="8" fill="#eef5ff" stroke="#276be8" stroke-width="4"/>
-    <rect x="320" y="207" width="244" height="50" rx="8" fill="#276be8"/>
-    <text x="338" y="240" font-size="21" font-weight="700" fill="#ffffff">→ 2. PIANO ROLL</text>
-    <text x="338" y="286" font-size="18" font-weight="700" fill="#1f54b5">CURRENT / NEXT</text>
+    <rect x="320" y="207" width="244" height="250" rx="8" fill="#e5f5ec" stroke="#15955f" stroke-width="3"/>
+    <rect x="320" y="207" width="244" height="50" rx="8" fill="#15955f"/>
+    <text x="338" y="240" font-size="21" font-weight="700" fill="#ffffff">✓ 2. PIANO ROLL</text>
+    <text x="338" y="286" font-size="18" font-weight="700" fill="#116542">COMPLETE</text>
     <rect x="342" y="312" width="200" height="104" fill="#172330"/>
     <line x1="382" y1="312" x2="382" y2="416" stroke="#637485"/>
     <line x1="342" y1="338" x2="542" y2="338" stroke="#637485"/>
@@ -37,18 +37,18 @@
     <rect x="399" y="326" width="56" height="18" fill="#56d28d"/>
     <rect x="447" y="352" width="74" height="18" fill="#56d28d"/>
     <rect x="371" y="379" width="45" height="18" fill="#56d28d"/>
-    <text x="338" y="440" font-size="15" fill="#526273">Not implemented yet</text>
+    <text x="338" y="440" font-size="15" fill="#526273">Verified locally; human UI test pending</text>
 
     <text x="573" y="342" font-size="34" font-weight="700" fill="#99a6b3">→</text>
-    <rect x="610" y="207" width="244" height="250" rx="8" fill="#f3f1f8" stroke="#a89abb" stroke-width="2" stroke-dasharray="8 7"/>
-    <rect x="610" y="207" width="244" height="50" rx="8" fill="#76678b"/>
-    <text x="628" y="240" font-size="20" font-weight="700" fill="#ffffff">○ 3. INSTRUMENT</text>
-    <text x="628" y="286" font-size="18" font-weight="700" fill="#76678b">PLANNED</text>
+    <rect x="610" y="207" width="244" height="250" rx="8" fill="#eef5ff" stroke="#276be8" stroke-width="4"/>
+    <rect x="610" y="207" width="244" height="50" rx="8" fill="#276be8"/>
+    <text x="628" y="240" font-size="20" font-weight="700" fill="#ffffff">→ 3. INSTRUMENT</text>
+    <text x="628" y="286" font-size="18" font-weight="700" fill="#1f54b5">CURRENT / NEXT</text>
     <text x="628" y="320" font-size="17" fill="#132333">VST3 synth selection</text>
     <text x="628" y="349" font-size="17" fill="#132333">MIDI scheduling</text>
     <text x="628" y="378" font-size="17" fill="#132333">Realtime playback</text>
     <text x="628" y="407" font-size="17" fill="#132333">Persistent plug-in state</text>
-    <text x="628" y="440" font-size="15" fill="#526273">No working claim yet</text>
+    <text x="628" y="440" font-size="15" fill="#526273">Not implemented yet</text>
 
     <text x="863" y="342" font-size="34" font-weight="700" fill="#99a6b3">→</text>
     <rect x="900" y="207" width="210" height="250" rx="8" fill="#f3f1f8" stroke="#a89abb" stroke-width="2" stroke-dasharray="8 7"/>
@@ -86,18 +86,18 @@
     <rect x="30" y="530" width="365" height="262" rx="8" fill="#ffffff" stroke="#c8d0d8"/>
     <rect x="30" y="530" width="365" height="48" rx="8" fill="#dfe5ea"/>
     <text x="50" y="562" font-size="21" font-weight="700" fill="#132333">IMPLEMENTED NOW</text>
-    <text x="50" y="612" font-size="18" fill="#132333">✓ MIDI project model in beats</text>
-    <text x="50" y="647" font-size="18" fill="#132333">✓ Audio / MIDI track choice</text>
-    <text x="50" y="682" font-size="18" fill="#132333">✓ Schema migration + persistence</text>
-    <text x="50" y="717" font-size="18" fill="#132333">✓ Rename / delete / undo / redo</text>
-    <text x="50" y="752" font-size="16" fill="#526273">No MIDI sound or note editor yet</text>
+    <text x="50" y="612" font-size="18" fill="#132333">✓ Beat-based MIDI model + tracks</text>
+    <text x="50" y="647" font-size="18" fill="#132333">✓ Visible, editable MIDI clips</text>
+    <text x="50" y="682" font-size="18" fill="#132333">✓ Piano roll + velocity editing</text>
+    <text x="50" y="717" font-size="18" fill="#132333">✓ Clipboard / undo / persistence</text>
+    <text x="50" y="752" font-size="16" fill="#526273">MIDI is intentionally silent at this checkpoint</text>
 
     <rect x="415" y="530" width="365" height="262" rx="8" fill="#eef5ff" stroke="#276be8"/>
     <rect x="415" y="530" width="365" height="48" rx="8" fill="#d7e7ff"/>
     <text x="435" y="562" font-size="21" font-weight="700" fill="#132333">TARGET IN OPEN PR 018</text>
-    <text x="435" y="612" font-size="18" fill="#132333">→ Piano-roll editing</text>
-    <text x="435" y="647" font-size="18" fill="#132333">○ Instrument playback</text>
-    <text x="435" y="682" font-size="18" fill="#132333">○ Live keyboard + recording</text>
+    <text x="435" y="612" font-size="18" fill="#132333">→ Instrument playback</text>
+    <text x="435" y="647" font-size="18" fill="#132333">○ Live keyboard monitoring</text>
+    <text x="435" y="682" font-size="18" fill="#132333">○ MIDI recording</text>
     <text x="435" y="717" font-size="18" fill="#132333">○ Offline render + C2PA export</text>
     <text x="435" y="752" font-size="16" fill="#526273">Each requires its own checkpoint evidence</text>
 
@@ -113,15 +113,15 @@
     <rect x="1185" y="530" width="385" height="262" rx="8" fill="#f1f0f6" stroke="#a89abb"/>
     <rect x="1185" y="530" width="385" height="48" rx="8" fill="#e2ddec"/>
     <text x="1205" y="562" font-size="21" font-weight="700" fill="#132333">FINAL TARGET — NOT VERIFIED</text>
-    <text x="1205" y="612" font-size="18" fill="#132333">Create + edit MIDI clips</text>
-    <text x="1205" y="647" font-size="18" fill="#132333">Hear arranged and live synth notes</text>
+    <text x="1205" y="612" font-size="18" fill="#132333">Hear arranged synth notes</text>
+    <text x="1205" y="647" font-size="18" fill="#132333">Play live from laptop keys</text>
     <text x="1205" y="682" font-size="18" fill="#132333">Record and edit a performance</text>
     <text x="1205" y="717" font-size="18" fill="#132333">Render with Audio + validate C2PA</text>
     <text x="1205" y="752" font-size="16" fill="#526273">No completion claim before acceptance</text>
   </g>
 
   <rect x="30" y="824" width="1540" height="142" rx="8" fill="#132333"/>
-  <text x="52" y="860" font-family="Arial, sans-serif" font-size="21" font-weight="700" fill="#ffffff">CHECKPOINT 0 IMPACT</text>
-  <text x="52" y="898" font-family="Arial, sans-serif" font-size="18" fill="#dbe6ef">Documentation + visual only  |  Product behavior unchanged  |  Audio engine unchanged  |  C2PA semantics unchanged</text>
-  <text x="52" y="936" font-family="Arial, sans-serif" font-size="18" fill="#dbe6ef">Verified: Release build + full 16/16 normal CTest passed  |  Human approval required before Piano Roll work begins</text>
+  <text x="52" y="860" font-family="Arial, sans-serif" font-size="21" font-weight="700" fill="#ffffff">CHECKPOINT 2 IMPACT</text>
+  <text x="52" y="898" font-family="Arial, sans-serif" font-size="18" fill="#dbe6ef">MIDI clip + note editing added  |  Audio execution unchanged  |  C2PA semantics unchanged  |  No MIDI sound yet</text>
+  <text x="52" y="936" font-family="Arial, sans-serif" font-size="18" fill="#dbe6ef">Verified: Release build + focused test + full 16/16 CTest  |  Human UI acceptance required before Instrument work</text>
 </svg>
