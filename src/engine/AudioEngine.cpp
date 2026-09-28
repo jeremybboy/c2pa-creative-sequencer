@@ -80,6 +80,11 @@ void AudioEngine::setLooping(bool shouldLoop, const juce::String& selectedClipId
     projectEngine.setLooping(shouldLoop, selectedClipId);
 }
 
+juce::Result AudioEngine::setLoopRangeAndEnable(double startSeconds, double endSeconds)
+{
+    return projectEngine.setLoopRangeAndEnable(startSeconds, endSeconds);
+}
+
 void AudioEngine::setBpm(double bpm)
 {
     tracktion.setBpm(bpm);

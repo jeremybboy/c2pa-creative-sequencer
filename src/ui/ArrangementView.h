@@ -89,6 +89,7 @@ private:
     void cutSelection();
     void pasteSelection();
     void duplicateSelection();
+    void loopFromSelection();
     void setTimeSelection(ArrangementTimeSelection selection);
     void clearTimeSelection();
     void handleClipGesture(WaveformView&, WaveformView::DragMode,

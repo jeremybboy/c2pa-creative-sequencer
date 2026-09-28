@@ -113,6 +113,13 @@ int main()
         || ! close(selectedLoop.loopEndSeconds, 5.0))
         return fail(14, "selected clip did not configure the live transport loop");
     engine.setLooping(false);
+    if (engine.setLoopRangeAndEnable(1.25, 2.75).failed())
+        return fail(14, "time-selection loop could not be enabled");
+    const auto timeSelectionLoop = engine.transportSnapshot();
+    if (! timeSelectionLoop.looping || ! close(timeSelectionLoop.loopStartSeconds, 1.25)
+        || ! close(timeSelectionLoop.loopEndSeconds, 2.75))
+        return fail(14, "time-selection loop range was not exact");
+    engine.setLooping(false);
 
     engine.seek(0.5);
     engine.play();

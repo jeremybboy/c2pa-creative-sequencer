@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 
 namespace c2paseq
 {
@@ -311,9 +312,10 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     loop.onClick = [this]
     {
         const auto enabled = loop.getToggleState();
-        const auto selected = selectedClipIds.size() == 1
-            ? *selectedClipIds.begin() : juce::String();
-        audioEngine.setLooping(enabled, selected);
+        if (enabled && (timeSelection.isValid() || ! selectedClipIds.empty()))
+            loopFromSelection();
+        else
+            audioEngine.setLooping(enabled);
         const auto snapshot = audioEngine.transportSnapshot();
         projectMessage = snapshot.looping
             ? "Loop: " + juce::String(snapshot.loopStartSeconds, 3)
@@ -498,7 +500,7 @@ bool ArrangementView::keyPressed(const juce::KeyPress& key)
                 applyEditResult(audioEngine.deleteClips(ids), "Deleted selected clips");
             }
             return true;
-        case ArrangementCommand::loopSelection: return true;
+        case ArrangementCommand::loopSelection: loopFromSelection(); return true;
         case ArrangementCommand::zoomIn:
             zoomBy(1.25, timelineBounds.getWidth() * 0.5); return true;
         case ArrangementCommand::zoomOut:
@@ -1310,6 +1312,44 @@ void ArrangementView::duplicateSelection()
         ? audioEngine.duplicateTimeRange(timeSelection)
         : audioEngine.duplicateClips(selectedClipVector());
     applyEditResult(result, "Duplicated selection");
+}
+
+void ArrangementView::loopFromSelection()
+{
+    auto start = 0.0;
+    auto end = 0.0;
+    auto found = false;
+    if (timeSelection.isValid())
+    {
+        start = timeSelection.startSeconds;
+        end = timeSelection.endSeconds;
+        found = true;
+    }
+    else
+    {
+        start = std::numeric_limits<double>::max();
+        for (const auto& track : snapshots)
+            for (const auto& clip : track.clips)
+                if (selectedClipIds.contains(clip.id))
+                {
+                    found = true;
+                    start = std::min(start, clip.startSeconds);
+                    end = std::max(end, clip.startSeconds + clip.lengthSeconds);
+                }
+    }
+
+    if (! found)
+    {
+        projectMessage = "Select a time range or clip before using Loop Selection";
+        refreshTransport();
+        return;
+    }
+    const auto result = audioEngine.setLoopRangeAndEnable(start, end);
+    projectMessage = result.wasOk()
+        ? "Looped selection: " + juce::String(start, 3) + " - "
+            + juce::String(end, 3) + " s"
+        : "Loop error: " + result.getErrorMessage();
+    refreshTransport();
 }
 
 void ArrangementView::setTimeSelection(ArrangementTimeSelection selection)

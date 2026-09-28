@@ -160,6 +160,20 @@ void ProjectEngine::setLooping(bool shouldLoop, const juce::String& selectedClip
     tracktion.setLooping(shouldLoop);
 }
 
+juce::Result ProjectEngine::setLoopRangeAndEnable(double startSeconds,
+                                                   double endSeconds)
+{
+    if (! project.has_value() || startSeconds < 0.0
+        || endSeconds <= startSeconds + 0.001)
+        return juce::Result::fail("Invalid loop selection");
+    project->loopStartSeconds = startSeconds;
+    project->loopEndSeconds = endSeconds;
+    project->looping = true;
+    tracktion.setLoopRange(startSeconds, endSeconds);
+    tracktion.setLooping(true);
+    return juce::Result::ok();
+}
+
 juce::Result ProjectEngine::importAudio(const juce::File& source,
                                         int trackIndex,
                                         double startSeconds)
