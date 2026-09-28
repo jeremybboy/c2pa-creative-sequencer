@@ -9,7 +9,7 @@ snapshot retained to explain what was known when the overview was prepared.
 
 | PR | Overview | Status snapshot | Pull request |
 | --- | --- | --- | --- |
-| 018 | [MIDI Product Boundary + Musical-Time / Track Foundation](PR-018-midi-foundation/implementation-brief.md) · [Visual](PR-018-midi-foundation/overview.png) | Clean Release build and 16/16 normal tests passed; user acceptance pending on 2026-09-28 | Pending |
+| 018 | [MIDI Product Boundary + Musical-Time / Track Foundation](PR-018-midi-foundation/implementation-brief.md) · [Visual](PR-018-midi-foundation/overview.png) | Clean Release build and 16/16 normal tests passed; user acceptance pending on 2026-09-28 | [#18](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/18) |
 | 017 | [Arrangement Selection, Clipboard, Looping + Live Mixer Controls](PR-017-arrangement-editing/implementation-brief.md) · [Visual](PR-017-arrangement-editing/overview.png) | Local and GitHub automated acceptance passed; human acceptance pending on 2026-09-28 | [#17](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/17) |
 
 ## Archive convention

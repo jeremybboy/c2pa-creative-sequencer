@@ -5,6 +5,7 @@
 - **Repository:** `jeremybboy/c2pa-creative-sequencer`
 - **Base:** `main` after PR 017
 - **Branch:** `pr/018-midi-foundation`
+- **Pull request:** [#18](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/18)
 - **Status snapshot:** local automated verification passed on 2026-09-28; open for human review and do not merge automatically
 
 ## Goal
