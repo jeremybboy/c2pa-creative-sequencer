@@ -125,6 +125,28 @@ presentation only: existing Arrangement commands remain the single behavior path
 keyboard actions, and clip, browser, plug-in, project, export, and provenance semantics are not
 changed.
 
+## PR 017 arrangement editing and live mixer boundary
+
+`ArrangementTimeSelection` is the explicit normalized selection model shared by the timeline
+surface and clip views. Waveform-body and empty-lane drags create time selections; the compact
+clip header remains the move handle and clip edges remain trim handles. Option bypasses beat
+snapping for these gestures. Clipboard entries retain media identity, source offset, duration,
+relative track, and relative time, so partial copy/cut/paste and duplicate remain non-destructive.
+Each command mutates canonical project state once and therefore creates one undo snapshot.
+
+Keyboard shortcuts call the same Arrangement command paths as visible controls. Paste resolves
+its destination from the active time selection, explicit insertion point, or playhead in that
+order. Loop Selection writes the exact selection or selected-clip bounds to the existing
+Tracktion transport loop; ordinary Loop still uses the full arrangement when nothing is selected.
+Timeline zoom remains a geometry-only operation, with Command-scroll and JUCE's native magnify
+gesture preserving the time under the pointer.
+
+Gain and pan drags are intentionally not arrangement rebuilds. A gesture snapshots project state
+once, streams clamped values directly to the active Tracktion volume plug-in, then persists the
+final values as one undoable edit when the gesture ends. This keeps the processing graph,
+transport state, and playhead alive while the audible mix changes; save failure restores both the
+project values and the live plug-in values.
+
 ## PR 005 verification
 
 - Timeline tests prove seconds/pixel round trips, beat/bar duration, snap behavior,
