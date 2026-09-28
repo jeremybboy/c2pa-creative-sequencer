@@ -23,7 +23,7 @@ The product is an arrangement-based audio-stem sequencer, not a full DAW. It wil
 
 JUCE owns the native application and UI. The application project model owns canonical clip timing in seconds and edit history, while Tracktion Engine executes and offline-renders the mirrored arrangement. All SDK access is isolated in `src/provenance`; UI and project code consume only application-owned provenance records and export results.
 
-See [dependency verification](docs/DEPENDENCIES.md), [architecture notes](docs/ARCHITECTURE.md), [soft-binding recovery](docs/SOFT_BINDING.md), and [VST3 hosting](docs/VST_HOSTING.md).
+See [dependency verification](docs/DEPENDENCIES.md), [architecture notes](docs/ARCHITECTURE.md), [pull-request visual overviews](docs/pr-overviews/README.md), [soft-binding recovery](docs/SOFT_BINDING.md), and [VST3 hosting](docs/VST_HOSTING.md).
 
 ## Build
 
