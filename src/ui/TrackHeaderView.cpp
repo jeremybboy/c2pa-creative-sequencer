@@ -30,8 +30,44 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     gain.setRange(-60.0, 12.0, 0.1);
     gain.setTextValueSuffix(" dB");
     panControl.setRange(-1.0, 1.0, 0.01);
-    gain.onDragEnd = [this] { if (onGainChanged) onGainChanged(trackIndex, gain.getValue()); };
-    panControl.onDragEnd = [this] { if (onPanChanged) onPanChanged(trackIndex, panControl.getValue()); };
+    gain.onDragStart = [this]
+    {
+        gainGestureActive = true;
+        if (onGainGestureStart) onGainGestureStart(trackIndex);
+    };
+    gain.onValueChange = [this]
+    {
+        if (gainGestureActive)
+        {
+            if (onGainPreview) onGainPreview(trackIndex, gain.getValue());
+        }
+        else if (onGainChanged)
+            onGainChanged(trackIndex, gain.getValue());
+    };
+    gain.onDragEnd = [this]
+    {
+        if (onGainGestureEnd) onGainGestureEnd(trackIndex);
+        gainGestureActive = false;
+    };
+    panControl.onDragStart = [this]
+    {
+        panGestureActive = true;
+        if (onPanGestureStart) onPanGestureStart(trackIndex);
+    };
+    panControl.onValueChange = [this]
+    {
+        if (panGestureActive)
+        {
+            if (onPanPreview) onPanPreview(trackIndex, panControl.getValue());
+        }
+        else if (onPanChanged)
+            onPanChanged(trackIndex, panControl.getValue());
+    };
+    panControl.onDragEnd = [this]
+    {
+        if (onPanGestureEnd) onPanGestureEnd(trackIndex);
+        panGestureActive = false;
+    };
     pluginMenu.onClick = [this]
     {
         juce::PopupMenu menu;

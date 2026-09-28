@@ -1089,10 +1089,28 @@ void ArrangementView::rebuildArrangement()
             deferTrackEdit([index, value](AudioEngine& engine)
                 { return engine.setTrackGain(index, value); }, "Changed track gain");
         };
+        header->onGainGestureStart = [this](int index) { beginTrackMixGesture(index); };
+        header->onGainPreview = [this](int index, double value)
+        {
+            previewTrackGain(index, value);
+        };
+        header->onGainGestureEnd = [this](int index)
+        {
+            endTrackMixGesture(index, "Changed track gain");
+        };
         header->onPanChanged = [this](int index, double value)
         {
             deferTrackEdit([index, value](AudioEngine& engine)
                 { return engine.setTrackPan(index, value); }, "Changed track pan");
+        };
+        header->onPanGestureStart = [this](int index) { beginTrackMixGesture(index); };
+        header->onPanPreview = [this](int index, double value)
+        {
+            previewTrackPan(index, value);
+        };
+        header->onPanGestureEnd = [this](int index)
+        {
+            endTrackMixGesture(index, "Changed track pan");
         };
         header->onScanPlugins = [this] { scanPlugins(); };
         header->onLoadPlugin = [this](int index, const auto& identifier)
@@ -1500,6 +1518,51 @@ void ArrangementView::deferTrackEdit(
             if (safe != nullptr)
                 safe->applyEditResult(pendingEdit(safe->audioEngine), message);
         });
+}
+
+void ArrangementView::beginTrackMixGesture(int trackIndex)
+{
+    const auto result = audioEngine.beginTrackMixGesture(trackIndex);
+    if (result.failed())
+    {
+        projectMessage = "Mixer error: " + result.getErrorMessage();
+        refreshTransport();
+    }
+}
+
+void ArrangementView::previewTrackGain(int trackIndex, double value)
+{
+    const auto result = audioEngine.previewTrackGain(trackIndex, value);
+    if (result.wasOk()
+        && juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
+        snapshots[static_cast<std::size_t>(trackIndex)].gainDb = value;
+    else if (result.failed())
+        projectMessage = "Mixer error: " + result.getErrorMessage();
+}
+
+void ArrangementView::previewTrackPan(int trackIndex, double value)
+{
+    const auto result = audioEngine.previewTrackPan(trackIndex, value);
+    if (result.wasOk()
+        && juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
+        snapshots[static_cast<std::size_t>(trackIndex)].pan = value;
+    else if (result.failed())
+        projectMessage = "Mixer error: " + result.getErrorMessage();
+}
+
+void ArrangementView::endTrackMixGesture(int trackIndex,
+                                          const juce::String& successMessage)
+{
+    const auto result = audioEngine.endTrackMixGesture(trackIndex);
+    projectMessage = result.wasOk() ? successMessage
+                                    : "Mixer error: " + result.getErrorMessage();
+    if (result.failed())
+        juce::MessageManager::callAsync(
+            [safe = juce::Component::SafePointer<ArrangementView>(this)]
+            {
+                if (safe != nullptr) safe->rebuildArrangement();
+            });
+    refreshTransport();
 }
 
 int ArrangementView::trackAt(int parentY) const

@@ -64,6 +64,10 @@ public:
     [[nodiscard]] juce::Result setTrackSolo(int, bool);
     [[nodiscard]] juce::Result setTrackGain(int, double);
     [[nodiscard]] juce::Result setTrackPan(int, double);
+    [[nodiscard]] juce::Result beginTrackMixGesture(int);
+    [[nodiscard]] juce::Result previewTrackGain(int, double);
+    [[nodiscard]] juce::Result previewTrackPan(int, double);
+    [[nodiscard]] juce::Result endTrackMixGesture(int);
     [[nodiscard]] const std::vector<PluginDescriptor>& availableVst3Plugins() const noexcept;
     [[nodiscard]] juce::Result scanVst3Plugins(const juce::FileSearchPath& paths = {});
     [[nodiscard]] juce::Result loadTrackPlugin(int, const juce::String& identifier);

@@ -63,6 +63,8 @@ juce::Result ProjectEngine::createProject(const juce::File& projectFolder,
     undoHistory.clear();
     redoHistory.clear();
     clipboard.clear();
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
     if (auto result = rebuildEditFromProject(); result.failed())
     {
         closeProject();
@@ -117,6 +119,8 @@ juce::Result ProjectEngine::openProject(const juce::File& projectFolder)
     undoHistory.clear();
     redoHistory.clear();
     clipboard.clear();
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
     if (auto result = rebuildEditFromProject(); result.failed())
     {
         closeProject();
@@ -132,6 +136,8 @@ void ProjectEngine::closeProject()
     undoHistory.clear();
     redoHistory.clear();
     clipboard.clear();
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
     tracktion.closeProjectEdit();
 }
 
@@ -586,24 +592,91 @@ juce::Result ProjectEngine::setTrackSolo(int trackIndex, bool soloed)
 
 juce::Result ProjectEngine::setTrackGain(int trackIndex, double gainDb)
 {
-    return mutateProject([&](Project& value)
+    if (auto result = beginTrackMixGesture(trackIndex); result.failed())
+        return result;
+    if (auto result = previewTrackGain(trackIndex, gainDb); result.failed())
     {
-        if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(value.tracks.size())))
-            return juce::Result::fail("Invalid track");
-        value.tracks[static_cast<std::size_t>(trackIndex)].gainDb = juce::jlimit(-60.0, 12.0, gainDb);
-        return juce::Result::ok();
-    });
+        cancelTrackMixGesture();
+        return result;
+    }
+    return endTrackMixGesture(trackIndex);
 }
 
 juce::Result ProjectEngine::setTrackPan(int trackIndex, double pan)
 {
-    return mutateProject([&](Project& value)
+    if (auto result = beginTrackMixGesture(trackIndex); result.failed())
+        return result;
+    if (auto result = previewTrackPan(trackIndex, pan); result.failed())
     {
-        if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(value.tracks.size())))
-            return juce::Result::fail("Invalid track");
-        value.tracks[static_cast<std::size_t>(trackIndex)].pan = juce::jlimit(-1.0, 1.0, pan);
+        cancelTrackMixGesture();
+        return result;
+    }
+    return endTrackMixGesture(trackIndex);
+}
+
+juce::Result ProjectEngine::beginTrackMixGesture(int trackIndex)
+{
+    if (! project.has_value()
+        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
+        return juce::Result::fail("Invalid track");
+    if (trackMixGestureBefore.has_value())
+        return trackMixGestureTrack == trackIndex
+            ? juce::Result::ok()
+            : juce::Result::fail("Another mixer gesture is active");
+    trackMixGestureBefore = *project;
+    trackMixGestureTrack = trackIndex;
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::previewTrackGain(int trackIndex, double gainDb)
+{
+    if (! project.has_value() || ! trackMixGestureBefore.has_value()
+        || trackIndex != trackMixGestureTrack)
+        return juce::Result::fail("Track gain gesture is not active");
+    const auto value = juce::jlimit(-60.0, 12.0, gainDb);
+    if (auto result = tracktion.setTrackGain(trackIndex, value); result.failed())
+        return result;
+    project->tracks[static_cast<std::size_t>(trackIndex)].gainDb = value;
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::previewTrackPan(int trackIndex, double pan)
+{
+    if (! project.has_value() || ! trackMixGestureBefore.has_value()
+        || trackIndex != trackMixGestureTrack)
+        return juce::Result::fail("Track pan gesture is not active");
+    const auto value = juce::jlimit(-1.0, 1.0, pan);
+    if (auto result = tracktion.setTrackPan(trackIndex, value); result.failed())
+        return result;
+    project->tracks[static_cast<std::size_t>(trackIndex)].pan = value;
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::endTrackMixGesture(int trackIndex)
+{
+    if (! project.has_value() || ! trackMixGestureBefore.has_value()
+        || trackIndex != trackMixGestureTrack)
+        return juce::Result::fail("Track mixer gesture is not active");
+
+    auto previous = std::move(*trackMixGestureBefore);
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
+    const auto& before = previous.tracks[static_cast<std::size_t>(trackIndex)];
+    const auto& after = project->tracks[static_cast<std::size_t>(trackIndex)];
+    if (before.gainDb == after.gainDb && before.pan == after.pan)
         return juce::Result::ok();
-    });
+
+    if (auto result = saveProject(); result.failed())
+    {
+        *project = std::move(previous);
+        const auto& restored = project->tracks[static_cast<std::size_t>(trackIndex)];
+        (void) tracktion.setTrackGain(trackIndex, restored.gainDb);
+        (void) tracktion.setTrackPan(trackIndex, restored.pan);
+        return result;
+    }
+    undoHistory.push_back(std::move(previous));
+    redoHistory.clear();
+    return juce::Result::ok();
 }
 
 juce::Result ProjectEngine::setTrackPlugin(int trackIndex,
@@ -924,6 +997,25 @@ juce::Result ProjectEngine::commitLiveTrackAudibility(Project previous,
     undoHistory.push_back(std::move(previous));
     redoHistory.clear();
     return juce::Result::ok();
+}
+
+void ProjectEngine::cancelTrackMixGesture()
+{
+    if (! project.has_value() || ! trackMixGestureBefore.has_value()
+        || ! juce::isPositiveAndBelow(trackMixGestureTrack,
+            static_cast<int>(trackMixGestureBefore->tracks.size())))
+    {
+        trackMixGestureBefore.reset();
+        trackMixGestureTrack = -1;
+        return;
+    }
+    const auto index = trackMixGestureTrack;
+    *project = std::move(*trackMixGestureBefore);
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
+    const auto& restored = project->tracks[static_cast<std::size_t>(index)];
+    (void) tracktion.setTrackGain(index, restored.gainDb);
+    (void) tracktion.setTrackPan(index, restored.pan);
 }
 
 void ProjectEngine::ensureTrackCount(int count)

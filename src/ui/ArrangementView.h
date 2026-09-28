@@ -99,6 +99,10 @@ private:
     void applyEditResult(const juce::Result&, const juce::String& successMessage);
     void deferTrackEdit(std::function<juce::Result(AudioEngine&)>,
                         juce::String successMessage);
+    void beginTrackMixGesture(int trackIndex);
+    void previewTrackGain(int trackIndex, double value);
+    void previewTrackPan(int trackIndex, double value);
+    void endTrackMixGesture(int trackIndex, const juce::String& successMessage);
     [[nodiscard]] int trackAt(int parentY) const;
     [[nodiscard]] double timeAt(int parentX, bool snap) const;
     [[nodiscard]] juce::Colour colourForTrack(int index) const;

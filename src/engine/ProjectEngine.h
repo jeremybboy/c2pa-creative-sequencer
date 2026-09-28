@@ -92,6 +92,10 @@ public:
     [[nodiscard]] juce::Result setTrackSolo(int trackIndex, bool soloed);
     [[nodiscard]] juce::Result setTrackGain(int trackIndex, double gainDb);
     [[nodiscard]] juce::Result setTrackPan(int trackIndex, double pan);
+    [[nodiscard]] juce::Result beginTrackMixGesture(int trackIndex);
+    [[nodiscard]] juce::Result previewTrackGain(int trackIndex, double gainDb);
+    [[nodiscard]] juce::Result previewTrackPan(int trackIndex, double pan);
+    [[nodiscard]] juce::Result endTrackMixGesture(int trackIndex);
     [[nodiscard]] juce::Result setTrackPlugin(int trackIndex,
                                                const PluginDescriptor&);
     [[nodiscard]] juce::Result setTrackPluginBypassed(int trackIndex, bool bypassed);
@@ -116,6 +120,7 @@ private:
     [[nodiscard]] juce::Result commitLiveTrackAudibility(Project previous,
                                                          int trackIndex,
                                                          bool solo);
+    void cancelTrackMixGesture();
     [[nodiscard]] PluginState* pluginForTrack(int trackIndex);
     [[nodiscard]] const PluginState* pluginForTrack(int trackIndex) const;
     void ensureTrackCount(int count);
@@ -141,5 +146,7 @@ private:
     std::vector<ClipboardClip> clipboard;
     int clipboardBaseTrack = 0;
     double clipboardDurationSeconds = 0.0;
+    std::optional<Project> trackMixGestureBefore;
+    int trackMixGestureTrack = -1;
 };
 }

@@ -131,6 +131,10 @@ juce::Result AudioEngine::setTrackMute(int i, bool v) { return projectEngine.set
 juce::Result AudioEngine::setTrackSolo(int i, bool v) { return projectEngine.setTrackSolo(i, v); }
 juce::Result AudioEngine::setTrackGain(int i, double v) { return projectEngine.setTrackGain(i, v); }
 juce::Result AudioEngine::setTrackPan(int i, double v) { return projectEngine.setTrackPan(i, v); }
+juce::Result AudioEngine::beginTrackMixGesture(int i) { return projectEngine.beginTrackMixGesture(i); }
+juce::Result AudioEngine::previewTrackGain(int i, double v) { return projectEngine.previewTrackGain(i, v); }
+juce::Result AudioEngine::previewTrackPan(int i, double v) { return projectEngine.previewTrackPan(i, v); }
+juce::Result AudioEngine::endTrackMixGesture(int i) { return projectEngine.endTrackMixGesture(i); }
 const std::vector<PluginDescriptor>& AudioEngine::availableVst3Plugins() const noexcept
 {
     return pluginHost.availablePlugins();

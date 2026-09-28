@@ -136,17 +136,51 @@ int main()
     const auto afterSolo = engine.transportSnapshot();
     if (! afterSolo.playing || afterSolo.positionSeconds < 0.49)
         return fail(14, "solo stopped playback or reset the playhead");
-    engine.pause();
 
-    if (engine.setTrackName(1, "Vocal").failed()
-        || engine.setTrackGain(1, -6.0).failed()
-        || engine.setTrackPan(1, 0.4).failed())
-        return fail(14, "track control mutation failed");
-    if (! engine.undo())
-        return fail(15, "undo failed");
+    if (engine.beginTrackMixGesture(1).failed()
+        || engine.previewTrackGain(1, -3.0).failed()
+        || engine.previewTrackGain(1, -6.0).failed())
+        return fail(14, "live gain gesture failed");
+    const auto duringGain = engine.transportSnapshot();
+    if (! duringGain.playing || duringGain.positionSeconds < 0.49)
+        return fail(14, "gain preview stopped playback or reset the playhead");
+    if (engine.endTrackMixGesture(1).failed())
+        return fail(14, "live gain gesture could not commit");
+    const auto afterGain = engine.transportSnapshot();
+    if (! afterGain.playing || afterGain.positionSeconds < 0.49)
+        return fail(14, "gain commit stopped playback or reset the playhead");
+    engine.pause();
+    tracks = engine.arrangementSnapshot();
+    if (! close(tracks[1].gainDb, -6.0) || ! engine.undo())
+        return fail(15, "gain gesture did not create one undoable edit");
+    tracks = engine.arrangementSnapshot();
+    if (! close(tracks[1].gainDb, 0.0) || ! engine.redo())
+        return fail(16, "gain undo/redo did not restore the live value");
+
+    engine.seek(0.5);
+    engine.play();
+    if (engine.beginTrackMixGesture(1).failed()
+        || engine.previewTrackPan(1, -0.2).failed()
+        || engine.previewTrackPan(1, 0.4).failed())
+        return fail(16, "live pan gesture failed");
+    const auto duringPan = engine.transportSnapshot();
+    if (! duringPan.playing || duringPan.positionSeconds < 0.49)
+        return fail(16, "pan preview stopped playback or reset the playhead");
+    if (engine.endTrackMixGesture(1).failed())
+        return fail(16, "live pan gesture could not commit");
+    const auto afterPan = engine.transportSnapshot();
+    if (! afterPan.playing || afterPan.positionSeconds < 0.49)
+        return fail(16, "pan commit stopped playback or reset the playhead");
+    engine.pause();
+    tracks = engine.arrangementSnapshot();
+    if (! close(tracks[1].pan, 0.4) || ! engine.undo())
+        return fail(16, "pan gesture did not create one undoable edit");
     tracks = engine.arrangementSnapshot();
     if (! close(tracks[1].pan, 0.0) || ! engine.redo())
-        return fail(16, "undo/redo did not restore track pan");
+        return fail(16, "pan undo/redo did not restore the live value");
+
+    if (engine.setTrackName(1, "Vocal").failed())
+        return fail(14, "track control mutation failed");
 
     engine.setTimelineView(144.0, 8.0);
     engine.setLooping(true);

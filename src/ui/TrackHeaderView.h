@@ -26,6 +26,12 @@ public:
     std::function<void(int, bool)> onSoloChanged;
     std::function<void(int, double)> onGainChanged;
     std::function<void(int, double)> onPanChanged;
+    std::function<void(int)> onGainGestureStart;
+    std::function<void(int, double)> onGainPreview;
+    std::function<void(int)> onGainGestureEnd;
+    std::function<void(int)> onPanGestureStart;
+    std::function<void(int, double)> onPanPreview;
+    std::function<void(int)> onPanGestureEnd;
     std::function<void()> onScanPlugins;
     std::function<void(int, juce::String)> onLoadPlugin;
     std::function<void(int)> onOpenPlugin;
@@ -48,5 +54,7 @@ private:
     juce::Rectangle<int> meterBounds;
     std::optional<TrackPluginSnapshot> currentPlugin;
     std::vector<PluginDescriptor> availablePlugins;
+    bool gainGestureActive = false;
+    bool panGestureActive = false;
 };
 }
