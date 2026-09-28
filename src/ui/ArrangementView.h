@@ -41,6 +41,7 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    void mouseMagnify(const juce::MouseEvent&, float scaleFactor) override;
     bool keyPressed(const juce::KeyPress&) override;
     bool isInterestedInFileDrag(const juce::StringArray&) override;
     void filesDropped(const juce::StringArray&, int x, int y) override;

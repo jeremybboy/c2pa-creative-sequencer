@@ -1220,7 +1220,12 @@ void ArrangementView::handleWheel(const juce::MouseEvent& event,
 {
     if (event.mods.isCommandDown())
     {
-        zoomBy(wheel.deltaY > 0.0f ? 1.12 : 0.89, event.position.x);
+        const auto dominantDelta = std::abs(wheel.deltaY) >= std::abs(wheel.deltaX)
+            ? wheel.deltaY : wheel.deltaX;
+        const auto factor = juce::jlimit(0.75, 1.33,
+            std::exp(static_cast<double>(dominantDelta) * 0.7));
+        if (std::abs(dominantDelta) > 0.0001f)
+            zoomBy(factor, event.position.x);
         return;
     }
     if (event.mods.isShiftDown() || std::abs(wheel.deltaX) > std::abs(wheel.deltaY))
@@ -1228,6 +1233,13 @@ void ArrangementView::handleWheel(const juce::MouseEvent& event,
             - (wheel.deltaX + wheel.deltaY) * 3.0);
     else
         verticalScroll.setCurrentRangeStart(verticalOffset - wheel.deltaY * trackHeight * 2.0);
+}
+
+void ArrangementView::mouseMagnify(const juce::MouseEvent& event, float scaleFactor)
+{
+    if (scaleFactor > 0.0f && std::abs(scaleFactor - 1.0f) > 0.0001f)
+        zoomBy(juce::jlimit(0.75, 1.33, static_cast<double>(scaleFactor)),
+               event.position.x);
 }
 
 void ArrangementView::selectClip(const juce::String& id)
