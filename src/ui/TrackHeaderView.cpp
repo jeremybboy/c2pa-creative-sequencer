@@ -8,6 +8,10 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     number.setJustificationType(juce::Justification::centred);
     number.setColour(juce::Label::textColourId, juce::Colour::fromRGB(179, 186, 191));
     number.setText(juce::String(index + 1), juce::dontSendNotification);
+    typeBadge.setFont(juce::FontOptions(9.5f, juce::Font::bold));
+    typeBadge.setJustificationType(juce::Justification::centred);
+    typeBadge.setColour(juce::Label::textColourId, juce::Colour::fromRGB(222, 211, 246));
+    typeBadge.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGB(91, 69, 126));
     nameEditor.setEditable(false, true, false);
     nameEditor.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     nameEditor.setColour(juce::Label::textColourId, juce::Colour::fromRGB(239, 241, 243));
@@ -20,7 +24,7 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     solo.setClickingTogglesState(true);
     mute.onClick = [this] { if (onMuteChanged) onMuteChanged(trackIndex, mute.getToggleState()); };
     solo.onClick = [this] { if (onSoloChanged) onSoloChanged(trackIndex, solo.getToggleState()); };
-    deleteTrack.setTooltip("Delete audio track");
+    deleteTrack.setTooltip("Delete track");
     deleteTrack.onClick = [this] { if (onDeleteTrack) onDeleteTrack(trackIndex); };
     for (auto* slider : { &gain, &panControl })
     {
@@ -125,6 +129,7 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
             });
     };
     addAndMakeVisible(number);
+    addAndMakeVisible(typeBadge);
     addAndMakeVisible(nameEditor);
     addAndMakeVisible(mute);
     addAndMakeVisible(solo);
@@ -139,6 +144,12 @@ void TrackHeaderView::setPluginState(const std::optional<TrackPluginSnapshot>& p
 {
     currentPlugin = plugin;
     availablePlugins = plugins;
+    if (currentType == TrackType::midi)
+    {
+        pluginMenu.setButtonText("MIDI");
+        pluginMenu.setTooltip("Instrument hosting is not part of PR 018");
+        return;
+    }
     if (! currentPlugin.has_value())
     {
         pluginMenu.setButtonText("VST3");
@@ -152,21 +163,38 @@ void TrackHeaderView::setPluginState(const std::optional<TrackPluginSnapshot>& p
 }
 
 void TrackHeaderView::setState(const juce::String& trackName, double gainDb, double pan,
-                               bool muted, bool soloed, juce::Colour colour)
+                               bool muted, bool soloed, TrackType type, juce::Colour colour)
 {
     accent = colour;
+    currentType = type;
+    const auto audioControlsEnabled = currentType == TrackType::audio;
     nameEditor.setText(trackName, juce::dontSendNotification);
     gain.setValue(gainDb, juce::dontSendNotification);
     panControl.setValue(pan, juce::dontSendNotification);
     mute.setToggleState(muted, juce::dontSendNotification);
     solo.setToggleState(soloed, juce::dontSendNotification);
+    typeBadge.setText(currentType == TrackType::midi ? "MIDI" : "",
+                      juce::dontSendNotification);
+    typeBadge.setVisible(currentType == TrackType::midi);
+    for (auto* component : { static_cast<juce::Component*>(&mute),
+                             static_cast<juce::Component*>(&solo),
+                             static_cast<juce::Component*>(&pluginMenu),
+                             static_cast<juce::Component*>(&gain),
+                             static_cast<juce::Component*>(&panControl) })
+    {
+        component->setEnabled(audioControlsEnabled);
+        component->setVisible(audioControlsEnabled);
+    }
     mute.setColour(juce::TextButton::buttonOnColourId, accent.darker(0.25f));
     solo.setColour(juce::TextButton::buttonOnColourId, accent.darker(0.25f));
+    resized();
     repaint();
 }
 
 void TrackHeaderView::setMeterPeak(TrackLevelSnapshot peak, bool audible)
 {
+    if (currentType != TrackType::audio)
+        return;
     const auto ignored = meterBallistics.update(peak, audible);
     juce::ignoreUnused(ignored);
     repaint(meterBounds.expanded(1));
@@ -174,13 +202,17 @@ void TrackHeaderView::setMeterPeak(TrackLevelSnapshot peak, bool audible)
 
 void TrackHeaderView::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour::fromRGB(53, 57, 61));
+    g.fillAll(currentType == TrackType::midi ? juce::Colour::fromRGB(56, 53, 63)
+                                             : juce::Colour::fromRGB(53, 57, 61));
     g.setColour(juce::Colour::fromRGB(47, 51, 55));
     g.fillRect(4, 0, getWidth() - 4, 34);
     g.setColour(accent);
     g.fillRect(0, 0, 4, getHeight());
     g.setColour(juce::Colour::fromRGB(75, 80, 85));
     g.drawHorizontalLine(getHeight() - 1, 0.0f, static_cast<float>(getWidth()));
+
+    if (currentType != TrackType::audio)
+        return;
 
     g.setColour(juce::Colour::fromRGB(31, 33, 35));
     g.fillRoundedRectangle(meterBounds.toFloat(), 2.0f);
@@ -205,17 +237,42 @@ void TrackHeaderView::paint(juce::Graphics& g)
 void TrackHeaderView::resized()
 {
     auto area = getLocalBounds().reduced(7, 5);
-    meterBounds = area.removeFromRight(11).reduced(1, 2);
-    area.removeFromRight(4);
+    if (currentType == TrackType::audio)
+    {
+        meterBounds = area.removeFromRight(11).reduced(1, 2);
+        area.removeFromRight(4);
+    }
+    else
+    {
+        meterBounds = {};
+    }
     auto top = area.removeFromTop(25);
     number.setBounds(top.removeFromLeft(24));
-    solo.setBounds(top.removeFromRight(27).reduced(1));
-    mute.setBounds(top.removeFromRight(27).reduced(1));
+    typeBadge.setBounds(top.removeFromLeft(currentType == TrackType::midi ? 36 : 0).reduced(2, 3));
     deleteTrack.setBounds(top.removeFromRight(24).reduced(1));
-    pluginMenu.setBounds(top.removeFromRight(58).reduced(1));
+    if (currentType == TrackType::audio)
+    {
+        solo.setBounds(top.removeFromRight(27).reduced(1));
+        mute.setBounds(top.removeFromRight(27).reduced(1));
+        pluginMenu.setBounds(top.removeFromRight(58).reduced(1));
+    }
+    else
+    {
+        solo.setBounds({});
+        mute.setBounds({});
+        pluginMenu.setBounds({});
+    }
     nameEditor.setBounds(top.reduced(3, 0));
-    auto gainRow = area.removeFromTop(22);
-    gain.setBounds(gainRow);
-    panControl.setBounds(area.removeFromTop(22));
+    if (currentType == TrackType::audio)
+    {
+        auto gainRow = area.removeFromTop(22);
+        gain.setBounds(gainRow);
+        panControl.setBounds(area.removeFromTop(22));
+    }
+    else
+    {
+        gain.setBounds({});
+        panControl.setBounds({});
+    }
 }
 }

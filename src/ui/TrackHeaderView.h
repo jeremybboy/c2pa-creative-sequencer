@@ -14,7 +14,7 @@ class TrackHeaderView final : public juce::Component
 public:
     explicit TrackHeaderView(int index);
     void setState(const juce::String& name, double gainDb, double pan,
-                  bool muted, bool soloed, juce::Colour colour);
+                  bool muted, bool soloed, TrackType type, juce::Colour colour);
     void setPluginState(const std::optional<TrackPluginSnapshot>&,
                         const std::vector<PluginDescriptor>&);
     void setMeterPeak(TrackLevelSnapshot, bool audible);
@@ -42,7 +42,9 @@ public:
 private:
     int trackIndex;
     juce::Colour accent;
+    TrackType currentType = TrackType::audio;
     juce::Label number;
+    juce::Label typeBadge;
     juce::Label nameEditor;
     juce::TextButton mute { "M" };
     juce::TextButton solo { "S" };

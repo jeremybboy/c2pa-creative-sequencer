@@ -24,7 +24,7 @@ The `transport_foundation` test uses Tracktion's hosted-audio interface at 48 kH
 - CTest passes `application_skeleton` and `transport_foundation` (2/2).
 - On the selected MacBook Pro Speakers device, the live UI reported the effective 48 kHz sample rate and 512-sample block size.
 - Accessibility-driven runtime checks proved Play changed to Pause, position advanced from `00:00.000` to `00:01.024`, Pause held `00:00.757` unchanged, Stop returned it to `00:00.000`, Loop toggled on, and the Audio Device dialog opened.
-- Repeated startup checks exposed and then eliminated a block caused by Tracktion opening persisted SoundFlow MIDI endpoints; system MIDI enumeration is disabled because MIDI is outside this product's scope.
+- Repeated startup checks exposed and then eliminated a block caused by Tracktion opening persisted SoundFlow MIDI endpoints. System MIDI enumeration remains disabled through PR 018 because live MIDI input is a later independently reviewed phase.
 - A standard application quit event terminated the process.
 
 ## PR 003 boundary
@@ -217,11 +217,11 @@ controller remains render → claim → sign → embed → reopen → validate;
 the rendered PCM now includes enabled track VST3 processing before provenance is
 attached. Detailed plug-in/AI assertions are explicitly deferred to PR 009.
 
-Instrument hosting is deferred because the sequencer has no MIDI model and adding
-one solely to audition Surge XT would violate the product boundary. The inspected
-AI reference repository is a standalone SwiftUI application with no VST3 build
-target, so PR 008 does not claim integration until that external project supplies
-an Apple-silicon effect bundle and its runtime/assets.
+Instrument hosting was deferred from PR 008 because that milestone had no MIDI
+model or note-source path. PR 018 adds the model boundary only: MIDI tracks, clips,
+notes, and beat/second conversion can persist, but no scheduler sends those notes to
+a plug-in and no instrument contributes audio yet. VST3 instrument hosting and MIDI
+playback remain a later, separately testable milestone.
 
 ## PR 011 soft-binding boundary
 
@@ -252,3 +252,23 @@ recovery as proof that a derivative passes the original cryptographic hard bindi
 `AudfprintService` is another worker-only external-process boundary. Export order is render → optional AudioWMark → format verification → audfprint registration from the final PCM essence → C2PA sign/embed → validation → versioned outbox publication → atomic commit. The app never queries a fingerprint database and exposes no recovery UI.
 
 The same resolver imports both registration types into one repository. `bindings` remains the exact watermark index; `fingerprints` maps audfprint `.afpt` registrations to manifest IDs, and the resolver materializes audfprint's natural database for similarity queries. Both paths converge only after discovery at the byte-exact manifest store.
+
+## PR 018 MIDI foundation boundary
+
+The application-owned project model now distinguishes Audio and MIDI tracks explicitly. Audio
+clips remain absolute-time source references in seconds. MIDI clips and their note events instead
+store musical position and duration in beats; `MusicalTimeConverter` is the single constant-tempo
+conversion boundary used to derive execution seconds. Changing BPM therefore changes derived time
+without rewriting saved MIDI positions, and a future tempo map can replace the converter without
+changing note semantics.
+
+Project schema 2 stores track type and MIDI clip/note records. Schema 1 remains readable: a track
+with no type is migrated in memory as Audio, and a later save writes schema 2. Provenance remains
+schema 1 because this PR changes no provenance meaning. Audio and MIDI data cannot be mixed inside
+the wrong track type, and existing audio media, plug-in, playback, export, and C2PA paths remain
+unchanged.
+
+The Add Track menu can create either type, but MIDI rows are deliberately silent foundation
+objects. They persist identity, order, name, and future clip data while instrument slots, meters,
+gain/pan, mute/solo, note UI, scheduling, monitoring, and recording remain unavailable. See
+[MIDI v1 dependency sequence](MIDI_ROADMAP.md) for the separately reviewable follow-up phases.

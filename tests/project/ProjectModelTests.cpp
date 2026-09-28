@@ -4,6 +4,7 @@
 #include <juce_cryptography/juce_cryptography.h>
 
 #include <iostream>
+#include <tuple>
 
 namespace
 {
@@ -53,6 +54,7 @@ int main()
     c2paseq::TrackModel track;
     track.id = juce::Uuid().toString();
     track.name = "Stem 1";
+    track.type = c2paseq::TrackType::audio;
     track.gainDb = -2.5;
     track.pan = 0.25;
     track.muted = true;
@@ -98,6 +100,35 @@ int main()
     track.clips.push_back(clip);
     project.tracks.push_back(track);
 
+    c2paseq::TrackModel midiTrack;
+    midiTrack.id = juce::Uuid().toString();
+    midiTrack.name = "MIDI 1";
+    midiTrack.type = c2paseq::TrackType::midi;
+    c2paseq::MidiClipModel midiClip;
+    midiClip.id = juce::Uuid().toString();
+    midiClip.start.beats = 8.0;
+    midiClip.length.beats = 4.0;
+    for (const auto [pitch, start, duration, velocity] : {
+             std::tuple { 60, 0.0, 1.0, 96 },
+             std::tuple { 64, 1.0, 0.5, 104 },
+             std::tuple { 67, 2.0, 1.5, 112 } })
+    {
+        c2paseq::MidiNote note;
+        note.id = juce::Uuid().toString();
+        note.noteNumber = pitch;
+        note.start.beats = start;
+        note.duration.beats = duration;
+        note.velocity = velocity;
+        midiClip.notes.push_back(std::move(note));
+    }
+    midiTrack.midiClips.push_back(midiClip);
+    c2paseq::MidiClipModel emptyMidiClip;
+    emptyMidiClip.id = juce::Uuid().toString();
+    emptyMidiClip.start.beats = 12.0;
+    emptyMidiClip.length.beats = 4.0;
+    midiTrack.midiClips.push_back(emptyMidiClip);
+    project.tracks.push_back(midiTrack);
+
     c2paseq::PluginState plugin;
     plugin.ownerId = track.id;
     plugin.pluginIdentifier = "VST3-example";
@@ -133,12 +164,13 @@ int main()
         || project.loopStartSeconds != 4.0 || project.loopEndSeconds != 12.5
         || ! project.looping
         || project.createdAt.isEmpty() || project.modifiedAt.isEmpty()
-        || project.applicationVersion.isEmpty() || project.tracks.size() != 1
+        || project.applicationVersion.isEmpty() || project.tracks.size() != 2
         || project.media.size() != 1 || project.plugins.size() != 1)
         return fail(7, "project state did not round-trip");
 
     const auto& loadedTrack = project.tracks.front();
     if (loadedTrack.id != track.id || loadedTrack.name != track.name
+        || loadedTrack.type != c2paseq::TrackType::audio
         || loadedTrack.gainDb != track.gainDb || loadedTrack.pan != track.pan
         || loadedTrack.muted != track.muted || loadedTrack.soloed != track.soloed
         || loadedTrack.clips.size() != 1)
@@ -152,6 +184,42 @@ int main()
         || loadedClip.fadeInSeconds != clip.fadeInSeconds
         || loadedClip.fadeOutSeconds != clip.fadeOutSeconds)
         return fail(9, "clip state did not round-trip");
+
+    const auto& loadedMidiTrack = project.tracks.back();
+    if (loadedMidiTrack.id != midiTrack.id || loadedMidiTrack.name != midiTrack.name
+        || loadedMidiTrack.type != c2paseq::TrackType::midi
+        || ! loadedMidiTrack.clips.empty() || loadedMidiTrack.midiClips.size() != 2)
+        return fail(9, "MIDI track state did not round-trip");
+    const auto& loadedMidiClip = loadedMidiTrack.midiClips.front();
+    if (loadedMidiClip.id != midiClip.id
+        || loadedMidiClip.start.beats != midiClip.start.beats
+        || loadedMidiClip.length.beats != midiClip.length.beats
+        || loadedMidiClip.notes.size() != midiClip.notes.size())
+        return fail(9, "MIDI clip identity or musical timing did not round-trip");
+    for (std::size_t index = 0; index < midiClip.notes.size(); ++index)
+    {
+        const auto& expected = midiClip.notes[index];
+        const auto& actual = loadedMidiClip.notes[index];
+        if (actual.id != expected.id || actual.noteNumber != expected.noteNumber
+            || actual.start.beats != expected.start.beats
+            || actual.duration.beats != expected.duration.beats
+            || actual.velocity != expected.velocity)
+            return fail(9, "MIDI note values did not round-trip");
+    }
+    const auto& loadedEmptyMidiClip = loadedMidiTrack.midiClips.back();
+    if (loadedEmptyMidiClip.id != emptyMidiClip.id
+        || loadedEmptyMidiClip.start.beats != emptyMidiClip.start.beats
+        || loadedEmptyMidiClip.length.beats != emptyMidiClip.length.beats
+        || ! loadedEmptyMidiClip.notes.empty())
+        return fail(9, "empty MIDI clip did not round-trip exactly");
+
+    const c2paseq::MusicalTimeConverter at120Bpm(120.0);
+    const c2paseq::MusicalTimeConverter at60Bpm(60.0);
+    const auto storedBeatPosition = loadedMidiClip.notes.back().start;
+    if (at120Bpm.toSeconds(storedBeatPosition) != 1.0
+        || at60Bpm.toSeconds(storedBeatPosition) != 2.0
+        || loadedMidiClip.notes.back().start.beats != storedBeatPosition.beats)
+        return fail(9, "musical-time conversion changed stored MIDI position");
 
     if (project.plugins.front().ownerId != track.id
         || project.plugins.front().pluginIdentifier != plugin.pluginIdentifier
@@ -190,6 +258,45 @@ int main()
         || ! paths.arrangementEdit().existsAsFile() || ! paths.mediaDirectory().isDirectory())
         return fail(12, "required project bundle structure is incomplete");
 
-    std::cout << "project model: save, close, reopen, and byte-preserving media passed\n";
+    const c2paseq::ProjectPaths legacyPaths(
+        temporary.directory.getChildFile("Legacy Audio.c2paseq"));
+    auto legacySource = c2paseq::Project::create("Legacy Audio");
+    c2paseq::TrackModel legacyTrack;
+    legacyTrack.id = juce::Uuid().toString();
+    legacyTrack.name = "Legacy Stem";
+    legacySource.tracks.push_back(legacyTrack);
+    if (c2paseq::ProjectSerializer::save(legacySource, legacyPaths).failed()
+        || ! legacyPaths.arrangementEdit().replaceWithText("<EDIT bpm=\"120\" />"))
+        return fail(13, "could not create legacy migration fixture");
+
+    juce::var legacyDocument;
+    if (juce::JSON::parse(legacyPaths.projectJson().loadFileAsString(), legacyDocument).failed())
+        return fail(13, "could not parse legacy migration fixture");
+    auto* legacyRoot = legacyDocument.getDynamicObject();
+    auto* legacyTracks = legacyRoot != nullptr
+        ? legacyRoot->getProperty("tracks").getArray() : nullptr;
+    if (legacyRoot == nullptr || legacyTracks == nullptr || legacyTracks->size() != 1)
+        return fail(13, "legacy migration fixture structure was invalid");
+    legacyRoot->setProperty("schemaVersion", 1);
+    auto* legacyTrackObject = legacyTracks->getReference(0).getDynamicObject();
+    if (legacyTrackObject == nullptr)
+        return fail(13, "legacy track fixture was invalid");
+    legacyTrackObject->removeProperty("type");
+    legacyTrackObject->removeProperty("midiClips");
+    if (! legacyPaths.projectJson().replaceWithText(
+            juce::JSON::toString(legacyDocument, true)))
+        return fail(13, "could not write legacy migration fixture");
+
+    c2paseq::Project migratedLegacy;
+    if (const auto result = c2paseq::ProjectSerializer::load(legacyPaths, migratedLegacy);
+        result.failed())
+        return fail(14, "legacy audio project did not load: " + result.getErrorMessage());
+    if (migratedLegacy.tracks.size() != 1
+        || migratedLegacy.tracks.front().type != c2paseq::TrackType::audio
+        || ! migratedLegacy.tracks.front().midiClips.empty())
+        return fail(14, "legacy track without type did not migrate as Audio");
+
+    std::cout << "project model: audio/MIDI round-trip, musical-time conversion, legacy "
+                 "migration, and byte-preserving media passed\n";
     return 0;
 }

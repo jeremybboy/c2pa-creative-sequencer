@@ -142,12 +142,17 @@ public:
         dragStartTime = geometry.xToTime(static_cast<double>(event.x));
         dragStartTrack = trackForY(event.y);
         dragBypassSnap = event.mods.isAltDown();
+        clickedInsideSelection = event.y >= rulerHeight && selection.isValid()
+            && dragStartTime >= selection.startSeconds
+            && dragStartTime <= selection.endSeconds
+            && dragStartTrack >= selection.firstTrack
+            && dragStartTrack <= selection.lastTrack;
         if (event.y < rulerHeight)
         {
             if (onBackgroundClick) onBackgroundClick();
             if (onSeek) onSeek(dragStartTime);
         }
-        else if (onBackgroundClick)
+        else if (! clickedInsideSelection && onBackgroundClick)
         {
             onBackgroundClick();
         }
@@ -170,9 +175,17 @@ public:
         if (event.mouseWasDraggedSinceMouseDown() && onTimeSelection)
             onTimeSelection(dragStartTime, end, dragStartTrack, trackForY(event.y),
                             dragBypassSnap, true);
-        else if (onInsertionPoint)
+        else if (! clickedInsideSelection && onInsertionPoint)
             onInsertionPoint(dragStartTime, dragStartTrack, dragBypassSnap);
         dragStartTrack = -1;
+    }
+
+    void mouseDoubleClick(const juce::MouseEvent& event) override
+    {
+        if (event.y < rulerHeight || ! onCreateMidiClip)
+            return;
+        onCreateMidiClip(geometry.xToTime(static_cast<double>(event.x)),
+                         trackForY(event.y), event.mods.isAltDown());
     }
 
     void mouseWheelMove(const juce::MouseEvent& event,
@@ -186,6 +199,7 @@ public:
     std::function<void()> onBackgroundClick;
     std::function<void(double, double, int, int, bool, bool)> onTimeSelection;
     std::function<void(double, int, bool)> onInsertionPoint;
+    std::function<void(double, int, bool)> onCreateMidiClip;
     std::function<void(const juce::MouseEvent&, const juce::MouseWheelDetails&)> onWheel;
 
 private:
@@ -207,12 +221,14 @@ private:
     double dragStartTime = 0.0;
     int dragStartTrack = -1;
     bool dragBypassSnap = false;
+    bool clickedInsideSelection = false;
 };
 
 ArrangementView::ArrangementView(AudioEngine& engine)
     : audioEngine(engine),
       sampleAudition(engine.audioDeviceManager(), engine.audioFormatManager()),
-      browser(placesStore), timelineSurface(std::make_unique<TimelineSurface>())
+      browser(placesStore), timelineSurface(std::make_unique<TimelineSurface>()),
+      pianoRoll(std::make_unique<PianoRollView>())
 {
     setLookAndFeel(&lookAndFeel);
     setWantsKeyboardFocus(true);
@@ -269,6 +285,40 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     timelineSurface->onWheel = [this](const auto& event, const auto& wheel)
     {
         handleWheel(event, wheel);
+    };
+    timelineSurface->onCreateMidiClip = [this](double seconds, int track, bool bypass)
+    {
+        showMidiClipCreationMenu(bypass ? seconds : geometry.snapToBeat(seconds), track);
+    };
+
+    pianoRoll->onClose = [this] { closePianoRoll(); };
+    pianoRoll->onAddNote = [this](int noteNumber, double startBeats,
+                                  double durationBeats, int velocity)
+    {
+        applyEditResult(audioEngine.addMidiNote(openPianoRollClipId, noteNumber,
+            startBeats, durationBeats, velocity), "Added MIDI note");
+    };
+    pianoRoll->onUpdateNote = [this](const juce::String& noteId, int noteNumber,
+                                     double startBeats, double durationBeats, int velocity)
+    {
+        applyEditResult(audioEngine.updateMidiNote(openPianoRollClipId, noteId,
+            noteNumber, startBeats, durationBeats, velocity), "Edited MIDI note");
+    };
+    pianoRoll->onInsertNotes = [this](
+        const std::vector<ArrangementMidiNoteSnapshot>& notes)
+    {
+        applyEditResult(audioEngine.insertMidiNotes(openPianoRollClipId, notes),
+                        "Pasted MIDI notes");
+    };
+    pianoRoll->onDeleteNotes = [this](const std::vector<juce::String>& noteIds)
+    {
+        applyEditResult(audioEngine.deleteMidiNotes(openPianoRollClipId, noteIds),
+                        "Deleted MIDI notes");
+    };
+    pianoRoll->onStatus = [this](const juce::String& message)
+    {
+        projectMessage = message;
+        refreshTransport();
     };
 
     newProject.onClick = [this] { createProject(); };
@@ -327,7 +377,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     zoomOut.onClick = [this] { zoomBy(0.8, timelineBounds.getWidth() * 0.5); };
     zoomIn.onClick = [this] { zoomBy(1.25, timelineBounds.getWidth() * 0.5); };
     audioSettings.onClick = [this] { showAudioSettings(); };
-    addTrackButton.onClick = [this] { addAudioTrack(); };
+    addTrackButton.onClick = [this] { showAddTrackMenu(); };
 
     undoButton.setTooltip("Undo (Command-Z)");
     redoButton.setTooltip("Redo (Shift-Command-Z)");
@@ -337,6 +387,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     zoomOut.setTooltip("Zoom out (Command-minus)");
     zoomIn.setTooltip("Zoom in (Command-plus)");
     audioSettings.setTooltip("Audio device settings");
+    addTrackButton.setTooltip("Add an Audio or MIDI track");
 
     position.setFont(juce::FontOptions(14.0f, juce::Font::bold));
     position.setJustificationType(juce::Justification::centred);
@@ -377,6 +428,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
 
     addAndMakeVisible(browser);
     addAndMakeVisible(*timelineSurface);
+    addChildComponent(*pianoRoll);
     addAndMakeVisible(headerContainer);
     addAndMakeVisible(horizontalScroll);
     addAndMakeVisible(verticalScroll);
@@ -459,6 +511,13 @@ void ArrangementView::resized()
     horizontalScroll.setBounds(area.removeFromBottom(scrollBarSize));
     timelineBounds = area;
     timelineSurface->setBounds(timelineBounds);
+
+    const auto editorHeight = std::min(480, std::max(300, timelineBounds.getHeight() / 2));
+    pianoRoll->setBounds(timelineBounds.getX() + 12,
+                         timelineBounds.getBottom() - editorHeight - 12,
+                         std::max(320, timelineBounds.getWidth() - 24), editorHeight);
+    if (pianoRoll->isVisible())
+        pianoRoll->toFront(false);
 
     updateScrollRanges();
     layoutArrangement();
@@ -584,12 +643,22 @@ void ArrangementView::refreshTransport()
     exportButton.setEnabled(audioEngine.hasProject());
     loop.setEnabled(audioEngine.hasProject());
     addTrackButton.setEnabled(audioEngine.hasProject());
-    credentialsButton.setEnabled(selectedClipIds.size() == 1);
+    const auto oneAudioClipSelected = selectedClipIds.size() == 1
+        && std::any_of(snapshots.begin(), snapshots.end(), [this](const auto& track)
+        {
+            return std::any_of(track.clips.begin(), track.clips.end(), [this](const auto& clip)
+            {
+                return selectedClipIds.contains(clip.id);
+            });
+        });
+    credentialsButton.setEnabled(oneAudioClipSelected);
     undoButton.setEnabled(audioEngine.canUndo());
     redoButton.setEnabled(audioEngine.canRedo());
     const auto prefix = projectMessage.isNotEmpty() ? projectMessage + "  |  " : juce::String();
     status.setText(prefix + audioEngine.status(), juce::dontSendNotification);
     timelineSurface->setTransportState(snapshot);
+    if (pianoRoll->isVisible())
+        pianoRoll->setPlayheadBeat(snapshot.positionSeconds * snapshot.bpm / 60.0);
 }
 
 void ArrangementView::createProject()
@@ -963,20 +1032,38 @@ void ArrangementView::redoEdit()
     }
 }
 
-void ArrangementView::addAudioTrack()
+void ArrangementView::showAddTrackMenu()
 {
-    applyEditResult(audioEngine.addAudioTrack(), "Added audio track");
+    juce::PopupMenu menu;
+    menu.addItem(1, "Audio Track");
+    menu.addItem(2, "MIDI Track");
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addTrackButton),
+        [safe = juce::Component::SafePointer<ArrangementView>(this)](int result)
+        {
+            if (safe == nullptr)
+                return;
+            if (result == 1) safe->addTrack(TrackType::audio);
+            if (result == 2) safe->addTrack(TrackType::midi);
+        });
 }
 
-void ArrangementView::requestDeleteAudioTrack(int trackIndex)
+void ArrangementView::addTrack(TrackType type)
+{
+    const auto result = type == TrackType::midi ? audioEngine.addMidiTrack()
+                                                : audioEngine.addAudioTrack();
+    applyEditResult(result, type == TrackType::midi ? "Added MIDI track"
+                                                     : "Added audio track");
+}
+
+void ArrangementView::requestDeleteTrack(int trackIndex)
 {
     if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
         return;
 
     const auto& track = snapshots[static_cast<std::size_t>(trackIndex)];
-    if (track.clips.empty() && ! track.plugin.has_value())
+    if (track.clips.empty() && track.midiClipCount == 0 && ! track.plugin.has_value())
     {
-        deleteAudioTrack(trackIndex);
+        deleteTrack(trackIndex);
         return;
     }
 
@@ -984,6 +1071,13 @@ void ArrangementView::requestDeleteAudioTrack(int trackIndex)
     if (! track.clips.empty())
         contents << juce::String(static_cast<int>(track.clips.size()))
                  << (track.clips.size() == 1 ? " clip" : " clips");
+    if (track.midiClipCount > 0)
+    {
+        if (contents.isNotEmpty())
+            contents << " and ";
+        contents << juce::String(static_cast<int>(track.midiClipCount))
+                 << (track.midiClipCount == 1 ? " MIDI clip" : " MIDI clips");
+    }
     if (track.plugin.has_value())
     {
         if (contents.isNotEmpty())
@@ -993,10 +1087,11 @@ void ArrangementView::requestDeleteAudioTrack(int trackIndex)
 
     const auto options = juce::MessageBoxOptions()
         .withIconType(juce::MessageBoxIconType::WarningIcon)
-        .withTitle("Delete Audio Track?")
+        .withTitle(track.type == TrackType::midi ? "Delete MIDI Track?"
+                                                 : "Delete Audio Track?")
         .withMessage("\"" + track.name + "\" contains " + contents
-                     + ". Deleting the track removes them from the arrangement."
-                       " The original media files remain unchanged.")
+                     + ". Deleting the track removes this project data from the arrangement."
+                       " Original audio media files remain unchanged.")
         .withButton("Delete Track")
         .withButton("Cancel")
         .withAssociatedComponent(this);
@@ -1004,11 +1099,11 @@ void ArrangementView::requestDeleteAudioTrack(int trackIndex)
         [safe = juce::Component::SafePointer<ArrangementView>(this), trackIndex](int result)
         {
             if (safe != nullptr && result == 0)
-                safe->deleteAudioTrack(trackIndex);
+                safe->deleteTrack(trackIndex);
         });
 }
 
-void ArrangementView::deleteAudioTrack(int trackIndex)
+void ArrangementView::deleteTrack(int trackIndex)
 {
     if (juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
     {
@@ -1016,7 +1111,7 @@ void ArrangementView::deleteAudioTrack(int trackIndex)
         for (const auto& clip : deleted.clips)
             selectedClipIds.erase(clip.id);
     }
-    applyEditResult(audioEngine.deleteAudioTrack(trackIndex), "Deleted audio track");
+    applyEditResult(audioEngine.deleteTrack(trackIndex), "Deleted track");
 }
 
 void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files, int x, int y)
@@ -1056,6 +1151,7 @@ void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files, int
 void ArrangementView::rebuildArrangement()
 {
     waveformViews.clear();
+    midiClipViews.clear();
     trackHeaders.clear();
     snapshots = audioEngine.arrangementSnapshot();
 
@@ -1065,7 +1161,7 @@ void ArrangementView::rebuildArrangement()
         auto header = std::make_unique<TrackHeaderView>(static_cast<int>(trackIndex));
         header->setState(snapshots[trackIndex].name, snapshots[trackIndex].gainDb,
                          snapshots[trackIndex].pan, snapshots[trackIndex].muted,
-                         snapshots[trackIndex].soloed, colour);
+                         snapshots[trackIndex].soloed, snapshots[trackIndex].type, colour);
         header->setPluginState(snapshots[trackIndex].plugin,
                                audioEngine.availableVst3Plugins());
         header->onNameChanged = [this](int index, const auto& name)
@@ -1135,7 +1231,7 @@ void ArrangementView::rebuildArrangement()
         {
             applyEditResult(audioEngine.removeTrackPlugin(index), "Removed VST3");
         };
-        header->onDeleteTrack = [this](int index) { requestDeleteAudioTrack(index); };
+        header->onDeleteTrack = [this](int index) { requestDeleteTrack(index); };
         headerContainer.addAndMakeVisible(*header);
         trackHeaders.push_back(std::move(header));
 
@@ -1158,7 +1254,22 @@ void ArrangementView::rebuildArrangement()
             timelineSurface->addAndMakeVisible(*view);
             waveformViews.push_back(std::move(view));
         }
+
+        for (const auto& clip : snapshots[trackIndex].midiClips)
+        {
+            auto view = std::make_unique<MidiClipView>(
+                clip, static_cast<int>(trackIndex), colour);
+            view->setSelected(selectedClipIds.contains(clip.id));
+            view->onSelected = [this](auto& selected) { selectClip(selected.id()); };
+            view->onOpenEditor = [this](auto& selected) { openPianoRoll(selected.id()); };
+            view->onGesture = [this](auto& selected, auto mode, int dx, int dy,
+                                     bool finished, bool bypass)
+            { handleMidiClipGesture(selected, mode, dx, dy, finished, bypass); };
+            timelineSurface->addAndMakeVisible(*view);
+            midiClipViews.push_back(std::move(view));
+        }
     }
+    refreshPianoRoll();
     updateScrollRanges();
     layoutArrangement();
     refreshTransport();
@@ -1190,6 +1301,18 @@ void ArrangementView::layoutArrangement()
         view->setBounds(x, y, width, trackHeight - 8);
         view->setVisible(view->getBounds().intersects(timelineSurface->getLocalBounds()));
     }
+    for (auto& view : midiClipViews)
+    {
+        const auto startSeconds = view->startBeats() * geometry.beatSeconds();
+        const auto lengthSeconds = view->lengthBeats() * geometry.beatSeconds();
+        const auto x = juce::roundToInt(geometry.timeToX(startSeconds));
+        const auto y = rulerHeight + view->track() * trackHeight
+            - juce::roundToInt(verticalOffset) + 4;
+        const auto width = std::max(6, juce::roundToInt(
+            lengthSeconds * geometry.pixelsPerSecond));
+        view->setBounds(x, y, width, trackHeight - 8);
+        view->setVisible(view->getBounds().intersects(timelineSurface->getLocalBounds()));
+    }
     for (std::size_t index = 0; index < trackHeaders.size(); ++index)
     {
         const auto y = rulerHeight + static_cast<int>(index) * trackHeight
@@ -1198,6 +1321,8 @@ void ArrangementView::layoutArrangement()
         trackHeaders[index]->setVisible(
             trackHeaders[index]->getBounds().intersects(headerContainer.getLocalBounds()));
     }
+    if (pianoRoll->isVisible())
+        pianoRoll->toFront(false);
     repaint();
 }
 
@@ -1205,8 +1330,13 @@ void ArrangementView::updateScrollRanges()
 {
     auto maxEnd = geometry.barSeconds() * 8.0;
     for (const auto& track : snapshots)
+    {
         for (const auto& clip : track.clips)
             maxEnd = std::max(maxEnd, clip.startSeconds + clip.lengthSeconds);
+        for (const auto& clip : track.midiClips)
+            maxEnd = std::max(maxEnd,
+                (clip.startBeats + clip.lengthBeats) * geometry.beatSeconds());
+    }
     timelineDuration = std::max(geometry.barSeconds() * 64.0,
                                 maxEnd + geometry.barSeconds() * 8.0);
     const auto visibleSeconds = timelineBounds.getWidth() > 0
@@ -1270,7 +1400,83 @@ void ArrangementView::selectClip(const juce::String& id)
         clearTimeSelection();
     for (auto& view : waveformViews)
         view->setSelected(selectedClipIds.contains(view->id()));
+    for (auto& view : midiClipViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
     grabKeyboardFocus();
+}
+
+void ArrangementView::showMidiClipCreationMenu(double seconds, int trackIndex)
+{
+    if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size()))
+        || snapshots[static_cast<std::size_t>(trackIndex)].type != TrackType::midi)
+    {
+        projectMessage = "Select time on a MIDI lane before creating a clip";
+        refreshTransport();
+        return;
+    }
+    if (! timeSelection.isValid() || seconds < timeSelection.startSeconds
+        || seconds > timeSelection.endSeconds || trackIndex < timeSelection.firstTrack
+        || trackIndex > timeSelection.lastTrack)
+    {
+        projectMessage = "Drag a time selection on the MIDI lane, then double-click it";
+        refreshTransport();
+        return;
+    }
+
+    juce::PopupMenu menu;
+    menu.addItem(1, "Create Empty MIDI Clip");
+    menu.showMenuAsync(juce::PopupMenu::Options().withMousePosition(),
+        [safe = juce::Component::SafePointer<ArrangementView>(this), trackIndex](int result)
+        {
+            if (safe != nullptr && result == 1)
+                safe->createMidiClipFromSelection(trackIndex);
+        });
+}
+
+void ArrangementView::createMidiClipFromSelection(int trackIndex)
+{
+    if (! timeSelection.isValid())
+        return;
+    const auto startBeats = std::max(0.0,
+        timeSelection.startSeconds / geometry.beatSeconds());
+    const auto lengthBeats = (timeSelection.endSeconds - timeSelection.startSeconds)
+        / geometry.beatSeconds();
+    const auto result = audioEngine.createMidiClip(trackIndex, startBeats, lengthBeats);
+    if (result.wasOk())
+        clearTimeSelection();
+    applyEditResult(result, "Created MIDI clip from time selection");
+}
+
+void ArrangementView::openPianoRoll(const juce::String& clipId)
+{
+    openPianoRollClipId = clipId;
+    refreshPianoRoll();
+    if (openPianoRollClipId.isEmpty())
+        return;
+    pianoRoll->setVisible(true);
+    pianoRoll->toFront(false);
+    pianoRoll->grabKeyboardFocus();
+}
+
+void ArrangementView::closePianoRoll()
+{
+    openPianoRollClipId.clear();
+    pianoRoll->setVisible(false);
+    grabKeyboardFocus();
+}
+
+void ArrangementView::refreshPianoRoll()
+{
+    if (openPianoRollClipId.isEmpty())
+        return;
+    for (const auto& track : snapshots)
+        for (const auto& clip : track.midiClips)
+            if (clip.id == openPianoRollClipId)
+            {
+                pianoRoll->setClip(clip);
+                return;
+            }
+    closePianoRoll();
 }
 
 void ArrangementView::selectAllClips()
@@ -1278,9 +1484,15 @@ void ArrangementView::selectAllClips()
     clearTimeSelection();
     selectedClipIds.clear();
     for (const auto& track : snapshots)
+    {
         for (const auto& clip : track.clips)
             selectedClipIds.insert(clip.id);
+        for (const auto& clip : track.midiClips)
+            selectedClipIds.insert(clip.id);
+    }
     for (auto& view : waveformViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
+    for (auto& view : midiClipViews)
         view->setSelected(selectedClipIds.contains(view->id()));
     projectMessage = "Selected " + juce::String(static_cast<int>(selectedClipIds.size()))
         + " clips";
@@ -1360,6 +1572,7 @@ void ArrangementView::loopFromSelection()
     {
         start = std::numeric_limits<double>::max();
         for (const auto& track : snapshots)
+        {
             for (const auto& clip : track.clips)
                 if (selectedClipIds.contains(clip.id))
                 {
@@ -1367,6 +1580,17 @@ void ArrangementView::loopFromSelection()
                     start = std::min(start, clip.startSeconds);
                     end = std::max(end, clip.startSeconds + clip.lengthSeconds);
                 }
+            for (const auto& clip : track.midiClips)
+                if (selectedClipIds.contains(clip.id))
+                {
+                    const auto clipStart = clip.startBeats * geometry.beatSeconds();
+                    const auto clipEnd = (clip.startBeats + clip.lengthBeats)
+                        * geometry.beatSeconds();
+                    found = true;
+                    start = std::min(start, clipStart);
+                    end = std::max(end, clipEnd);
+                }
+        }
     }
 
     if (! found)
@@ -1397,6 +1621,8 @@ void ArrangementView::setTimeSelection(ArrangementTimeSelection selection)
         view->setTimeSelection(timeSelection.startSeconds, timeSelection.endSeconds,
                                onSelectedTrack);
     }
+    for (auto& view : midiClipViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
     timelineSurface->setState(geometry, static_cast<int>(snapshots.size()),
         audioEngine.transportSnapshot(), verticalOffset, timeSelection);
     grabKeyboardFocus();
@@ -1491,6 +1717,61 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
     const auto newLength = juce::jlimit(0.05, maxLength, newEnd - view.start());
     applyEditResult(audioEngine.trimClip(view.id(), view.start(), view.offset(), newLength),
                     "Trimmed clip end");
+}
+
+void ArrangementView::handleMidiClipGesture(MidiClipView& view,
+                                            MidiClipView::DragMode mode,
+                                            int deltaX, int deltaY,
+                                            bool finished, bool bypassSnap)
+{
+    if (! finished)
+    {
+        auto bounds = view.gestureBounds();
+        if (mode == MidiClipView::DragMode::move)
+            bounds.translate(deltaX, deltaY);
+        else if (mode == MidiClipView::DragMode::trimStart)
+        {
+            const auto change = juce::jlimit(-bounds.getX(), bounds.getWidth() - 6, deltaX);
+            bounds.setBounds(bounds.getX() + change, bounds.getY(),
+                             bounds.getWidth() - change, bounds.getHeight());
+        }
+        else
+            bounds.setWidth(std::max(6, bounds.getWidth() + deltaX));
+        view.setBounds(bounds);
+        return;
+    }
+
+    const auto deltaBeats = deltaX / geometry.pixelsPerSecond / geometry.beatSeconds();
+    const auto snap = [bypassSnap](double beats)
+    {
+        return bypassSnap ? beats : std::round(beats * 4.0) / 4.0;
+    };
+
+    if (mode == MidiClipView::DragMode::move)
+    {
+        const auto targetTrack = std::max(0, view.track()
+            + static_cast<int>(std::round(deltaY / static_cast<double>(trackHeight))));
+        const auto start = std::max(0.0, snap(view.startBeats() + deltaBeats));
+        applyEditResult(audioEngine.moveMidiClip(view.id(), targetTrack, start),
+                        "Moved MIDI clip");
+        return;
+    }
+
+    if (mode == MidiClipView::DragMode::trimStart)
+    {
+        const auto end = view.startBeats() + view.lengthBeats();
+        const auto start = juce::jlimit(0.0, end - 0.25,
+            snap(view.startBeats() + deltaBeats));
+        applyEditResult(audioEngine.trimMidiClip(view.id(), start, end - start),
+                        "Trimmed MIDI clip start");
+        return;
+    }
+
+    const auto end = std::max(view.startBeats() + 0.25,
+        snap(view.startBeats() + view.lengthBeats() + deltaBeats));
+    applyEditResult(audioEngine.trimMidiClip(view.id(), view.startBeats(),
+                                             end - view.startBeats()),
+                    "Trimmed MIDI clip end");
 }
 
 void ArrangementView::showProjectResult(const juce::Result& result,

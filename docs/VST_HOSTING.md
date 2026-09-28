@@ -64,11 +64,12 @@ plug-in runtime/assets contract for this host to test. Integration requires that
 external repository to provide an Apple-silicon VST3 audio-effect bundle plus its
 build and runtime-asset instructions; its source must not be copied here.
 
-Surge XT was not forced into this milestone: it is an instrument, and proving it
-would require introducing a MIDI/note-source architecture outside this sequencer's
-fixed audio-stem scope. A deterministic stereo gain-effect VST3 is built only for
-tests and proves the host without depending on installed plug-ins or commercial CI
-software.
+Surge XT was not forced into PR 008: it is an instrument, while that milestone's
+host intentionally accepted audio effects only. PR 018 introduces the MIDI data and
+track-type foundation, but no MIDI scheduler or instrument-processing path; VST3
+instrument hosting remains a separate staged milestone. A deterministic stereo
+gain-effect VST3 is built only for tests and proves the existing effect host without
+depending on installed plug-ins or commercial CI software.
 
 ## Verified PR 008 evidence
 

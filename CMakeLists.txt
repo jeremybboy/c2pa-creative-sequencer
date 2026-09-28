@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.27)
 
 project(C2PACreativeSequencer
     VERSION 0.1.0
-    DESCRIPTION "A minimal arrangement-based audio sequencer with native C2PA provenance"
+    DESCRIPTION "A minimal arrangement-based creative sequencer with native C2PA provenance"
     LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -87,6 +87,7 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/provenance/SigningProvider.h
     src/project/MediaLibrary.cpp
     src/project/MediaLibrary.h
+    src/project/MusicalTime.h
     src/project/Project.cpp
     src/project/Project.h
     src/project/ProjectPaths.cpp
@@ -106,6 +107,10 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/ui/ArrangementShortcuts.h
     src/ui/IconButton.cpp
     src/ui/IconButton.h
+    src/ui/MidiClipView.cpp
+    src/ui/MidiClipView.h
+    src/ui/PianoRollView.cpp
+    src/ui/PianoRollView.h
     src/ui/PlacesBrowser.cpp
     src/ui/PlacesBrowser.h
     src/ui/PlacesStore.cpp
@@ -223,6 +228,7 @@ if(BUILD_TESTING)
         src/app/AppInfo.h
         src/project/MediaLibrary.cpp
         src/project/MediaLibrary.h
+        src/project/MusicalTime.h
         src/project/Project.cpp
         src/project/Project.h
         src/project/ProjectPaths.cpp

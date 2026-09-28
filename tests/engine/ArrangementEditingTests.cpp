@@ -67,7 +67,9 @@ int main()
         return fail(3, result.getErrorMessage());
 
     auto tracks = engine.arrangementSnapshot();
-    if (tracks.size() != 4)
+    if (tracks.size() != 4
+        || std::any_of(tracks.begin(), tracks.end(), [](const auto& track)
+            { return track.type != c2paseq::TrackType::audio; }))
         return fail(4, "new project did not create four reusable audio tracks");
     if (engine.moveClip("missing-clip", 10, 1.0).wasOk()
         || engine.arrangementSnapshot().size() != 4)
@@ -232,6 +234,31 @@ int main()
         || engine.deleteAudioTrack(99).wasOk())
         return fail(27, "invalid track deletion changed the arrangement");
 
+    if (engine.addMidiTrack().failed())
+        return fail(28, "could not add a MIDI track");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks.back().type != c2paseq::TrackType::midi
+        || tracks.back().name != "MIDI 1" || ! tracks.back().clips.empty())
+        return fail(28, "MIDI and Audio tracks did not coexist with explicit types");
+    const auto midiTrackId = tracks.back().id;
+    if (engine.setTrackName(4, "Keys").failed()
+        || engine.importAudio(source, 4, 0.0).wasOk()
+        || engine.setTrackMute(4, true).wasOk()
+        || engine.setTrackGain(4, -3.0).wasOk())
+        return fail(28, "MIDI foundation exposed unsupported audio behavior");
+    if (engine.saveProject().failed() || engine.openProject(projectFolder).failed())
+        return fail(28, "MIDI track did not survive save/reopen");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks.back().id != midiTrackId
+        || tracks.back().name != "Keys"
+        || tracks.back().type != c2paseq::TrackType::midi)
+        return fail(28, "MIDI track identity, order, name, or type changed on reopen");
+    if (engine.deleteTrack(4).failed() || engine.arrangementSnapshot().size() != 4
+        || ! engine.undo() || engine.arrangementSnapshot().size() != 5
+        || engine.arrangementSnapshot().back().id != midiTrackId
+        || ! engine.redo() || engine.arrangementSnapshot().size() != 4)
+        return fail(28, "MIDI track deletion did not obey project undo/redo safety");
+
     if (engine.deleteAudioTrack(3).failed() || engine.deleteAudioTrack(2).failed()
         || engine.deleteAudioTrack(1).failed()
         || engine.arrangementSnapshot().size() != 1
@@ -316,8 +343,144 @@ int main()
         || ! close(wholePaste->lengthSeconds, 0.75))
         return fail(43, "whole-clip paste changed clip properties");
 
+    const auto midiProject = temporary.root.getChildFile("MidiEditing.c2paseq");
+    if (engine.createProject(midiProject, "Midi Editing").failed()
+        || engine.addMidiTrack().failed())
+        return fail(44, "could not create MIDI editing fixture");
+    if (engine.createMidiClip(0, 0.0, 4.0).wasOk()
+        || engine.createMidiClip(4, 4.0, 8.0).failed())
+        return fail(45, "MIDI clip track validation or creation failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks[4].midiClips.size() != 1)
+        return fail(46, "MIDI clip was not exposed in the arrangement snapshot");
+    const auto midiClipId = tracks[4].midiClips[0].id;
+    if (engine.createMidiClip(4, 24.0).failed())
+        return fail(60, "default MIDI clip creation failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[4].midiClips.size() != 2
+        || ! close(tracks[4].midiClips[1].lengthBeats, 16.0)
+        || engine.deleteClip(tracks[4].midiClips[1].id).failed())
+        return fail(61, "default MIDI clip was not four bars or could not be removed");
+    if (engine.createMidiClip(4, 2.5, 5.5).failed())
+        return fail(68, "time-selection MIDI clip creation failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[4].midiClips.size() != 2
+        || ! close(tracks[4].midiClips[1].startBeats, 2.5)
+        || ! close(tracks[4].midiClips[1].lengthBeats, 5.5)
+        || engine.deleteClip(tracks[4].midiClips[1].id).failed())
+        return fail(69, "MIDI clip did not preserve the exact selected beat range");
+    if (engine.addMidiNote(midiClipId, 60, 0.0, 1.0, 90).failed()
+        || engine.addMidiNote(midiClipId, 64, 1.0, 2.0, 100).failed()
+        || engine.addMidiNote(midiClipId, 67, 6.5, 1.5, 110).failed()
+        || engine.addMidiNote(midiClipId, 60, 7.5, 1.0, 100).wasOk())
+        return fail(47, "MIDI note creation or clip-bound validation failed");
+    tracks = engine.arrangementSnapshot();
+    const auto firstNoteId = tracks[4].midiClips[0].notes[0].id;
+    if (engine.updateMidiNote(midiClipId, firstNoteId, 61, 0.5, 0.75, 72).failed())
+        return fail(48, "MIDI note update failed");
+    tracks = engine.arrangementSnapshot();
+    const auto& editedNote = tracks[4].midiClips[0].notes[0];
+    if (editedNote.noteNumber != 61 || ! close(editedNote.startBeats, 0.5)
+        || ! close(editedNote.durationBeats, 0.75) || editedNote.velocity != 72)
+        return fail(49, "MIDI note pitch, timing, duration, or velocity was incorrect");
+
+    std::vector<c2paseq::ArrangementMidiNoteSnapshot> pastedNotes {
+        { {}, 72, 3.0, 0.5, 88 },
+        { {}, 74, 4.0, 1.0, 96 }
+    };
+    if (engine.insertMidiNotes(midiClipId, pastedNotes).failed())
+        return fail(62, "MIDI note clipboard batch insert failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[4].midiClips[0].notes.size() != 5)
+        return fail(63, "MIDI note clipboard insert count was incorrect");
+    const std::vector<juce::String> pastedNoteIds {
+        tracks[4].midiClips[0].notes[3].id,
+        tracks[4].midiClips[0].notes[4].id
+    };
+    if (engine.deleteMidiNotes(midiClipId, pastedNoteIds).failed()
+        || engine.arrangementSnapshot()[4].midiClips[0].notes.size() != 3
+        || ! engine.undo()
+        || engine.arrangementSnapshot()[4].midiClips[0].notes.size() != 5
+        || ! engine.redo()
+        || engine.arrangementSnapshot()[4].midiClips[0].notes.size() != 3)
+        return fail(64, "MIDI multi-note delete was not one undoable gesture");
+
+    if (engine.trimMidiClip(midiClipId, 5.0, 4.0).failed()
+        || engine.moveMidiClip(midiClipId, 0, 8.0).wasOk()
+        || engine.moveMidiClip(midiClipId, 4, 8.0).failed())
+        return fail(50, "MIDI trim or MIDI-track-only move failed");
+    tracks = engine.arrangementSnapshot();
+    const auto& trimmed = tracks[4].midiClips[0];
+    if (! close(trimmed.startBeats, 8.0) || ! close(trimmed.lengthBeats, 4.0)
+        || trimmed.notes.size() != 2 || ! close(trimmed.notes[0].startBeats, 0.0)
+        || ! close(trimmed.notes[0].durationBeats, 0.25)
+        || ! close(trimmed.notes[1].startBeats, 0.0)
+        || ! close(trimmed.notes[1].durationBeats, 2.0))
+        return fail(51, "MIDI trim did not non-destructively retain intersecting notes");
+
+    const auto beatsBeforeTempoChange = trimmed;
+    engine.setBpm(90.0);
+    tracks = engine.arrangementSnapshot();
+    const auto& afterTempoChange = tracks[4].midiClips[0];
+    if (! close(afterTempoChange.startBeats, beatsBeforeTempoChange.startBeats)
+        || ! close(afterTempoChange.lengthBeats, beatsBeforeTempoChange.lengthBeats)
+        || afterTempoChange.notes.size() != beatsBeforeTempoChange.notes.size()
+        || ! close(afterTempoChange.notes[0].startBeats,
+                   beatsBeforeTempoChange.notes[0].startBeats)
+        || ! close(afterTempoChange.notes[0].durationBeats,
+                   beatsBeforeTempoChange.notes[0].durationBeats))
+        return fail(65, "tempo change altered beat-based MIDI arrangement data");
+    engine.setBpm(120.0);
+
+    engine.setLooping(true, midiClipId);
+    const auto midiLoop = engine.transportSnapshot();
+    if (! midiLoop.looping || ! close(midiLoop.loopStartSeconds, 4.0)
+        || ! close(midiLoop.loopEndSeconds, 6.0))
+        return fail(52, "MIDI clip selection did not configure the beat-derived loop");
+    engine.setLooping(false);
+
+    if (engine.duplicateClip(midiClipId).failed())
+        return fail(66, "MIDI clip duplicate failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[4].midiClips.size() != 2
+        || ! close(tracks[4].midiClips[1].startBeats, 12.0)
+        || tracks[4].midiClips[1].id == midiClipId
+        || tracks[4].midiClips[1].notes[0].id == tracks[4].midiClips[0].notes[0].id
+        || ! engine.undo() || engine.arrangementSnapshot()[4].midiClips.size() != 1)
+        return fail(67, "MIDI duplicate timing, identity, or undo behavior was incorrect");
+
+    if (engine.copyClips({ midiClipId }).failed()
+        || engine.pasteClipboard(8.0, 4).failed())
+        return fail(53, "MIDI whole-clip copy or paste failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[4].midiClips.size() != 2
+        || close(tracks[4].midiClips[1].startBeats, tracks[4].midiClips[0].startBeats)
+        || tracks[4].midiClips[1].id == midiClipId
+        || tracks[4].midiClips[1].notes[0].id == tracks[4].midiClips[0].notes[0].id)
+        return fail(54, "MIDI paste did not preserve content with fresh identities");
+
+    const auto retainedNoteId = tracks[4].midiClips[0].notes[0].id;
+    if (engine.deleteMidiNote(midiClipId, retainedNoteId).failed())
+        return fail(55, "MIDI note delete failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[4].midiClips[0].notes.size() != 1 || ! engine.undo())
+        return fail(56, "MIDI note delete was not applied or undoable");
+    if (engine.arrangementSnapshot()[4].midiClips[0].notes.size() != 2 || ! engine.redo()
+        || engine.arrangementSnapshot()[4].midiClips[0].notes.size() != 1)
+        return fail(57, "MIDI note delete undo/redo was not exact");
+
+    if (engine.saveProject().failed() || engine.openProject(midiProject).failed())
+        return fail(58, "MIDI clip and note save/reopen failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks[4].midiClips.size() != 2
+        || tracks[4].midiClips[0].notes.size() != 1
+        || ! close(tracks[4].midiClips[0].startBeats, 8.0)
+        || tracks[4].midiClips[0].notes[0].noteNumber != 64)
+        return fail(59, "MIDI arrangement state changed after save/reopen");
+
     std::cout << "arrangement editing: import, move, trim, split, duplicate, delete, "
                  "live loop range, mute/solo transport preservation, track controls, undo/redo, "
-                 "dynamic track add/delete, partial clipboard editing, and reopen passed\n";
+                 "dynamic Audio/MIDI track add/delete, partial clipboard editing, MIDI clip/note "
+                 "editing, velocity, MIDI clipboard, and reopen passed\n";
     return 0;
 }

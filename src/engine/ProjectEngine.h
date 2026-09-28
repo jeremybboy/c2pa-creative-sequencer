@@ -35,16 +35,36 @@ struct ArrangementClipSnapshot
     IngredientInfo provenance;
 };
 
+struct ArrangementMidiNoteSnapshot
+{
+    juce::String id;
+    int noteNumber = 60;
+    double startBeats = 0.0;
+    double durationBeats = 1.0;
+    int velocity = 100;
+};
+
+struct ArrangementMidiClipSnapshot
+{
+    juce::String id;
+    double startBeats = 0.0;
+    double lengthBeats = 4.0;
+    std::vector<ArrangementMidiNoteSnapshot> notes;
+};
+
 struct ArrangementTrackSnapshot
 {
     juce::String id;
     juce::String name;
+    TrackType type = TrackType::audio;
     double gainDb = 0.0;
     double pan = 0.0;
     bool muted = false;
     bool soloed = false;
     std::optional<TrackPluginSnapshot> plugin;
     std::vector<ArrangementClipSnapshot> clips;
+    std::vector<ArrangementMidiClipSnapshot> midiClips;
+    std::size_t midiClipCount = 0;
 };
 
 class ProjectEngine final
@@ -64,6 +84,34 @@ public:
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
                                            double startSeconds);
+    [[nodiscard]] juce::Result createMidiClip(int trackIndex,
+                                              double startBeats,
+                                              double lengthBeats = 16.0);
+    [[nodiscard]] juce::Result moveMidiClip(const juce::String& clipId,
+                                            int trackIndex,
+                                            double startBeats);
+    [[nodiscard]] juce::Result trimMidiClip(const juce::String& clipId,
+                                            double startBeats,
+                                            double lengthBeats);
+    [[nodiscard]] juce::Result addMidiNote(const juce::String& clipId,
+                                           int noteNumber,
+                                           double startBeats,
+                                           double durationBeats,
+                                           int velocity);
+    [[nodiscard]] juce::Result updateMidiNote(const juce::String& clipId,
+                                              const juce::String& noteId,
+                                              int noteNumber,
+                                              double startBeats,
+                                              double durationBeats,
+                                              int velocity);
+    [[nodiscard]] juce::Result deleteMidiNote(const juce::String& clipId,
+                                              const juce::String& noteId);
+    [[nodiscard]] juce::Result insertMidiNotes(
+        const juce::String& clipId,
+        const std::vector<ArrangementMidiNoteSnapshot>& notes);
+    [[nodiscard]] juce::Result deleteMidiNotes(
+        const juce::String& clipId,
+        const std::vector<juce::String>& noteIds);
     [[nodiscard]] juce::Result moveClip(const juce::String& clipId,
                                         int trackIndex,
                                         double startSeconds);
@@ -86,6 +134,8 @@ public:
     [[nodiscard]] juce::Result splitClip(const juce::String& clipId,
                                          double positionSeconds);
     [[nodiscard]] juce::Result addAudioTrack();
+    [[nodiscard]] juce::Result addMidiTrack();
+    [[nodiscard]] juce::Result deleteTrack(int trackIndex);
     [[nodiscard]] juce::Result deleteAudioTrack(int trackIndex);
     [[nodiscard]] juce::Result setTrackName(int trackIndex, const juce::String& name);
     [[nodiscard]] juce::Result setTrackMute(int trackIndex, bool muted);
@@ -132,6 +182,13 @@ private:
         double relativeStartSeconds = 0.0;
     };
 
+    struct ClipboardMidiClip
+    {
+        MidiClipModel clip;
+        int relativeTrack = 0;
+        double relativeStartSeconds = 0.0;
+    };
+
     [[nodiscard]] juce::Result fillClipboardFromClips(
         const std::vector<juce::String>& clipIds);
     [[nodiscard]] juce::Result fillClipboardFromTimeRange(
@@ -144,7 +201,9 @@ private:
     std::vector<Project> undoHistory;
     std::vector<Project> redoHistory;
     std::vector<ClipboardClip> clipboard;
+    std::vector<ClipboardMidiClip> midiClipboard;
     int clipboardBaseTrack = 0;
+    double clipboardOriginSeconds = 0.0;
     double clipboardDurationSeconds = 0.0;
     std::optional<Project> trackMixGestureBefore;
     int trackMixGestureTrack = -1;
