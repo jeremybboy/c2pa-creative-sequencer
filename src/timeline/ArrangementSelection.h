@@ -29,5 +29,14 @@ struct ArrangementTimeSelection
         result.active = result.endSeconds > result.startSeconds + 0.001;
         return result;
     }
+
+    static ArrangementTimeSelection betweenWithin(double firstTime, double secondTime,
+                                                   double minimumTime, double maximumTime,
+                                                   int trackIndex)
+    {
+        return between(std::clamp(firstTime, minimumTime, maximumTime),
+                       std::clamp(secondTime, minimumTime, maximumTime),
+                       trackIndex, trackIndex);
+    }
 };
 }

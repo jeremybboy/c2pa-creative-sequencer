@@ -36,6 +36,13 @@ int main()
         || selection.firstTrack != 1 || selection.lastTrack != 3)
         return 11;
 
+    const auto withinClip = c2paseq::ArrangementTimeSelection::betweenWithin(
+        7.0, 20.0, 8.0, 12.0, 2);
+    if (! withinClip.isValid() || ! close(withinClip.startSeconds, 8.0)
+        || ! close(withinClip.endSeconds, 12.0)
+        || withinClip.firstTrack != 2 || withinClip.lastTrack != 2)
+        return 12;
+
     const auto temporary = juce::File::getCurrentWorkingDirectory()
         .getNonexistentChildFile("c2paseq-places-test", {}, false);
     if (! temporary.createDirectory())

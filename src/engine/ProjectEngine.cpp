@@ -663,7 +663,8 @@ juce::Result ProjectEngine::endTrackMixGesture(int trackIndex)
     trackMixGestureTrack = -1;
     const auto& before = previous.tracks[static_cast<std::size_t>(trackIndex)];
     const auto& after = project->tracks[static_cast<std::size_t>(trackIndex)];
-    if (before.gainDb == after.gainDb && before.pan == after.pan)
+    if (std::abs(before.gainDb - after.gainDb) < 0.000001
+        && std::abs(before.pan - after.pan) < 0.000001)
         return juce::Result::ok();
 
     if (auto result = saveProject(); result.failed())

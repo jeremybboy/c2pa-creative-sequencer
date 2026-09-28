@@ -191,8 +191,9 @@ public:
 private:
     [[nodiscard]] int trackForY(int y) const noexcept
     {
-        return std::max(0, static_cast<int>(std::floor(
-            (y - rulerHeight + verticalOffset) / static_cast<double>(trackHeight))));
+        return juce::jlimit(0, std::max(0, trackCount - 1),
+            static_cast<int>(std::floor(
+                (y - rulerHeight + verticalOffset) / static_cast<double>(trackHeight))));
     }
 
     TimelineGeometry geometry;
@@ -1425,8 +1426,8 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
                 first = geometry.snapToBeat(first);
                 second = geometry.snapToBeat(second);
             }
-            setTimeSelection(ArrangementTimeSelection::between(
-                first, second, view.track(), view.track()));
+            setTimeSelection(ArrangementTimeSelection::betweenWithin(
+                first, second, view.start(), view.start() + view.length(), view.track()));
             return;
         }
         auto bounds = view.gestureBounds();
@@ -1454,8 +1455,8 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
             first = geometry.snapToBeat(first);
             second = geometry.snapToBeat(second);
         }
-        setTimeSelection(ArrangementTimeSelection::between(
-            first, second, view.track(), view.track()));
+        setTimeSelection(ArrangementTimeSelection::betweenWithin(
+            first, second, view.start(), view.start() + view.length(), view.track()));
         insertionPointSeconds = timeSelection.startSeconds;
         projectMessage = "Selected " + juce::String(timeSelection.endSeconds
             - timeSelection.startSeconds, 3) + " s";
