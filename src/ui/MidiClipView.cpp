@@ -22,7 +22,7 @@ void MidiClipView::paint(juce::Graphics& g)
 
     g.setColour(juce::Colour::fromRGB(232, 238, 232));
     g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
-    g.drawFittedText("MIDI clip  •  " + juce::String(static_cast<int>(clip.notes.size()))
+    g.drawFittedText("MIDI clip | " + juce::String(static_cast<int>(clip.notes.size()))
                          + " notes",
                      getLocalBounds().reduced(8).removeFromTop(18),
                      juce::Justification::centredLeft, 1);

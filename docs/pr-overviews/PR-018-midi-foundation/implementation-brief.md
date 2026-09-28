@@ -48,6 +48,8 @@ export pipeline. Planned checkpoints are targets, not claims about current behav
   clip boundaries, velocity lane, and pointer-dependent pinch zoom for time or pitch range.
 - Notes support draw, select/multi-select, live-feedback pitch/time move, resize, velocity edit, delete,
   **Command-A/C/X/V/D**, beat snapping, and one undo entry per committed edit.
+- The piano roll shows the arrangement playhead, aligned to absolute musical time, while transport
+  crosses the open MIDI clip.
 - MIDI data remains beat-based across BPM changes. There is intentionally no MIDI sound yet.
 
 ## NOT YET IMPLEMENTED
@@ -93,7 +95,7 @@ Checkpoint 2 piano-roll evidence:
 - focused `C2PAArrangementEditingTests` passed, covering default and exact-range clip creation,
   MIDI clip/note editing, velocity, multi-note clipboard/delete, duplication with fresh identities,
   beat preservation across BPM changes, loop derivation, undo/redo, and save/reopen;
-- final full normal CTest passed 16/16 in 15.86 seconds;
+- final full normal CTest passed 16/16 in 16.92 seconds;
 - manual UI acceptance remains pending before this checkpoint is approved;
 - no MIDI audio execution, instrument hosting, recording, or C2PA behavior was added.
 

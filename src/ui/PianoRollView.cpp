@@ -23,6 +23,14 @@ void PianoRollView::setClip(ArrangementMidiClipSnapshot clip)
     repaint();
 }
 
+void PianoRollView::setPlayheadBeat(double absoluteBeat)
+{
+    if (std::abs(playheadBeat - absoluteBeat) < 0.0001)
+        return;
+    playheadBeat = absoluteBeat;
+    repaint();
+}
+
 juce::Rectangle<float> PianoRollView::gridBounds() const
 {
     return getLocalBounds().toFloat().withTrimmedTop(
@@ -284,6 +292,22 @@ void PianoRollView::paint(juce::Graphics& g)
             ? juce::Colour::fromRGB(255, 213, 92)
             : juce::Colour::fromRGB(91, 211, 143));
         g.fillRect(x, lane.getBottom() - height, 4.0f, height);
+    }
+
+    const auto localPlayhead = playheadBeat - midiClip.startBeats;
+    if (localPlayhead >= 0.0 && localPlayhead <= midiClip.lengthBeats
+        && localPlayhead >= visibleStartBeat && localPlayhead <= visibleEnd)
+    {
+        const auto x = grid.getX() + static_cast<float>(
+            (localPlayhead - visibleStartBeat)
+                / std::max(gridStepBeats, visibleBeatLength())) * grid.getWidth();
+        g.setColour(juce::Colour::fromRGB(239, 91, 73));
+        g.fillRect(juce::Rectangle<float>(x - 1.0f, timeRuler.getY(),
+                                         2.0f, lane.getBottom() - timeRuler.getY()));
+        juce::Path marker;
+        marker.addTriangle(x - 5.0f, timeRuler.getY(), x + 5.0f, timeRuler.getY(),
+                           x, timeRuler.getY() + 7.0f);
+        g.fillPath(marker);
     }
     g.setColour(juce::Colour::fromRGB(115, 124, 132));
     g.drawRect(getLocalBounds().toFloat(), 1.0f);

@@ -15,6 +15,7 @@ public:
     PianoRollView();
 
     void setClip(ArrangementMidiClipSnapshot clip);
+    void setPlayheadBeat(double absoluteBeat);
     [[nodiscard]] const juce::String& clipId() const noexcept { return midiClip.id; }
 
     void paint(juce::Graphics&) override;
@@ -69,6 +70,7 @@ private:
     juce::Point<float> dragStart;
     double horizontalZoom = 1.0;
     double visibleStartBeat = 0.0;
+    double playheadBeat = -1.0;
     int lowestVisiblePitch = 48;
     int visiblePitchCount = 24;
 

@@ -657,6 +657,8 @@ void ArrangementView::refreshTransport()
     const auto prefix = projectMessage.isNotEmpty() ? projectMessage + "  |  " : juce::String();
     status.setText(prefix + audioEngine.status(), juce::dontSendNotification);
     timelineSurface->setTransportState(snapshot);
+    if (pianoRoll->isVisible())
+        pianoRoll->setPlayheadBeat(snapshot.positionSeconds * snapshot.bpm / 60.0);
 }
 
 void ArrangementView::createProject()

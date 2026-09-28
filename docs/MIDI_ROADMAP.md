@@ -24,6 +24,7 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 - Copy, paste, and duplicate notes.
 - Move, trim, copy, paste, and duplicate MIDI clips in the arrangement.
 - Provide live drag feedback and pointer-dependent trackpad pinch zoom for time or pitch range.
+- Show the arrangement playhead in the piano roll while transport crosses the open MIDI clip.
 
 ## Checkpoint 3 — VST3 Instrument Hosting + MIDI Playback — CURRENT
 
