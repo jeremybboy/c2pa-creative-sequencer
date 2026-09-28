@@ -14,6 +14,23 @@
 
 namespace c2paseq
 {
+namespace
+{
+juce::String nextAudioTrackName(const Project& project)
+{
+    auto highestNumber = static_cast<int>(project.tracks.size());
+    for (const auto& track : project.tracks)
+    {
+        if (! track.name.startsWith("Audio "))
+            continue;
+        const auto suffix = track.name.fromFirstOccurrenceOf("Audio ", false, false);
+        if (suffix.containsOnly("0123456789"))
+            highestNumber = std::max(highestNumber, suffix.getIntValue());
+    }
+    return "Audio " + juce::String(highestNumber + 1);
+}
+}
+
 ProjectEngine::ProjectEngine(TracktionAdapter& tracktionAdapter,
                              ProvenanceService& provenanceService)
     : tracktion(tracktionAdapter), provenance(provenanceService)
@@ -286,6 +303,35 @@ juce::Result ProjectEngine::splitClip(const juce::String& clipId,
             return juce::Result::ok();
         }
         return juce::Result::fail("Clip was not found");
+    });
+}
+
+juce::Result ProjectEngine::addAudioTrack()
+{
+    return mutateProject([](Project& value)
+    {
+        TrackModel track;
+        track.id = juce::Uuid().toString();
+        track.name = nextAudioTrackName(value);
+        value.tracks.push_back(std::move(track));
+        return juce::Result::ok();
+    });
+}
+
+juce::Result ProjectEngine::deleteAudioTrack(int trackIndex)
+{
+    return mutateProject([trackIndex](Project& value)
+    {
+        if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(value.tracks.size())))
+            return juce::Result::fail("Invalid track");
+        if (value.tracks.size() <= 1)
+            return juce::Result::fail("A project must keep at least one audio track");
+
+        const auto ownerId = value.tracks[static_cast<std::size_t>(trackIndex)].id;
+        std::erase_if(value.plugins,
+            [&](const auto& plugin) { return plugin.ownerId == ownerId; });
+        value.tracks.erase(value.tracks.begin() + trackIndex);
+        return juce::Result::ok();
     });
 }
 

@@ -66,6 +66,9 @@ private:
     void scanPlugins();
     void undoEdit();
     void redoEdit();
+    void addAudioTrack();
+    void requestDeleteAudioTrack(int trackIndex);
+    void deleteAudioTrack(int trackIndex);
     void importAudioFiles(const juce::Array<juce::File>&, int x, int y);
     void rebuildArrangement();
     void layoutArrangement();
@@ -113,6 +116,7 @@ private:
     juce::TextButton zoomOut { "-" };
     juce::TextButton zoomIn { "+" };
     juce::TextButton audioSettings { "Audio" };
+    juce::TextButton addTrackButton { "+ Track" };
     juce::Label position;
     juce::Label projectName;
     juce::Label status;

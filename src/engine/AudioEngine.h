@@ -44,6 +44,8 @@ public:
     [[nodiscard]] juce::Result deleteClip(const juce::String&);
     [[nodiscard]] juce::Result duplicateClip(const juce::String&);
     [[nodiscard]] juce::Result splitClip(const juce::String&, double positionSeconds);
+    [[nodiscard]] juce::Result addAudioTrack();
+    [[nodiscard]] juce::Result deleteAudioTrack(int);
     [[nodiscard]] juce::Result setTrackName(int, const juce::String&);
     [[nodiscard]] juce::Result setTrackMute(int, bool);
     [[nodiscard]] juce::Result setTrackSolo(int, bool);

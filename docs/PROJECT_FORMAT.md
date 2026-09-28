@@ -12,6 +12,13 @@ MyProject.c2paseq/
 
 `project.json` is the application-owned creative model. It stores the project UUID, name, ISO 8601 creation and modification timestamps, BPM, timeline zoom/scroll, application version, tracks, clips, media references, and per-track VST3 state records. Track records persist order, name, gain, pan, mute, and solo. Clip records persist track membership, timeline start, source offset, and duration; these are non-destructive metadata and never modify source bytes.
 
+Projects begin with four reusable audio tracks but are not fixed to four. Adding a track
+creates a new stable track UUID; deleting one removes that track's clips and owned VST3
+state from the arrangement without deleting source media, and the last remaining audio
+track cannot be removed. Track creation/deletion participates in undo/redo and is saved
+through the same ordered `tracks` array, so later track indices are derived from persisted
+order rather than used as durable identity.
+
 A VST3 state record is keyed to its owning track and persists the plug-in identifier, display metadata, format/category, bundle reference, JUCE identifiers, effect/instrument classification, bypass/missing flags, and the plug-in's opaque Base64 state. The binary is never copied into the project. If it cannot be restored, the project and track remain usable, the original identity and state are retained, and the slot is displayed as missing and bypassed until removed or the plug-in becomes available again.
 
 Each media reference contains a UUID, original filename, project-relative path, byte size, and lowercase SHA-256. `MediaLibrary` copies sources through a temporary file, verifies the copied SHA-256 before committing it, and reuses a previously registered asset with the same hash. WAV, AIFF, and MP3 files are decoded before copying; dropping a file then adds one non-destructive clip to the chosen existing track at the chosen snapped time, creating additional empty tracks only when the target lane requires one. The source file is never modified.

@@ -28,6 +28,7 @@ public:
     std::function<void(int)> onOpenPlugin;
     std::function<void(int, bool)> onBypassPlugin;
     std::function<void(int)> onRemovePlugin;
+    std::function<void(int)> onDeleteTrack;
 
 private:
     int trackIndex;
@@ -37,6 +38,7 @@ private:
     juce::TextButton mute { "M" };
     juce::TextButton solo { "S" };
     juce::TextButton pluginMenu { "VST3" };
+    juce::TextButton deleteTrack { "×" };
     juce::Slider gain;
     juce::Slider panControl;
     std::optional<TrackPluginSnapshot> currentPlugin;

@@ -105,6 +105,8 @@ juce::Result AudioEngine::splitClip(const juce::String& id, double position)
 {
     return projectEngine.splitClip(id, position);
 }
+juce::Result AudioEngine::addAudioTrack() { return projectEngine.addAudioTrack(); }
+juce::Result AudioEngine::deleteAudioTrack(int i) { return projectEngine.deleteAudioTrack(i); }
 juce::Result AudioEngine::setTrackName(int i, const juce::String& n) { return projectEngine.setTrackName(i, n); }
 juce::Result AudioEngine::setTrackMute(int i, bool v) { return projectEngine.setTrackMute(i, v); }
 juce::Result AudioEngine::setTrackSolo(int i, bool v) { return projectEngine.setTrackSolo(i, v); }

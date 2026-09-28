@@ -275,14 +275,30 @@ int main()
         || std::abs(engine.transportSnapshot().positionSeconds - 0.5) > 0.02)
         return fail(18, "removing a VST3 moved the playhead");
 
+    const auto originalTrackCount = engine.arrangementSnapshot().size();
+    if (engine.addAudioTrack().failed())
+        return fail(19, "could not add a track for hosted VST3 validation");
+    const auto addedTrackIndex = static_cast<int>(originalTrackCount);
+    if (engine.loadTrackPlugin(addedTrackIndex, found->identifier).failed())
+        return fail(19, "new audio track did not accept a VST3 effect");
+    const auto withAddedPluginTrack = engine.arrangementSnapshot();
+    if (withAddedPluginTrack.size() != originalTrackCount + 1
+        || ! withAddedPluginTrack.back().plugin.has_value()
+        || engine.deleteAudioTrack(addedTrackIndex).failed()
+        || engine.arrangementSnapshot().size() != originalTrackCount
+        || engine.saveProject().failed() || engine.openProject(project).failed()
+        || engine.arrangementSnapshot().size() != originalTrackCount)
+        return fail(19, "VST3-bearing track add/delete did not persist cleanly");
+
     const auto externalPath = juce::SystemStats::getEnvironmentVariable(
         "C2PASEQ_EXTERNAL_VST3", {});
     if (externalPath.isNotEmpty())
         if (auto result = exerciseExternalVst3(juce::File(externalPath), source, root);
             result.failed())
-            return fail(19, result.getErrorMessage());
+            return fail(20, result.getErrorMessage());
 
     std::cout << "VST3 scan, instantiate, realtime DSP, attach, bypass, persistence, "
-                 "editor lifecycle, offline DSP, remove, and transport invariants passed\n";
+                 "editor lifecycle, offline DSP, dynamic track hosting, remove, and transport "
+                 "invariants passed\n";
     return 0;
 }

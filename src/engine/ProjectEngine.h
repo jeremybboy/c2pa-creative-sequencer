@@ -71,6 +71,8 @@ public:
     [[nodiscard]] juce::Result duplicateClip(const juce::String& clipId);
     [[nodiscard]] juce::Result splitClip(const juce::String& clipId,
                                          double positionSeconds);
+    [[nodiscard]] juce::Result addAudioTrack();
+    [[nodiscard]] juce::Result deleteAudioTrack(int trackIndex);
     [[nodiscard]] juce::Result setTrackName(int trackIndex, const juce::String& name);
     [[nodiscard]] juce::Result setTrackMute(int trackIndex, bool muted);
     [[nodiscard]] juce::Result setTrackSolo(int trackIndex, bool soloed);

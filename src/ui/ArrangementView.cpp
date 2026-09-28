@@ -236,6 +236,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     zoomOut.onClick = [this] { zoomBy(0.8, timelineBounds.getWidth() * 0.5); };
     zoomIn.onClick = [this] { zoomBy(1.25, timelineBounds.getWidth() * 0.5); };
     audioSettings.onClick = [this] { showAudioSettings(); };
+    addTrackButton.onClick = [this] { addAudioTrack(); };
 
     position.setFont(juce::FontOptions(14.0f, juce::Font::bold));
     position.setJustificationType(juce::Justification::centred);
@@ -260,7 +261,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
                           &exportButton, &credentialsButton, &signingButton, &audioSoftBindingButton,
                           &fingerprintButton,
                           &undoButton, &redoButton, &playPause, &stop, &loop,
-                          &zoomOut, &zoomIn, &audioSettings })
+                          &zoomOut, &zoomIn, &audioSettings, &addTrackButton })
     {
         button->setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(66, 70, 74));
         button->setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(231, 233, 235));
@@ -334,6 +335,7 @@ void ArrangementView::resized()
     audioSettings.setBounds(top.removeFromRight(56).reduced(1));
     zoomIn.setBounds(top.removeFromRight(30).reduced(1));
     zoomOut.setBounds(top.removeFromRight(30).reduced(1));
+    addTrackButton.setBounds(top.removeFromRight(64).reduced(1));
     projectName.setBounds(top.reduced(8, 0));
 
     verticalScroll.setBounds(area.removeFromRight(scrollBarSize));
@@ -438,6 +440,7 @@ void ArrangementView::refreshTransport()
     saveProjectButton.setEnabled(audioEngine.hasProject());
     exportButton.setEnabled(audioEngine.hasProject());
     loop.setEnabled(audioEngine.hasProject());
+    addTrackButton.setEnabled(audioEngine.hasProject());
     credentialsButton.setEnabled(selectedClipId.isNotEmpty());
     undoButton.setEnabled(audioEngine.canUndo());
     redoButton.setEnabled(audioEngine.canRedo());
@@ -817,6 +820,63 @@ void ArrangementView::redoEdit()
     }
 }
 
+void ArrangementView::addAudioTrack()
+{
+    applyEditResult(audioEngine.addAudioTrack(), "Added audio track");
+}
+
+void ArrangementView::requestDeleteAudioTrack(int trackIndex)
+{
+    if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
+        return;
+
+    const auto& track = snapshots[static_cast<std::size_t>(trackIndex)];
+    if (track.clips.empty() && ! track.plugin.has_value())
+    {
+        deleteAudioTrack(trackIndex);
+        return;
+    }
+
+    auto contents = juce::String();
+    if (! track.clips.empty())
+        contents << juce::String(static_cast<int>(track.clips.size()))
+                 << (track.clips.size() == 1 ? " clip" : " clips");
+    if (track.plugin.has_value())
+    {
+        if (contents.isNotEmpty())
+            contents << " and ";
+        contents << "the loaded VST3";
+    }
+
+    const auto options = juce::MessageBoxOptions()
+        .withIconType(juce::MessageBoxIconType::WarningIcon)
+        .withTitle("Delete Audio Track?")
+        .withMessage("\"" + track.name + "\" contains " + contents
+                     + ". Deleting the track removes them from the arrangement."
+                       " The original media files remain unchanged.")
+        .withButton("Delete Track")
+        .withButton("Cancel")
+        .withAssociatedComponent(this);
+    juce::NativeMessageBox::showAsync(options,
+        [safe = juce::Component::SafePointer<ArrangementView>(this), trackIndex](int result)
+        {
+            if (safe != nullptr && result == 0)
+                safe->deleteAudioTrack(trackIndex);
+        });
+}
+
+void ArrangementView::deleteAudioTrack(int trackIndex)
+{
+    if (juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
+    {
+        const auto& deleted = snapshots[static_cast<std::size_t>(trackIndex)];
+        if (std::any_of(deleted.clips.begin(), deleted.clips.end(),
+                [&](const auto& clip) { return clip.id == selectedClipId; }))
+            selectedClipId.clear();
+    }
+    applyEditResult(audioEngine.deleteAudioTrack(trackIndex), "Deleted audio track");
+}
+
 void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files, int x, int y)
 {
     stopSampleAudition();
@@ -915,6 +975,7 @@ void ArrangementView::rebuildArrangement()
         {
             applyEditResult(audioEngine.removeTrackPlugin(index), "Removed VST3");
         };
+        header->onDeleteTrack = [this](int index) { requestDeleteAudioTrack(index); };
         headerContainer.addAndMakeVisible(*header);
         trackHeaders.push_back(std::move(header));
 
