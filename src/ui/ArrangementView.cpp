@@ -417,6 +417,22 @@ void ArrangementView::timerCallback()
     if (sampleAudition.currentFile() != juce::File() && ! sampleAudition.isPlaying())
         stopSampleAudition("Preview finished");
     refreshTransport();
+    refreshTrackMeters();
+}
+
+void ArrangementView::refreshTrackMeters()
+{
+    const auto playing = audioEngine.transportSnapshot().playing;
+    const auto anySolo = std::any_of(snapshots.begin(), snapshots.end(),
+        [](const auto& track) { return track.soloed; });
+    const auto count = std::min(trackHeaders.size(), snapshots.size());
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        const auto peak = audioEngine.trackLevelSnapshot(static_cast<int>(index));
+        const auto& track = snapshots[index];
+        const auto audible = playing && ! track.muted && (! anySolo || track.soloed);
+        trackHeaders[index]->setMeterPeak(peak, audible);
+    }
 }
 
 void ArrangementView::scrollBarMoved(juce::ScrollBar* bar, double start)

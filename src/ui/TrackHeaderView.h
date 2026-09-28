@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/ProjectEngine.h"
+#include "engine/TrackLevelMeter.h"
 #include "plugins/PluginDescriptor.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -15,6 +16,7 @@ public:
                   bool muted, bool soloed, juce::Colour colour);
     void setPluginState(const std::optional<TrackPluginSnapshot>&,
                         const std::vector<PluginDescriptor>&);
+    void setMeterPeak(TrackLevelSnapshot, bool audible);
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -41,6 +43,8 @@ private:
     juce::TextButton deleteTrack { "×" };
     juce::Slider gain;
     juce::Slider panControl;
+    TrackLevelBallistics meterBallistics;
+    juce::Rectangle<int> meterBounds;
     std::optional<TrackPluginSnapshot> currentPlugin;
     std::vector<PluginDescriptor> availablePlugins;
 };

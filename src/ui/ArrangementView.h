@@ -46,6 +46,7 @@ private:
     void timerCallback() override;
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
     void refreshTransport();
+    void refreshTrackMeters();
     void showAudioSettings();
     void createProject();
     void openProject();

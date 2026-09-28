@@ -2,6 +2,7 @@
 
 #include "app/AppInfo.h"
 #include "engine/NativeAudioClipPolicy.h"
+#include "engine/TrackLevelMeterPlugin.h"
 #include "transport/TransportFormatting.h"
 
 #include <algorithm>
@@ -29,6 +30,7 @@ public:
 TracktionAdapter::TracktionAdapter()
     : engine(appInfo::name.data(), nullptr, std::make_unique<SequencerEngineBehaviour>())
 {
+    engine.getPluginManager().createBuiltInType<TrackLevelMeterPlugin>();
     auto& deviceManager = engine.getDeviceManager();
 
     // Configure MIDI before the first device scan. The hosted interface prevents
@@ -118,6 +120,19 @@ TransportSnapshot TracktionAdapter::transportSnapshot() const
         loopRange.getStart().inSeconds(),
         loopRange.getEnd().inSeconds()
     };
+}
+
+TrackLevelSnapshot TracktionAdapter::trackLevelSnapshot(int trackIndex) noexcept
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return {};
+
+    if (auto* meter = tracks[trackIndex]->pluginList
+            .findFirstPluginOfType<TrackLevelMeterPlugin>())
+        return meter->consumePeaks();
+    return {};
 }
 
 juce::AudioDeviceManager& TracktionAdapter::audioDeviceManager() noexcept
@@ -242,6 +257,7 @@ juce::Result TracktionAdapter::setTrackProperties(int trackIndex,
         return juce::Result::fail("Could not create audio track");
 
     auto* track = tracks[trackIndex];
+    ensureTrackLevelMeter(*track);
     track->setName(name);
     track->setMute(muted);
     track->setSolo(soloed);
@@ -251,6 +267,14 @@ juce::Result TracktionAdapter::setTrackProperties(int trackIndex,
         volume->setPan(static_cast<float>(juce::jlimit(-1.0, 1.0, pan)));
     }
     return juce::Result::ok();
+}
+
+void TracktionAdapter::ensureTrackLevelMeter(tracktion::engine::AudioTrack& track)
+{
+    if (track.pluginList.findFirstPluginOfType<TrackLevelMeterPlugin>() != nullptr)
+        return;
+
+    track.pluginList.insertPlugin(TrackLevelMeterPlugin::create(), -1);
 }
 
 juce::Result TracktionAdapter::setTrackMute(int trackIndex, bool muted)
@@ -537,6 +561,7 @@ void TracktionAdapter::configureLoadedAudioClips()
 
     for (auto* track : tracktion::engine::getAudioTracks(*edit))
     {
+        ensureTrackLevelMeter(*track);
         for (auto* clip : track->getClips())
         {
             auto* waveClip = dynamic_cast<tracktion::engine::WaveAudioClip*>(clip);

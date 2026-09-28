@@ -1,5 +1,7 @@
 #pragma once
 
+#include "TrackLevelMeter.h"
+
 #include <tracktion_engine/tracktion_engine.h>
 
 #include <functional>
@@ -42,6 +44,7 @@ public:
     [[nodiscard]] juce::String audioDeviceDescription() const;
     [[nodiscard]] AudioDeviceSnapshot audioDeviceSnapshot() const;
     [[nodiscard]] TransportSnapshot transportSnapshot() const;
+    [[nodiscard]] TrackLevelSnapshot trackLevelSnapshot(int trackIndex) noexcept;
 
     [[nodiscard]] juce::AudioDeviceManager& audioDeviceManager() noexcept;
 
@@ -91,6 +94,7 @@ public:
     void closeProjectEdit();
 
 private:
+    void ensureTrackLevelMeter(tracktion::engine::AudioTrack&);
     void configurePreferredAudioSettings();
     void configureLoadedAudioClips();
     void prepareEdit();

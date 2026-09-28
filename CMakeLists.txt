@@ -30,6 +30,12 @@ set(C2PASEQ_WATERMARK_SOURCES
     src/watermark/SoftBindingPayload.h
     src/watermark/WatermarkService.h)
 
+set(C2PASEQ_TRACK_METER_SOURCES
+    src/engine/TrackLevelMeter.cpp
+    src/engine/TrackLevelMeter.h
+    src/engine/TrackLevelMeterPlugin.cpp
+    src/engine/TrackLevelMeterPlugin.h)
+
 juce_add_gui_app(C2PACreativeSequencer
     PRODUCT_NAME "C2PA Creative Sequencer"
     BUNDLE_ID "app.c2paseq.CreativeSequencer"
@@ -40,6 +46,7 @@ juce_generate_juce_header(C2PACreativeSequencer)
 
 target_sources(C2PACreativeSequencer PRIVATE
     ${C2PASEQ_WATERMARK_SOURCES}
+    ${C2PASEQ_TRACK_METER_SOURCES}
     src/app/AppInfo.h
     src/app/Application.cpp
     src/app/Application.h
@@ -195,6 +202,17 @@ if(BUILD_TESTING)
         juce::juce_recommended_config_flags)
     add_test(NAME sample_audition COMMAND C2PASampleAuditionTests)
 
+    add_executable(C2PATrackLevelMeterTests
+        tests/engine/TrackLevelMeterTests.cpp
+        src/engine/TrackLevelMeter.cpp
+        src/engine/TrackLevelMeter.h)
+    target_include_directories(C2PATrackLevelMeterTests PRIVATE src)
+    target_compile_features(C2PATrackLevelMeterTests PRIVATE cxx_std_20)
+    target_link_libraries(C2PATrackLevelMeterTests PRIVATE
+        juce::juce_audio_basics
+        juce::juce_recommended_config_flags)
+    add_test(NAME track_level_meter COMMAND C2PATrackLevelMeterTests)
+
     add_executable(C2PAProjectModelTests
         tests/project/ProjectModelTests.cpp
         src/app/AppInfo.h
@@ -274,6 +292,7 @@ if(BUILD_TESTING)
 
     add_executable(C2PAArrangementEditingTests
         ${C2PASEQ_WATERMARK_SOURCES}
+        ${C2PASEQ_TRACK_METER_SOURCES}
         tests/engine/ArrangementEditingTests.cpp
         src/app/AppInfo.h
         src/engine/AudioEngine.cpp
@@ -363,6 +382,7 @@ if(BUILD_TESTING)
 
     add_executable(C2PAExportPipelineTests
         ${C2PASEQ_WATERMARK_SOURCES}
+        ${C2PASEQ_TRACK_METER_SOURCES}
         tests/export/ExportPipelineTests.cpp
         src/app/AppInfo.h
         src/engine/AudioEngine.cpp
@@ -453,6 +473,7 @@ if(BUILD_TESTING)
 
     add_executable(C2PAPluginHostingTests
         ${C2PASEQ_WATERMARK_SOURCES}
+        ${C2PASEQ_TRACK_METER_SOURCES}
         tests/plugins/PluginHostingTests.cpp
         src/app/AppInfo.h
         src/engine/AudioEngine.cpp
