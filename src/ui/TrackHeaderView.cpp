@@ -6,9 +6,11 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
 {
     number.setFont(juce::FontOptions(11.0f, juce::Font::bold));
     number.setJustificationType(juce::Justification::centred);
+    number.setColour(juce::Label::textColourId, juce::Colour::fromRGB(179, 186, 191));
     number.setText(juce::String(index + 1), juce::dontSendNotification);
     nameEditor.setEditable(false, true, false);
     nameEditor.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    nameEditor.setColour(juce::Label::textColourId, juce::Colour::fromRGB(239, 241, 243));
     nameEditor.onTextChange = [this]
     {
         if (onNameChanged)
@@ -136,10 +138,12 @@ void TrackHeaderView::setMeterPeak(TrackLevelSnapshot peak, bool audible)
 
 void TrackHeaderView::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour::fromRGB(62, 65, 69));
+    g.fillAll(juce::Colour::fromRGB(53, 57, 61));
+    g.setColour(juce::Colour::fromRGB(47, 51, 55));
+    g.fillRect(4, 0, getWidth() - 4, 34);
     g.setColour(accent);
     g.fillRect(0, 0, 4, getHeight());
-    g.setColour(juce::Colour::fromRGB(88, 92, 97));
+    g.setColour(juce::Colour::fromRGB(75, 80, 85));
     g.drawHorizontalLine(getHeight() - 1, 0.0f, static_cast<float>(getWidth()));
 
     g.setColour(juce::Colour::fromRGB(31, 33, 35));

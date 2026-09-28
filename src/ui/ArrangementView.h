@@ -6,11 +6,14 @@
 #include "timeline/TimelineGeometry.h"
 #include "ui/PlacesBrowser.h"
 #include "ui/PlacesStore.h"
+#include "ui/IconButton.h"
+#include "ui/SequencerLookAndFeel.h"
 #include "ui/WaveformView.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <atomic>
+#include <array>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -88,6 +91,7 @@ private:
     [[nodiscard]] juce::Colour colourForTrack(int index) const;
 
     AudioEngine& audioEngine;
+    SequencerLookAndFeel lookAndFeel;
     SampleAuditionPlayer sampleAudition;
     PlacesStore placesStore;
     PlacesBrowser browser;
@@ -109,19 +113,20 @@ private:
     juce::TextButton signingButton { "Signing" };
     juce::TextButton audioSoftBindingButton { "Audio SB" };
     juce::TextButton fingerprintButton { "FP SB" };
-    juce::TextButton undoButton { "Undo" };
-    juce::TextButton redoButton { "Redo" };
-    juce::TextButton playPause { "Play" };
-    juce::TextButton stop { "Stop" };
-    juce::TextButton loop { "Loop" };
-    juce::TextButton zoomOut { "-" };
-    juce::TextButton zoomIn { "+" };
-    juce::TextButton audioSettings { "Audio" };
+    IconButton undoButton { "Undo", IconButton::Icon::undo };
+    IconButton redoButton { "Redo", IconButton::Icon::redo };
+    IconButton playPause { "Play Pause", IconButton::Icon::play };
+    IconButton stop { "Stop", IconButton::Icon::stop };
+    IconButton loop { "Loop", IconButton::Icon::loop };
+    IconButton zoomOut { "Zoom Out", IconButton::Icon::zoomOut };
+    IconButton zoomIn { "Zoom In", IconButton::Icon::zoomIn };
+    IconButton audioSettings { "Audio Settings", IconButton::Icon::audio };
     juce::TextButton addTrackButton { "+ Track" };
     juce::Label position;
     juce::Label projectName;
     juce::Label status;
     juce::Slider bpm;
+    std::array<int, 4> toolbarDividers {};
 
     juce::String selectedClipId;
     juce::String projectMessage;

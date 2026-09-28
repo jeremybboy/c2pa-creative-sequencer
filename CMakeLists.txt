@@ -103,10 +103,14 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/ui/ArrangementView.h
     src/ui/ArrangementShortcuts.cpp
     src/ui/ArrangementShortcuts.h
+    src/ui/IconButton.cpp
+    src/ui/IconButton.h
     src/ui/PlacesBrowser.cpp
     src/ui/PlacesBrowser.h
     src/ui/PlacesStore.cpp
     src/ui/PlacesStore.h
+    src/ui/SequencerLookAndFeel.cpp
+    src/ui/SequencerLookAndFeel.h
     src/ui/TrackHeaderView.cpp
     src/ui/TrackHeaderView.h
     src/ui/WaveformView.cpp

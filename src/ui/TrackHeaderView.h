@@ -3,6 +3,7 @@
 #include "engine/ProjectEngine.h"
 #include "engine/TrackLevelMeter.h"
 #include "plugins/PluginDescriptor.h"
+#include "ui/IconButton.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -40,7 +41,7 @@ private:
     juce::TextButton mute { "M" };
     juce::TextButton solo { "S" };
     juce::TextButton pluginMenu { "VST3" };
-    juce::TextButton deleteTrack { "×" };
+    IconButton deleteTrack { "Delete Track", IconButton::Icon::close };
     juce::Slider gain;
     juce::Slider panControl;
     TrackLevelBallistics meterBallistics;
