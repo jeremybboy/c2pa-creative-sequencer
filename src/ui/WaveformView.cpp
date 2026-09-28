@@ -37,6 +37,25 @@ void WaveformView::paint(juce::Graphics& graphics)
                                 : clipColour.brighter(0.35f));
     graphics.drawRect(bounds.reduced(0.5f), selected ? 2.0f : 1.0f);
 
+    if (timeSelectionActive)
+    {
+        const auto overlapStart = std::max(timelineStart, timeSelectionStart);
+        const auto overlapEnd = std::min(timelineStart + duration, timeSelectionEnd);
+        if (overlapEnd > overlapStart)
+        {
+            const auto left = static_cast<float>((overlapStart - timelineStart)
+                / duration * getWidth());
+            const auto right = static_cast<float>((overlapEnd - timelineStart)
+                / duration * getWidth());
+            graphics.setColour(juce::Colour::fromRGB(255, 213, 92).withAlpha(0.22f));
+            graphics.fillRect(juce::Rectangle<float>(left, 20.0f,
+                std::max(1.0f, right - left), std::max(1.0f, bounds.getHeight() - 20.0f)));
+            graphics.setColour(juce::Colour::fromRGB(255, 224, 125).withAlpha(0.9f));
+            graphics.drawVerticalLine(juce::roundToInt(left), 20.0f, bounds.getHeight());
+            graphics.drawVerticalLine(juce::roundToInt(right), 20.0f, bounds.getHeight());
+        }
+    }
+
     auto waveformBounds = bounds.reduced(8.0f).withTrimmedTop(18.0f);
     graphics.setColour(juce::Colour::fromRGB(224, 218, 207));
     if (thumbnail.getTotalLength() > 0.0)
@@ -62,10 +81,13 @@ void WaveformView::paint(juce::Graphics& graphics)
 void WaveformView::mouseDown(const juce::MouseEvent& event)
 {
     dragStartBounds = getBounds();
+    dragStartLocalX = event.x;
     if (event.x <= 7)
         dragMode = DragMode::trimStart;
     else if (event.x >= getWidth() - 7)
         dragMode = DragMode::trimEnd;
+    else if (event.y >= 20)
+        dragMode = DragMode::selectTime;
     else
         dragMode = DragMode::move;
     if (onSelected)
@@ -88,14 +110,25 @@ void WaveformView::mouseUp(const juce::MouseEvent& event)
 
 void WaveformView::mouseMove(const juce::MouseEvent& event)
 {
-    setMouseCursor(event.x <= 7 || event.x >= getWidth() - 7
-        ? juce::MouseCursor::LeftRightResizeCursor
-        : juce::MouseCursor::DraggingHandCursor);
+    if (event.x <= 7 || event.x >= getWidth() - 7)
+        setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+    else if (event.y < 20)
+        setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+    else
+        setMouseCursor(juce::MouseCursor::IBeamCursor);
 }
 
 void WaveformView::setSelected(bool shouldBeSelected)
 {
     selected = shouldBeSelected;
+    repaint();
+}
+
+void WaveformView::setTimeSelection(double startSeconds, double endSeconds, bool active)
+{
+    timeSelectionStart = startSeconds;
+    timeSelectionEnd = endSeconds;
+    timeSelectionActive = active;
     repaint();
 }
 

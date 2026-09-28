@@ -29,12 +29,14 @@ class TimelineSurface final : public juce::Component
 {
 public:
     void setState(TimelineGeometry newGeometry, int newTrackCount,
-                  const TransportSnapshot& transport, double newVerticalOffset)
+                  const TransportSnapshot& transport, double newVerticalOffset,
+                  ArrangementTimeSelection newSelection)
     {
         geometry = newGeometry;
         trackCount = std::max(minimumVisibleTracks, newTrackCount);
         setTransportState(transport);
         verticalOffset = newVerticalOffset;
+        selection = newSelection;
         repaint();
     }
 
@@ -104,6 +106,23 @@ public:
             g.drawHorizontalLine(y, 0.0f, static_cast<float>(getWidth()));
         }
 
+        if (selection.isValid())
+        {
+            const auto startX = static_cast<float>(geometry.timeToX(selection.startSeconds));
+            const auto endX = static_cast<float>(geometry.timeToX(selection.endSeconds));
+            const auto top = static_cast<float>(rulerHeight + selection.firstTrack * trackHeight)
+                - static_cast<float>(verticalOffset);
+            const auto bottom = static_cast<float>(rulerHeight
+                + (selection.lastTrack + 1) * trackHeight) - static_cast<float>(verticalOffset);
+            auto selectedBounds = juce::Rectangle<float>(startX, top,
+                std::max(1.0f, endX - startX), std::max(1.0f, bottom - top))
+                    .getIntersection(getLocalBounds().toFloat());
+            g.setColour(juce::Colour::fromRGB(255, 213, 92).withAlpha(0.13f));
+            g.fillRect(selectedBounds);
+            g.setColour(juce::Colour::fromRGB(255, 224, 125).withAlpha(0.75f));
+            g.drawRect(selectedBounds, 1.0f);
+        }
+
         const auto playheadX = static_cast<int>(std::round(geometry.timeToX(playhead)));
         if (juce::isPositiveAndBelow(playheadX, getWidth()))
         {
@@ -119,10 +138,40 @@ public:
 
     void mouseDown(const juce::MouseEvent& event) override
     {
-        if (onBackgroundClick)
+        dragStartTime = geometry.xToTime(static_cast<double>(event.x));
+        dragStartTrack = trackForY(event.y);
+        dragBypassSnap = event.mods.isAltDown();
+        if (event.y < rulerHeight)
+        {
+            if (onBackgroundClick) onBackgroundClick();
+            if (onSeek) onSeek(dragStartTime);
+        }
+        else if (onBackgroundClick)
+        {
             onBackgroundClick();
-        if (onSeek)
-            onSeek(geometry.xToTime(static_cast<double>(event.x)));
+        }
+    }
+
+    void mouseDrag(const juce::MouseEvent& event) override
+    {
+        if (dragStartTrack < 0 || ! onTimeSelection)
+            return;
+        onTimeSelection(dragStartTime,
+            geometry.xToTime(static_cast<double>(event.x)), dragStartTrack,
+            trackForY(event.y), dragBypassSnap, false);
+    }
+
+    void mouseUp(const juce::MouseEvent& event) override
+    {
+        if (dragStartTrack < 0)
+            return;
+        const auto end = geometry.xToTime(static_cast<double>(event.x));
+        if (event.mouseWasDraggedSinceMouseDown() && onTimeSelection)
+            onTimeSelection(dragStartTime, end, dragStartTrack, trackForY(event.y),
+                            dragBypassSnap, true);
+        else if (onInsertionPoint)
+            onInsertionPoint(dragStartTime, dragStartTrack, dragBypassSnap);
+        dragStartTrack = -1;
     }
 
     void mouseWheelMove(const juce::MouseEvent& event,
@@ -134,9 +183,17 @@ public:
 
     std::function<void(double)> onSeek;
     std::function<void()> onBackgroundClick;
+    std::function<void(double, double, int, int, bool, bool)> onTimeSelection;
+    std::function<void(double, int, bool)> onInsertionPoint;
     std::function<void(const juce::MouseEvent&, const juce::MouseWheelDetails&)> onWheel;
 
 private:
+    [[nodiscard]] int trackForY(int y) const noexcept
+    {
+        return std::max(0, static_cast<int>(std::floor(
+            (y - rulerHeight + verticalOffset) / static_cast<double>(trackHeight))));
+    }
+
     TimelineGeometry geometry;
     int trackCount = minimumVisibleTracks;
     double playhead = 0.0;
@@ -144,6 +201,10 @@ private:
     double loopStart = 0.0;
     double loopEnd = 0.0;
     double verticalOffset = 0.0;
+    ArrangementTimeSelection selection;
+    double dragStartTime = 0.0;
+    int dragStartTrack = -1;
+    bool dragBypassSnap = false;
 };
 
 ArrangementView::ArrangementView(AudioEngine& engine)
@@ -178,7 +239,30 @@ ArrangementView::ArrangementView(AudioEngine& engine)
         audioEngine.seek(geometry.snapToBeat(seconds));
         refreshTransport();
     };
-    timelineSurface->onBackgroundClick = [this] { selectClip({}); };
+    timelineSurface->onBackgroundClick = [this]
+    {
+        selectClip({});
+        clearTimeSelection();
+    };
+    timelineSurface->onTimeSelection = [this](double start, double end,
+                                               int firstTrack, int lastTrack,
+                                               bool bypass, bool)
+    {
+        if (! bypass)
+        {
+            start = geometry.snapToBeat(start);
+            end = geometry.snapToBeat(end);
+        }
+        setTimeSelection(ArrangementTimeSelection::between(
+            start, end, firstTrack, lastTrack));
+    };
+    timelineSurface->onInsertionPoint = [this](double seconds, int, bool bypass)
+    {
+        insertionPointSeconds = bypass ? seconds : geometry.snapToBeat(seconds);
+        audioEngine.seek(*insertionPointSeconds);
+        clearTimeSelection();
+        refreshTransport();
+    };
     timelineSurface->onWheel = [this](const auto& event, const auto& wheel)
     {
         handleWheel(event, wheel);
@@ -1029,6 +1113,10 @@ void ArrangementView::rebuildArrangement()
                 clip.startSeconds, clip.sourceOffsetSeconds, clip.lengthSeconds, colour,
                 clip.provenance.status);
             view->setSelected(clip.id == selectedClipId);
+            view->setTimeSelection(timeSelection.startSeconds, timeSelection.endSeconds,
+                timeSelection.isValid()
+                    && static_cast<int>(trackIndex) >= timeSelection.firstTrack
+                    && static_cast<int>(trackIndex) <= timeSelection.lastTrack);
             view->onSelected = [this](auto& selected) { selectClip(selected.id()); };
             view->onGesture = [this](auto& selected, auto mode, int dx, int dy,
                                      bool finished, bool bypass)
@@ -1058,7 +1146,7 @@ void ArrangementView::scanPlugins()
 void ArrangementView::layoutArrangement()
 {
     timelineSurface->setState(geometry, static_cast<int>(snapshots.size()),
-        audioEngine.transportSnapshot(), verticalOffset);
+        audioEngine.transportSnapshot(), verticalOffset, timeSelection);
     for (auto& view : waveformViews)
     {
         const auto x = juce::roundToInt(geometry.timeToX(view->start()));
@@ -1130,9 +1218,40 @@ void ArrangementView::handleWheel(const juce::MouseEvent& event,
 void ArrangementView::selectClip(const juce::String& id)
 {
     selectedClipId = id;
+    if (id.isNotEmpty())
+        clearTimeSelection();
     for (auto& view : waveformViews)
         view->setSelected(view->id() == selectedClipId);
     grabKeyboardFocus();
+}
+
+void ArrangementView::setTimeSelection(ArrangementTimeSelection selection)
+{
+    timeSelection = selection;
+    if (timeSelection.isValid())
+        selectedClipId.clear();
+    for (auto& view : waveformViews)
+    {
+        view->setSelected(view->id() == selectedClipId);
+        const auto onSelectedTrack = timeSelection.isValid()
+            && view->track() >= timeSelection.firstTrack
+            && view->track() <= timeSelection.lastTrack;
+        view->setTimeSelection(timeSelection.startSeconds, timeSelection.endSeconds,
+                               onSelectedTrack);
+    }
+    timelineSurface->setState(geometry, static_cast<int>(snapshots.size()),
+        audioEngine.transportSnapshot(), verticalOffset, timeSelection);
+    grabKeyboardFocus();
+}
+
+void ArrangementView::clearTimeSelection()
+{
+    timeSelection = {};
+    for (auto& view : waveformViews)
+        view->setTimeSelection(0.0, 0.0, false);
+    if (timelineSurface != nullptr)
+        timelineSurface->setState(geometry, static_cast<int>(snapshots.size()),
+            audioEngine.transportSnapshot(), verticalOffset, timeSelection);
 }
 
 void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMode mode,
@@ -1140,6 +1259,19 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
 {
     if (! finished)
     {
+        if (mode == WaveformView::DragMode::selectTime)
+        {
+            auto first = view.start() + view.gestureStartX() / geometry.pixelsPerSecond;
+            auto second = first + deltaX / geometry.pixelsPerSecond;
+            if (! bypassSnap)
+            {
+                first = geometry.snapToBeat(first);
+                second = geometry.snapToBeat(second);
+            }
+            setTimeSelection(ArrangementTimeSelection::between(
+                first, second, view.track(), view.track()));
+            return;
+        }
         auto bounds = view.gestureBounds();
         if (mode == WaveformView::DragMode::move)
             bounds.translate(deltaX, deltaY);
@@ -1156,6 +1288,23 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
     }
 
     const auto deltaSeconds = deltaX / geometry.pixelsPerSecond;
+    if (mode == WaveformView::DragMode::selectTime)
+    {
+        auto first = view.start() + view.gestureStartX() / geometry.pixelsPerSecond;
+        auto second = first + deltaSeconds;
+        if (! bypassSnap)
+        {
+            first = geometry.snapToBeat(first);
+            second = geometry.snapToBeat(second);
+        }
+        setTimeSelection(ArrangementTimeSelection::between(
+            first, second, view.track(), view.track()));
+        insertionPointSeconds = timeSelection.startSeconds;
+        projectMessage = "Selected " + juce::String(timeSelection.endSeconds
+            - timeSelection.startSeconds, 3) + " s";
+        refreshTransport();
+        return;
+    }
     if (mode == WaveformView::DragMode::move)
     {
         auto start = std::max(0.0, view.start() + deltaSeconds);

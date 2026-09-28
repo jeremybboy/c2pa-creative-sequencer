@@ -95,6 +95,7 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/project/ProjectSerializer.h
     src/timeline/TimelineGeometry.cpp
     src/timeline/TimelineGeometry.h
+    src/timeline/ArrangementSelection.h
     src/transport/TransportFormatting.cpp
     src/transport/TransportFormatting.h
     src/transport/ArrangementLoop.cpp

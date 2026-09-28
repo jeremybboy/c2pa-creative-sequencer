@@ -4,6 +4,7 @@
 #include "engine/SampleAuditionPlayer.h"
 #include "export/ExportResult.h"
 #include "timeline/TimelineGeometry.h"
+#include "timeline/ArrangementSelection.h"
 #include "ui/PlacesBrowser.h"
 #include "ui/PlacesStore.h"
 #include "ui/IconButton.h"
@@ -80,6 +81,8 @@ private:
     void zoomBy(double factor, double anchorX);
     void handleWheel(const juce::MouseEvent&, const juce::MouseWheelDetails&);
     void selectClip(const juce::String& id);
+    void setTimeSelection(ArrangementTimeSelection selection);
+    void clearTimeSelection();
     void handleClipGesture(WaveformView&, WaveformView::DragMode,
                            int deltaX, int deltaY, bool finished, bool bypassSnap);
     void showProjectResult(const juce::Result&, const juce::String& successMessage);
@@ -129,6 +132,8 @@ private:
     std::array<int, 4> toolbarDividers {};
 
     juce::String selectedClipId;
+    ArrangementTimeSelection timeSelection;
+    std::optional<double> insertionPointSeconds;
     juce::String projectMessage;
     std::unique_ptr<juce::FileChooser> fileChooser;
     std::optional<ExportResult> lastExport;

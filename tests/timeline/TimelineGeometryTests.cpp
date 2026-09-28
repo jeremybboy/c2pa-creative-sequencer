@@ -1,4 +1,5 @@
 #include "timeline/TimelineGeometry.h"
+#include "timeline/ArrangementSelection.h"
 #include "ui/PlacesStore.h"
 
 #include <cmath>
@@ -28,6 +29,12 @@ int main()
     geometry.zoomAround(200.0, 320.0);
     if (! close(geometry.xToTime(320.0), anchorTime))
         return 4;
+
+    const auto selection = c2paseq::ArrangementTimeSelection::between(5.0, 2.0, 3, 1);
+    if (! selection.isValid() || ! close(selection.startSeconds, 2.0)
+        || ! close(selection.endSeconds, 5.0)
+        || selection.firstTrack != 1 || selection.lastTrack != 3)
+        return 11;
 
     const auto temporary = juce::File::getCurrentWorkingDirectory()
         .getNonexistentChildFile("c2paseq-places-test", {}, false);
