@@ -25,7 +25,8 @@ void PianoRollView::setClip(ArrangementMidiClipSnapshot clip)
 
 juce::Rectangle<float> PianoRollView::gridBounds() const
 {
-    return getLocalBounds().toFloat().withTrimmedTop(static_cast<float>(headerHeight))
+    return getLocalBounds().toFloat().withTrimmedTop(
+            static_cast<float>(headerHeight + timeRulerHeight))
         .withTrimmedLeft(static_cast<float>(keyboardWidth))
         .withTrimmedBottom(static_cast<float>(velocityHeight));
 }
@@ -96,6 +97,52 @@ int PianoRollView::velocityAt(float y) const
         (lane.getBottom() - y) / std::max(1.0f, lane.getHeight()) * 126.0f + 1.0f));
 }
 
+ArrangementMidiNoteSnapshot PianoRollView::draggedNoteFor(
+    const juce::MouseEvent& event) const
+{
+    auto result = dragNote;
+    const auto grid = gridBounds();
+    const auto pixelsPerBeat = grid.getWidth() / static_cast<float>(
+        std::max(gridStepBeats, visibleBeatLength()));
+    auto beatDelta = static_cast<double>(event.position.x - dragStart.x)
+        / static_cast<double>(std::max(1.0f, pixelsPerBeat));
+    if (! event.mods.isAltDown())
+        beatDelta = std::round(beatDelta / gridStepBeats) * gridStepBeats;
+    if (dragMode == DragMode::move)
+    {
+        result.startBeats = juce::jlimit(0.0,
+            std::max(0.0, midiClip.lengthBeats - result.durationBeats),
+            dragNote.startBeats + beatDelta);
+        result.noteNumber = juce::jlimit(0, 127,
+            dragNote.noteNumber + pitchAt(event.position.y) - pitchAt(dragStart.y));
+    }
+    else if (dragMode == DragMode::resize)
+    {
+        result.durationBeats = juce::jlimit(
+            event.mods.isAltDown() ? 0.01 : gridStepBeats,
+            std::max(gridStepBeats, midiClip.lengthBeats - result.startBeats),
+            dragNote.durationBeats + beatDelta);
+    }
+    else if (dragMode == DragMode::velocity)
+    {
+        result.velocity = velocityAt(event.position.y);
+    }
+    return result;
+}
+
+juce::String PianoRollView::songPositionLabel(double localBeat) const
+{
+    const auto absolute = std::max(0.0, midiClip.startBeats + localBeat);
+    const auto bar = static_cast<int>(std::floor(absolute / 4.0)) + 1;
+    const auto beatWithinBar = std::fmod(absolute, 4.0);
+    const auto beat = static_cast<int>(std::floor(beatWithinBar)) + 1;
+    const auto sixteenth = juce::jlimit(1, 4,
+        static_cast<int>(std::floor((beatWithinBar - std::floor(beatWithinBar)) * 4.0
+                                    + 0.0001)) + 1);
+    return juce::String(bar) + "." + juce::String(beat) + "."
+        + juce::String(sixteenth);
+}
+
 const ArrangementMidiNoteSnapshot* PianoRollView::selectedNote() const
 {
     if (selectedNotes.size() != 1)
@@ -117,14 +164,37 @@ void PianoRollView::paint(juce::Graphics& g)
     g.fillRect(0, 0, getWidth(), headerHeight);
     g.setColour(juce::Colour::fromRGB(232, 236, 239));
     g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
-    g.drawText("Piano Roll  •  double-click draw  •  drag/resize  •  Cmd-scroll zoom",
+    auto header = "Piano Roll | Song " + songPositionLabel(visibleStartBeat)
+        + " - " + songPositionLabel(visibleStartBeat + visibleBeatLength())
+        + " | Pinch grid: time | Pinch keys: pitch";
+    if (dragPreview.has_value())
+        header = "Moving note | Song " + songPositionLabel(dragPreview->startBeats)
+            + " | MIDI " + juce::String(dragPreview->noteNumber)
+            + " | Length " + juce::String(dragPreview->durationBeats, 2)
+            + " beats | Velocity " + juce::String(dragPreview->velocity);
+    else if (const auto* note = selectedNote())
+        header = "Selected note | Song " + songPositionLabel(note->startBeats)
+            + " | MIDI " + juce::String(note->noteNumber)
+            + " | Length " + juce::String(note->durationBeats, 2)
+            + " beats | Velocity " + juce::String(note->velocity);
+    g.drawText(header,
                14, 0, getWidth() - 62, headerHeight, juce::Justification::centredLeft);
     g.setColour(juce::Colour::fromRGB(76, 86, 96));
     g.fillRoundedRectangle(static_cast<float>(getWidth() - 42), 7.0f, 32.0f, 24.0f, 4.0f);
     g.setColour(juce::Colours::white);
-    g.drawText("×", getWidth() - 42, 6, 32, 24, juce::Justification::centred);
+    g.drawText("X", getWidth() - 42, 6, 32, 24, juce::Justification::centred);
 
     const auto grid = gridBounds();
+    const auto timeRuler = juce::Rectangle<float>(
+        static_cast<float>(keyboardWidth), static_cast<float>(headerHeight),
+        static_cast<float>(getWidth() - keyboardWidth), static_cast<float>(timeRulerHeight));
+    g.setColour(juce::Colour::fromRGB(35, 40, 46));
+    g.fillRect(timeRuler);
+    g.fillRect(0, headerHeight, keyboardWidth, timeRulerHeight);
+    g.setColour(juce::Colour::fromRGB(174, 184, 193));
+    g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
+    g.drawText("SONG", 5, headerHeight, keyboardWidth - 8, timeRulerHeight,
+               juce::Justification::centredLeft);
     const auto rowHeight = grid.getHeight() / static_cast<float>(visiblePitchCount);
     g.setColour(juce::Colour::fromRGB(47, 52, 58));
     g.fillRect(grid);
@@ -156,21 +226,34 @@ void PianoRollView::paint(juce::Graphics& g)
         const auto x = grid.getX() + static_cast<float>(
             (beat - visibleStartBeat) / std::max(gridStepBeats, visibleBeatLength()))
             * grid.getWidth();
-        const auto wholeBeat = std::abs(std::round(beat) - beat) < 0.0001;
-        const auto bar = std::abs(std::round(beat / 4.0) * 4.0 - beat) < 0.0001;
+        const auto absoluteBeat = midiClip.startBeats + beat;
+        const auto wholeBeat = std::abs(std::round(absoluteBeat) - absoluteBeat) < 0.0001;
+        const auto bar = std::abs(std::round(absoluteBeat / 4.0) * 4.0
+                                  - absoluteBeat) < 0.0001;
         g.setColour(bar ? juce::Colour::fromRGB(120, 130, 140)
                         : wholeBeat ? juce::Colour::fromRGB(93, 101, 109)
                                     : juce::Colour::fromRGB(66, 72, 78));
-        g.drawVerticalLine(juce::roundToInt(x), grid.getY(), grid.getBottom());
+        g.drawVerticalLine(juce::roundToInt(x), timeRuler.getY(), grid.getBottom());
+        if (bar)
+        {
+            g.setColour(juce::Colour::fromRGB(218, 224, 229));
+            g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+            g.drawText(juce::String(static_cast<int>(std::floor(absoluteBeat / 4.0)) + 1),
+                       juce::roundToInt(x) + 4, headerHeight, 42, timeRulerHeight,
+                       juce::Justification::centredLeft);
+        }
     }
 
     for (const auto& note : midiClip.notes)
     {
-        if (note.noteNumber < lowestVisiblePitch || note.noteNumber > highestVisiblePitch()
-            || note.startBeats + note.durationBeats < visibleStartBeat
-            || note.startBeats > visibleEnd)
+        const auto& displayed = dragPreview.has_value() && dragPreview->id == note.id
+            ? *dragPreview : note;
+        if (displayed.noteNumber < lowestVisiblePitch
+            || displayed.noteNumber > highestVisiblePitch()
+            || displayed.startBeats + displayed.durationBeats < visibleStartBeat
+            || displayed.startBeats > visibleEnd)
             continue;
-        const auto bounds = noteBounds(note).reduced(0.5f).getIntersection(grid);
+        const auto bounds = noteBounds(displayed).reduced(0.5f).getIntersection(grid);
         g.setColour(selectedNotes.contains(note.id)
             ? juce::Colour::fromRGB(255, 213, 92)
             : juce::Colour::fromRGB(91, 211, 143));
@@ -187,12 +270,16 @@ void PianoRollView::paint(juce::Graphics& g)
                velocityHeight, juce::Justification::centred);
     for (const auto& note : midiClip.notes)
     {
-        if (note.startBeats < visibleStartBeat || note.startBeats > visibleEnd)
+        const auto& displayed = dragPreview.has_value() && dragPreview->id == note.id
+            ? *dragPreview : note;
+        if (displayed.startBeats < visibleStartBeat || displayed.startBeats > visibleEnd)
             continue;
         const auto x = lane.getX() + static_cast<float>(
-            (note.startBeats - visibleStartBeat) / std::max(gridStepBeats, visibleBeatLength()))
+            (displayed.startBeats - visibleStartBeat)
+                / std::max(gridStepBeats, visibleBeatLength()))
             * lane.getWidth();
-        const auto height = static_cast<float>(note.velocity) / 127.0f * (lane.getHeight() - 8.0f);
+        const auto height = static_cast<float>(displayed.velocity) / 127.0f
+            * (lane.getHeight() - 8.0f);
         g.setColour(selectedNotes.contains(note.id)
             ? juce::Colour::fromRGB(255, 213, 92)
             : juce::Colour::fromRGB(91, 211, 143));
@@ -206,6 +293,7 @@ void PianoRollView::mouseDown(const juce::MouseEvent& event)
 {
     grabKeyboardFocus();
     dragMode = DragMode::none;
+    dragPreview.reset();
     dragStart = event.position;
     if (juce::Rectangle<int>(getWidth() - 42, 7, 32, 24).contains(event.getPosition()))
     {
@@ -229,6 +317,7 @@ void PianoRollView::mouseDown(const juce::MouseEvent& event)
         dragNote = *note;
         dragMode = event.position.x >= noteBounds(*note).getRight() - 7.0f
             ? DragMode::resize : DragMode::move;
+        dragPreview = dragNote;
         repaint();
         return;
     }
@@ -244,6 +333,7 @@ void PianoRollView::mouseDown(const juce::MouseEvent& event)
         selectedNotes.insert(found->id);
         dragNote = *found;
         dragMode = DragMode::velocity;
+        dragPreview = dragNote;
         repaint();
         return;
     }
@@ -254,45 +344,24 @@ void PianoRollView::mouseDown(const juce::MouseEvent& event)
     }
 }
 
-void PianoRollView::mouseDrag(const juce::MouseEvent&)
+void PianoRollView::mouseDrag(const juce::MouseEvent& event)
 {
+    if (dragMode == DragMode::none)
+        return;
+    dragPreview = draggedNoteFor(event);
+    repaint();
 }
 
 void PianoRollView::mouseUp(const juce::MouseEvent& event)
 {
     if (dragMode == DragMode::none || ! onUpdateNote)
         return;
-    auto noteNumber = dragNote.noteNumber;
-    auto startBeats = dragNote.startBeats;
-    auto durationBeats = dragNote.durationBeats;
-    auto velocity = dragNote.velocity;
-    const auto grid = gridBounds();
-    const auto pixelsPerBeat = grid.getWidth() / static_cast<float>(
-        std::max(gridStepBeats, visibleBeatLength()));
-    auto beatDelta = static_cast<double>(event.position.x - dragStart.x)
-        / static_cast<double>(std::max(1.0f, pixelsPerBeat));
-    if (! event.mods.isAltDown())
-        beatDelta = std::round(beatDelta / gridStepBeats) * gridStepBeats;
-    if (dragMode == DragMode::move)
-    {
-        startBeats = juce::jlimit(0.0,
-            std::max(0.0, midiClip.lengthBeats - durationBeats),
-            dragNote.startBeats + beatDelta);
-        noteNumber = juce::jlimit(0, 127,
-            dragNote.noteNumber + pitchAt(event.position.y) - pitchAt(dragStart.y));
-    }
-    else if (dragMode == DragMode::resize)
-    {
-        durationBeats = juce::jlimit(event.mods.isAltDown() ? 0.01 : gridStepBeats,
-            std::max(gridStepBeats, midiClip.lengthBeats - startBeats),
-            dragNote.durationBeats + beatDelta);
-    }
-    else if (dragMode == DragMode::velocity)
-    {
-        velocity = velocityAt(event.position.y);
-    }
+    const auto edited = dragPreview.value_or(draggedNoteFor(event));
     dragMode = DragMode::none;
-    onUpdateNote(dragNote.id, noteNumber, startBeats, durationBeats, velocity);
+    dragPreview.reset();
+    repaint();
+    onUpdateNote(dragNote.id, edited.noteNumber, edited.startBeats,
+                 edited.durationBeats, edited.velocity);
 }
 
 void PianoRollView::mouseDoubleClick(const juce::MouseEvent& event)
@@ -331,6 +400,40 @@ void PianoRollView::mouseWheelMove(const juce::MouseEvent& event,
     {
         lowestVisiblePitch = juce::jlimit(0, 128 - visiblePitchCount,
             lowestVisiblePitch + juce::roundToInt(wheel.deltaY * 8.0f));
+    }
+    repaint();
+}
+
+void PianoRollView::mouseMagnify(const juce::MouseEvent& event, float scaleFactor)
+{
+    if (scaleFactor <= 0.0f || std::abs(scaleFactor - 1.0f) < 0.0001f)
+        return;
+    if (event.position.x < static_cast<float>(keyboardWidth)
+        && event.position.y >= static_cast<float>(headerHeight + timeRulerHeight)
+        && event.position.y < static_cast<float>(getHeight() - velocityHeight))
+    {
+        const auto grid = gridBounds();
+        const auto anchorPitch = pitchAt(event.position.y);
+        const auto proportionFromTop = juce::jlimit(0.0f, 1.0f,
+            (event.position.y - grid.getY()) / std::max(1.0f, grid.getHeight()));
+        const auto newCount = juce::jlimit(12, 60,
+            juce::roundToInt(static_cast<float>(visiblePitchCount) / scaleFactor));
+        const auto newHighest = anchorPitch
+            + juce::roundToInt(proportionFromTop * static_cast<float>(newCount - 1));
+        visiblePitchCount = newCount;
+        lowestVisiblePitch = juce::jlimit(0, 128 - visiblePitchCount,
+            newHighest - visiblePitchCount + 1);
+    }
+    else
+    {
+        const auto anchor = beatAt(event.position.x, false);
+        const auto proportion = (anchor - visibleStartBeat)
+            / std::max(gridStepBeats, visibleBeatLength());
+        horizontalZoom = juce::jlimit(1.0, 32.0,
+            horizontalZoom * static_cast<double>(scaleFactor));
+        visibleStartBeat = juce::jlimit(0.0,
+            std::max(0.0, midiClip.lengthBeats - visibleBeatLength()),
+            anchor - proportion * visibleBeatLength());
     }
     repaint();
 }

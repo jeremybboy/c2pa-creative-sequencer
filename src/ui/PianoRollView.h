@@ -4,6 +4,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <optional>
 #include <set>
 
 namespace c2paseq
@@ -23,6 +24,7 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,
                         const juce::MouseWheelDetails&) override;
+    void mouseMagnify(const juce::MouseEvent&, float scaleFactor) override;
     bool keyPressed(const juce::KeyPress&) override;
 
     std::function<void()> onClose;
@@ -46,6 +48,9 @@ private:
     [[nodiscard]] int pitchAt(float y) const;
     [[nodiscard]] double beatAt(float x, bool snap = true) const;
     [[nodiscard]] int velocityAt(float y) const;
+    [[nodiscard]] ArrangementMidiNoteSnapshot draggedNoteFor(
+        const juce::MouseEvent&) const;
+    [[nodiscard]] juce::String songPositionLabel(double localBeat) const;
     [[nodiscard]] const ArrangementMidiNoteSnapshot* selectedNote() const;
     [[nodiscard]] int highestVisiblePitch() const noexcept;
     [[nodiscard]] double visibleBeatLength() const noexcept;
@@ -59,16 +64,18 @@ private:
     double clipboardSpanBeats = 0.0;
     double pasteCursorBeats = 0.0;
     ArrangementMidiNoteSnapshot dragNote;
+    std::optional<ArrangementMidiNoteSnapshot> dragPreview;
     DragMode dragMode = DragMode::none;
     juce::Point<float> dragStart;
     double horizontalZoom = 1.0;
     double visibleStartBeat = 0.0;
     int lowestVisiblePitch = 48;
+    int visiblePitchCount = 24;
 
     static constexpr int headerHeight = 38;
+    static constexpr int timeRulerHeight = 24;
     static constexpr int keyboardWidth = 58;
     static constexpr int velocityHeight = 82;
-    static constexpr int visiblePitchCount = 24;
     static constexpr double gridStepBeats = 0.25;
 };
 }

@@ -88,7 +88,7 @@
     <text x="50" y="562" font-size="21" font-weight="700" fill="#132333">IMPLEMENTED NOW</text>
     <text x="50" y="612" font-size="18" fill="#132333">✓ Beat-based MIDI model + tracks</text>
     <text x="50" y="647" font-size="18" fill="#132333">✓ Visible, editable MIDI clips</text>
-    <text x="50" y="682" font-size="18" fill="#132333">✓ Piano roll + velocity editing</text>
+    <text x="50" y="682" font-size="18" fill="#132333">✓ Piano roll + time / pitch zoom</text>
     <text x="50" y="717" font-size="18" fill="#132333">✓ Clipboard / undo / persistence</text>
     <text x="50" y="752" font-size="16" fill="#526273">MIDI is intentionally silent at this checkpoint</text>
 

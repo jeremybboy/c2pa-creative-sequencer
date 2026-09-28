@@ -18,10 +18,12 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 
 ## Checkpoint 2 — MIDI Clip + Piano Roll Editing — COMPLETE
 
-- Create and open MIDI clips; show a piano keyboard, beat grid, and velocity lane.
+- Create MIDI clips from an exact arrangement time selection and open a piano keyboard, absolute
+  song-bar ruler, beat grid, and velocity lane.
 - Draw, select, move, resize, delete, and velocity-edit notes.
 - Copy, paste, and duplicate notes.
 - Move, trim, copy, paste, and duplicate MIDI clips in the arrangement.
+- Provide live drag feedback and pointer-dependent trackpad pinch zoom for time or pitch range.
 
 ## Checkpoint 3 — VST3 Instrument Hosting + MIDI Playback — CURRENT
 

@@ -40,12 +40,13 @@ export pipeline. Planned checkpoints are targets, not claims about current behav
 - **+ Track** creates Audio or MIDI tracks; MIDI tracks support rename, delete, undo/redo, and
   save/reopen without presenting fake audio controls.
 - Existing Audio tracks and clips coexist with the MIDI foundation.
-- Double-clicking an empty MIDI lane creates a snapped four-bar MIDI clip.
+- A MIDI-lane time selection exposes **Create Empty MIDI Clip** on double-click and creates a clip
+  matching the selected range exactly.
 - MIDI clips are visible and support arrangement select, move, trim, delete, copy, cut, paste,
   duplicate, loop, undo/redo, and save/reopen.
-- Double-clicking a MIDI clip opens a piano roll with pitch keys, beat/bar grid, clip boundaries,
-  pitch scrolling, horizontal scrolling/zoom, and a velocity lane.
-- Notes support draw, select/multi-select, pitch/time move, resize, velocity edit, delete,
+- Double-clicking a MIDI clip opens a piano roll with pitch keys, an absolute song-bar ruler,
+  clip boundaries, velocity lane, and pointer-dependent pinch zoom for time or pitch range.
+- Notes support draw, select/multi-select, live-feedback pitch/time move, resize, velocity edit, delete,
   **Command-A/C/X/V/D**, beat snapping, and one undo entry per committed edit.
 - MIDI data remains beat-based across BPM changes. There is intentionally no MIDI sound yet.
 
@@ -89,10 +90,10 @@ human reviewer.
 Checkpoint 2 piano-roll evidence:
 
 - clean Release build succeeded;
-- focused `C2PAArrangementEditingTests` passed, covering four-bar default creation, MIDI clip and
-  note editing, velocity, multi-note clipboard/delete, duplication with fresh identities,
+- focused `C2PAArrangementEditingTests` passed, covering default and exact-range clip creation,
+  MIDI clip/note editing, velocity, multi-note clipboard/delete, duplication with fresh identities,
   beat preservation across BPM changes, loop derivation, undo/redo, and save/reopen;
-- final full normal CTest passed 16/16 in 15.88 seconds;
+- final full normal CTest passed 16/16 in 15.86 seconds;
 - manual UI acceptance remains pending before this checkpoint is approved;
 - no MIDI audio execution, instrument hosting, recording, or C2PA behavior was added.
 

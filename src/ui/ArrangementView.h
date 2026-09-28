@@ -86,7 +86,8 @@ private:
     void zoomBy(double factor, double anchorX);
     void handleWheel(const juce::MouseEvent&, const juce::MouseWheelDetails&);
     void selectClip(const juce::String& id);
-    void createMidiClipAt(double seconds, int trackIndex);
+    void showMidiClipCreationMenu(double seconds, int trackIndex);
+    void createMidiClipFromSelection(int trackIndex);
     void openPianoRoll(const juce::String& clipId);
     void closePianoRoll();
     void refreshPianoRoll();

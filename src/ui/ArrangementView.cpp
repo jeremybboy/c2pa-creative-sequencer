@@ -142,12 +142,17 @@ public:
         dragStartTime = geometry.xToTime(static_cast<double>(event.x));
         dragStartTrack = trackForY(event.y);
         dragBypassSnap = event.mods.isAltDown();
+        clickedInsideSelection = event.y >= rulerHeight && selection.isValid()
+            && dragStartTime >= selection.startSeconds
+            && dragStartTime <= selection.endSeconds
+            && dragStartTrack >= selection.firstTrack
+            && dragStartTrack <= selection.lastTrack;
         if (event.y < rulerHeight)
         {
             if (onBackgroundClick) onBackgroundClick();
             if (onSeek) onSeek(dragStartTime);
         }
-        else if (onBackgroundClick)
+        else if (! clickedInsideSelection && onBackgroundClick)
         {
             onBackgroundClick();
         }
@@ -170,7 +175,7 @@ public:
         if (event.mouseWasDraggedSinceMouseDown() && onTimeSelection)
             onTimeSelection(dragStartTime, end, dragStartTrack, trackForY(event.y),
                             dragBypassSnap, true);
-        else if (onInsertionPoint)
+        else if (! clickedInsideSelection && onInsertionPoint)
             onInsertionPoint(dragStartTime, dragStartTrack, dragBypassSnap);
         dragStartTrack = -1;
     }
@@ -216,6 +221,7 @@ private:
     double dragStartTime = 0.0;
     int dragStartTrack = -1;
     bool dragBypassSnap = false;
+    bool clickedInsideSelection = false;
 };
 
 ArrangementView::ArrangementView(AudioEngine& engine)
@@ -282,7 +288,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     };
     timelineSurface->onCreateMidiClip = [this](double seconds, int track, bool bypass)
     {
-        createMidiClipAt(bypass ? seconds : geometry.snapToBeat(seconds), track);
+        showMidiClipCreationMenu(bypass ? seconds : geometry.snapToBeat(seconds), track);
     };
 
     pianoRoll->onClose = [this] { closePianoRoll(); };
@@ -1397,18 +1403,46 @@ void ArrangementView::selectClip(const juce::String& id)
     grabKeyboardFocus();
 }
 
-void ArrangementView::createMidiClipAt(double seconds, int trackIndex)
+void ArrangementView::showMidiClipCreationMenu(double seconds, int trackIndex)
 {
     if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size()))
         || snapshots[static_cast<std::size_t>(trackIndex)].type != TrackType::midi)
     {
-        projectMessage = "Double-click an empty MIDI track lane to create a clip";
+        projectMessage = "Select time on a MIDI lane before creating a clip";
         refreshTransport();
         return;
     }
-    const auto startBeats = std::max(0.0, seconds / geometry.beatSeconds());
-    const auto result = audioEngine.createMidiClip(trackIndex, startBeats, 16.0);
-    applyEditResult(result, "Created four-bar MIDI clip");
+    if (! timeSelection.isValid() || seconds < timeSelection.startSeconds
+        || seconds > timeSelection.endSeconds || trackIndex < timeSelection.firstTrack
+        || trackIndex > timeSelection.lastTrack)
+    {
+        projectMessage = "Drag a time selection on the MIDI lane, then double-click it";
+        refreshTransport();
+        return;
+    }
+
+    juce::PopupMenu menu;
+    menu.addItem(1, "Create Empty MIDI Clip");
+    menu.showMenuAsync(juce::PopupMenu::Options().withMousePosition(),
+        [safe = juce::Component::SafePointer<ArrangementView>(this), trackIndex](int result)
+        {
+            if (safe != nullptr && result == 1)
+                safe->createMidiClipFromSelection(trackIndex);
+        });
+}
+
+void ArrangementView::createMidiClipFromSelection(int trackIndex)
+{
+    if (! timeSelection.isValid())
+        return;
+    const auto startBeats = std::max(0.0,
+        timeSelection.startSeconds / geometry.beatSeconds());
+    const auto lengthBeats = (timeSelection.endSeconds - timeSelection.startSeconds)
+        / geometry.beatSeconds();
+    const auto result = audioEngine.createMidiClip(trackIndex, startBeats, lengthBeats);
+    if (result.wasOk())
+        clearTimeSelection();
+    applyEditResult(result, "Created MIDI clip from time selection");
 }
 
 void ArrangementView::openPianoRoll(const juce::String& clipId)

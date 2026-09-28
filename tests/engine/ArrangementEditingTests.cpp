@@ -361,6 +361,14 @@ int main()
         || ! close(tracks[4].midiClips[1].lengthBeats, 16.0)
         || engine.deleteClip(tracks[4].midiClips[1].id).failed())
         return fail(61, "default MIDI clip was not four bars or could not be removed");
+    if (engine.createMidiClip(4, 2.5, 5.5).failed())
+        return fail(68, "time-selection MIDI clip creation failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[4].midiClips.size() != 2
+        || ! close(tracks[4].midiClips[1].startBeats, 2.5)
+        || ! close(tracks[4].midiClips[1].lengthBeats, 5.5)
+        || engine.deleteClip(tracks[4].midiClips[1].id).failed())
+        return fail(69, "MIDI clip did not preserve the exact selected beat range");
     if (engine.addMidiNote(midiClipId, 60, 0.0, 1.0, 90).failed()
         || engine.addMidiNote(midiClipId, 64, 1.0, 2.0, 100).failed()
         || engine.addMidiNote(midiClipId, 67, 6.5, 1.5, 110).failed()
