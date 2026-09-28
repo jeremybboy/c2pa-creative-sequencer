@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-This repository builds a minimal arrangement-based creative audio sequencer with native C2PA provenance. It is not a general-purpose DAW. The explicit build and exclusion lists in the approved product specification are binding.
+This repository builds a minimal arrangement-based creative sequencer with native C2PA provenance. It supports audio arrangements and an explicitly staged MIDI v1; it is not a general-purpose DAW. The explicit build and exclusion lists in the approved product specification are binding.
 
 ## Change workflow
 
@@ -14,4 +14,4 @@ Do not claim that a build, launch, audio result, plug-in behavior, credential, s
 
 ## Scope guard
 
-If an implementation seems to require recording, MIDI, warping, automation, complex routing, cloud services, or another excluded subsystem, stop and redesign within scope rather than adding it.
+Approved MIDI v1 work may add MIDI tracks/clips/notes, beat-based note timing, piano-roll editing, VST3 instruments, computer-keyboard or external MIDI input, monitoring, record arm, MIDI note recording during transport, instrument playback/rendering, and truthful provenance for MIDI/instrument-originated output. These capabilities must still arrive as independently reviewable slices; PR 018 is foundation-only. If an implementation seems to require audio recording, warping, time stretching, automation lanes, complex routing, cloud services, or another excluded subsystem, stop and redesign within scope rather than adding it.
