@@ -58,6 +58,8 @@ public:
     [[nodiscard]] bool hasClipboard() const noexcept;
     [[nodiscard]] juce::Result splitClip(const juce::String&, double positionSeconds);
     [[nodiscard]] juce::Result addAudioTrack();
+    [[nodiscard]] juce::Result addMidiTrack();
+    [[nodiscard]] juce::Result deleteTrack(int);
     [[nodiscard]] juce::Result deleteAudioTrack(int);
     [[nodiscard]] juce::Result setTrackName(int, const juce::String&);
     [[nodiscard]] juce::Result setTrackMute(int, bool);

@@ -67,7 +67,9 @@ int main()
         return fail(3, result.getErrorMessage());
 
     auto tracks = engine.arrangementSnapshot();
-    if (tracks.size() != 4)
+    if (tracks.size() != 4
+        || std::any_of(tracks.begin(), tracks.end(), [](const auto& track)
+            { return track.type != c2paseq::TrackType::audio; }))
         return fail(4, "new project did not create four reusable audio tracks");
     if (engine.moveClip("missing-clip", 10, 1.0).wasOk()
         || engine.arrangementSnapshot().size() != 4)
@@ -232,6 +234,31 @@ int main()
         || engine.deleteAudioTrack(99).wasOk())
         return fail(27, "invalid track deletion changed the arrangement");
 
+    if (engine.addMidiTrack().failed())
+        return fail(28, "could not add a MIDI track");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks.back().type != c2paseq::TrackType::midi
+        || tracks.back().name != "MIDI 1" || ! tracks.back().clips.empty())
+        return fail(28, "MIDI and Audio tracks did not coexist with explicit types");
+    const auto midiTrackId = tracks.back().id;
+    if (engine.setTrackName(4, "Keys").failed()
+        || engine.importAudio(source, 4, 0.0).wasOk()
+        || engine.setTrackMute(4, true).wasOk()
+        || engine.setTrackGain(4, -3.0).wasOk())
+        return fail(28, "MIDI foundation exposed unsupported audio behavior");
+    if (engine.saveProject().failed() || engine.openProject(projectFolder).failed())
+        return fail(28, "MIDI track did not survive save/reopen");
+    tracks = engine.arrangementSnapshot();
+    if (tracks.size() != 5 || tracks.back().id != midiTrackId
+        || tracks.back().name != "Keys"
+        || tracks.back().type != c2paseq::TrackType::midi)
+        return fail(28, "MIDI track identity, order, name, or type changed on reopen");
+    if (engine.deleteTrack(4).failed() || engine.arrangementSnapshot().size() != 4
+        || ! engine.undo() || engine.arrangementSnapshot().size() != 5
+        || engine.arrangementSnapshot().back().id != midiTrackId
+        || ! engine.redo() || engine.arrangementSnapshot().size() != 4)
+        return fail(28, "MIDI track deletion did not obey project undo/redo safety");
+
     if (engine.deleteAudioTrack(3).failed() || engine.deleteAudioTrack(2).failed()
         || engine.deleteAudioTrack(1).failed()
         || engine.arrangementSnapshot().size() != 1
@@ -318,6 +345,6 @@ int main()
 
     std::cout << "arrangement editing: import, move, trim, split, duplicate, delete, "
                  "live loop range, mute/solo transport preservation, track controls, undo/redo, "
-                 "dynamic track add/delete, partial clipboard editing, and reopen passed\n";
+                 "dynamic Audio/MIDI track add/delete, partial clipboard editing, and reopen passed\n";
     return 0;
 }

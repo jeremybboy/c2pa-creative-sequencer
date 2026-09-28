@@ -39,12 +39,14 @@ struct ArrangementTrackSnapshot
 {
     juce::String id;
     juce::String name;
+    TrackType type = TrackType::audio;
     double gainDb = 0.0;
     double pan = 0.0;
     bool muted = false;
     bool soloed = false;
     std::optional<TrackPluginSnapshot> plugin;
     std::vector<ArrangementClipSnapshot> clips;
+    std::size_t midiClipCount = 0;
 };
 
 class ProjectEngine final
@@ -86,6 +88,8 @@ public:
     [[nodiscard]] juce::Result splitClip(const juce::String& clipId,
                                          double positionSeconds);
     [[nodiscard]] juce::Result addAudioTrack();
+    [[nodiscard]] juce::Result addMidiTrack();
+    [[nodiscard]] juce::Result deleteTrack(int trackIndex);
     [[nodiscard]] juce::Result deleteAudioTrack(int trackIndex);
     [[nodiscard]] juce::Result setTrackName(int trackIndex, const juce::String& name);
     [[nodiscard]] juce::Result setTrackMute(int trackIndex, bool muted);

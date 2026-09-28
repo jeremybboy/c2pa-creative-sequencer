@@ -73,9 +73,10 @@ private:
     void scanPlugins();
     void undoEdit();
     void redoEdit();
-    void addAudioTrack();
-    void requestDeleteAudioTrack(int trackIndex);
-    void deleteAudioTrack(int trackIndex);
+    void showAddTrackMenu();
+    void addTrack(TrackType type);
+    void requestDeleteTrack(int trackIndex);
+    void deleteTrack(int trackIndex);
     void importAudioFiles(const juce::Array<juce::File>&, int x, int y);
     void rebuildArrangement();
     void layoutArrangement();

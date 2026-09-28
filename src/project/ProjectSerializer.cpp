@@ -6,7 +6,9 @@ namespace c2paseq
 {
 namespace
 {
-constexpr int schemaVersion = 1;
+constexpr int legacyProjectSchemaVersion = 1;
+constexpr int projectSchemaVersion = 2;
+constexpr int provenanceSchemaVersion = 1;
 
 juce::var makeClip(const ClipModel& clip)
 {
@@ -22,11 +24,37 @@ juce::var makeClip(const ClipModel& clip)
     return object.release();
 }
 
+juce::var makeMidiNote(const MidiNote& note)
+{
+    auto object = std::make_unique<juce::DynamicObject>();
+    object->setProperty("id", note.id);
+    object->setProperty("noteNumber", note.noteNumber);
+    object->setProperty("startBeats", note.start.beats);
+    object->setProperty("durationBeats", note.duration.beats);
+    object->setProperty("velocity", note.velocity);
+    return object.release();
+}
+
+juce::var makeMidiClip(const MidiClipModel& clip)
+{
+    auto object = std::make_unique<juce::DynamicObject>();
+    object->setProperty("id", clip.id);
+    object->setProperty("startBeats", clip.start.beats);
+    object->setProperty("lengthBeats", clip.length.beats);
+
+    juce::Array<juce::var> notes;
+    for (const auto& note : clip.notes)
+        notes.add(makeMidiNote(note));
+    object->setProperty("notes", notes);
+    return object.release();
+}
+
 juce::var makeTrack(const TrackModel& track)
 {
     auto object = std::make_unique<juce::DynamicObject>();
     object->setProperty("id", track.id);
     object->setProperty("name", track.name);
+    object->setProperty("type", trackTypeId(track.type));
     object->setProperty("gainDb", track.gainDb);
     object->setProperty("pan", track.pan);
     object->setProperty("muted", track.muted);
@@ -36,6 +64,11 @@ juce::var makeTrack(const TrackModel& track)
     for (const auto& clip : track.clips)
         clips.add(makeClip(clip));
     object->setProperty("clips", clips);
+
+    juce::Array<juce::var> midiClips;
+    for (const auto& clip : track.midiClips)
+        midiClips.add(makeMidiClip(clip));
+    object->setProperty("midiClips", midiClips);
     return object.release();
 }
 
@@ -79,7 +112,7 @@ juce::var makePlugin(const PluginState& plugin)
 juce::var makeProjectDocument(const Project& project)
 {
     auto object = std::make_unique<juce::DynamicObject>();
-    object->setProperty("schemaVersion", schemaVersion);
+    object->setProperty("schemaVersion", projectSchemaVersion);
     object->setProperty("id", project.id);
     object->setProperty("name", project.name);
     object->setProperty("createdAt", project.createdAt);
@@ -114,7 +147,7 @@ juce::var makeProjectDocument(const Project& project)
 juce::var makeProvenanceDocument(const Project& project)
 {
     auto object = std::make_unique<juce::DynamicObject>();
-    object->setProperty("schemaVersion", schemaVersion);
+    object->setProperty("schemaVersion", provenanceSchemaVersion);
     object->setProperty("projectId", project.id);
 
     juce::Array<juce::var> ingredientIds;
@@ -192,11 +225,22 @@ juce::Result requireArray(juce::DynamicObject& object, const juce::Identifier& k
     return juce::Result::ok();
 }
 
-juce::Result requireSchemaVersion(juce::DynamicObject& object)
+juce::Result requireProjectSchemaVersion(juce::DynamicObject& object, int& version)
 {
     const auto value = object.getProperty("schemaVersion");
-    if (! value.isInt() || static_cast<int>(value) != schemaVersion)
+    if (! value.isInt())
+        return juce::Result::fail("Project schema version must be an integer");
+    version = static_cast<int>(value);
+    if (version != legacyProjectSchemaVersion && version != projectSchemaVersion)
         return juce::Result::fail("Unsupported project schema version");
+    return juce::Result::ok();
+}
+
+juce::Result requireProvenanceSchemaVersion(juce::DynamicObject& object)
+{
+    const auto value = object.getProperty("schemaVersion");
+    if (! value.isInt() || static_cast<int>(value) != provenanceSchemaVersion)
+        return juce::Result::fail("Unsupported provenance schema version");
     return juce::Result::ok();
 }
 
@@ -215,12 +259,76 @@ juce::Result parseClip(const juce::var& value, ClipModel& clip)
     return requireNumber(*object, "fadeOutSeconds", clip.fadeOutSeconds);
 }
 
-juce::Result parseTrack(const juce::var& value, TrackModel& track)
+juce::Result parseMidiNote(const juce::var& value, MidiNote& note)
+{
+    juce::DynamicObject* object = nullptr;
+    if (auto result = requireObject(value, object, "MIDI note"); result.failed()) return result;
+    if (auto result = requireString(*object, "id", note.id); result.failed()) return result;
+
+    const auto noteNumber = object->getProperty("noteNumber");
+    const auto velocity = object->getProperty("velocity");
+    if (! noteNumber.isInt() || static_cast<int>(noteNumber) < 0
+        || static_cast<int>(noteNumber) > 127)
+        return juce::Result::fail("MIDI note number must be an integer from 0 to 127");
+    if (! velocity.isInt() || static_cast<int>(velocity) < 1
+        || static_cast<int>(velocity) > 127)
+        return juce::Result::fail("MIDI velocity must be an integer from 1 to 127");
+    note.noteNumber = static_cast<int>(noteNumber);
+    note.velocity = static_cast<int>(velocity);
+    if (auto result = requireNumber(*object, "startBeats", note.start.beats); result.failed())
+        return result;
+    if (auto result = requireNumber(*object, "durationBeats", note.duration.beats); result.failed())
+        return result;
+    if (note.start.beats < 0.0 || note.duration.beats <= 0.0)
+        return juce::Result::fail("MIDI note timing must be non-negative with positive duration");
+    return juce::Result::ok();
+}
+
+juce::Result parseMidiClip(const juce::var& value, MidiClipModel& clip)
+{
+    juce::DynamicObject* object = nullptr;
+    if (auto result = requireObject(value, object, "MIDI clip"); result.failed()) return result;
+    if (auto result = requireString(*object, "id", clip.id); result.failed()) return result;
+    if (auto result = requireNumber(*object, "startBeats", clip.start.beats); result.failed())
+        return result;
+    if (auto result = requireNumber(*object, "lengthBeats", clip.length.beats); result.failed())
+        return result;
+    if (clip.start.beats < 0.0 || clip.length.beats <= 0.0)
+        return juce::Result::fail("MIDI clip timing must be non-negative with positive length");
+
+    juce::Array<juce::var>* notes = nullptr;
+    if (auto result = requireArray(*object, "notes", notes); result.failed()) return result;
+    for (const auto& noteValue : *notes)
+    {
+        MidiNote note;
+        if (auto result = parseMidiNote(noteValue, note); result.failed()) return result;
+        if (note.start.beats + note.duration.beats > clip.length.beats + 0.000001)
+            return juce::Result::fail("MIDI note exceeds its clip length");
+        clip.notes.push_back(std::move(note));
+    }
+    return juce::Result::ok();
+}
+
+juce::Result parseTrack(const juce::var& value, TrackModel& track, int schemaVersion)
 {
     juce::DynamicObject* object = nullptr;
     if (auto result = requireObject(value, object, "track"); result.failed()) return result;
     if (auto result = requireString(*object, "id", track.id); result.failed()) return result;
     if (auto result = requireString(*object, "name", track.name); result.failed()) return result;
+    if (object->hasProperty("type"))
+    {
+        const auto type = object->getProperty("type");
+        if (! type.isString() || ! trackTypeFromId(type.toString(), track.type))
+            return juce::Result::fail("Track type must be 'audio' or 'midi'");
+    }
+    else if (schemaVersion == legacyProjectSchemaVersion)
+    {
+        track.type = TrackType::audio;
+    }
+    else
+    {
+        return juce::Result::fail("Track type is required");
+    }
     if (auto result = requireNumber(*object, "gainDb", track.gainDb); result.failed()) return result;
     if (auto result = requireNumber(*object, "pan", track.pan); result.failed()) return result;
 
@@ -239,6 +347,28 @@ juce::Result parseTrack(const juce::var& value, TrackModel& track)
         if (auto result = parseClip(clipValue, clip); result.failed()) return result;
         track.clips.push_back(std::move(clip));
     }
+
+    if (object->hasProperty("midiClips"))
+    {
+        juce::Array<juce::var>* midiClips = nullptr;
+        if (auto result = requireArray(*object, "midiClips", midiClips); result.failed())
+            return result;
+        for (const auto& clipValue : *midiClips)
+        {
+            MidiClipModel clip;
+            if (auto result = parseMidiClip(clipValue, clip); result.failed()) return result;
+            track.midiClips.push_back(std::move(clip));
+        }
+    }
+    else if (schemaVersion != legacyProjectSchemaVersion)
+    {
+        return juce::Result::fail("midiClips must be an array");
+    }
+
+    if (track.type == TrackType::audio && ! track.midiClips.empty())
+        return juce::Result::fail("Audio tracks cannot contain MIDI clips");
+    if (track.type == TrackType::midi && ! track.clips.empty())
+        return juce::Result::fail("MIDI tracks cannot contain audio clips");
     return juce::Result::ok();
 }
 
@@ -319,6 +449,33 @@ juce::Result parseStringArray(juce::DynamicObject& object, const juce::Identifie
     }
     return juce::Result::ok();
 }
+
+juce::Result validateTrackForSave(const TrackModel& track)
+{
+    if (track.id.isEmpty() || track.name.isEmpty())
+        return juce::Result::fail("Track identity is incomplete");
+    if (track.type == TrackType::audio && ! track.midiClips.empty())
+        return juce::Result::fail("Audio tracks cannot contain MIDI clips");
+    if (track.type == TrackType::midi && ! track.clips.empty())
+        return juce::Result::fail("MIDI tracks cannot contain audio clips");
+
+    for (const auto& clip : track.midiClips)
+    {
+        if (clip.id.isEmpty() || clip.start.beats < 0.0 || clip.length.beats <= 0.0
+            || ! std::isfinite(clip.start.beats) || ! std::isfinite(clip.length.beats))
+            return juce::Result::fail("MIDI clip identity or timing is invalid");
+        for (const auto& note : clip.notes)
+        {
+            if (note.id.isEmpty() || note.noteNumber < 0 || note.noteNumber > 127
+                || note.velocity < 1 || note.velocity > 127 || note.start.beats < 0.0
+                || note.duration.beats <= 0.0 || ! std::isfinite(note.start.beats)
+                || ! std::isfinite(note.duration.beats)
+                || note.start.beats + note.duration.beats > clip.length.beats + 0.000001)
+                return juce::Result::fail("MIDI note identity, value, or timing is invalid");
+        }
+    }
+    return juce::Result::ok();
+}
 }
 
 juce::Result ProjectSerializer::save(const Project& project, const ProjectPaths& paths)
@@ -327,6 +484,9 @@ juce::Result ProjectSerializer::save(const Project& project, const ProjectPaths&
         return juce::Result::fail("Project identity is incomplete");
     if (project.bpm < 40.0 || project.bpm > 240.0)
         return juce::Result::fail("Project BPM must be between 40 and 240");
+    for (const auto& track : project.tracks)
+        if (auto result = validateTrackForSave(track); result.failed())
+            return result;
     if (auto result = paths.createDirectories(); result.failed())
         return result;
     if (auto result = writeJsonAtomically(paths.projectJson(), makeProjectDocument(project)); result.failed())
@@ -345,7 +505,9 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
     if (auto result = readJson(paths.projectJson(), projectDocument); result.failed()) return result;
     juce::DynamicObject* root = nullptr;
     if (auto result = requireObject(projectDocument, root, "project.json"); result.failed()) return result;
-    if (auto result = requireSchemaVersion(*root); result.failed()) return result;
+    int loadedSchemaVersion = 0;
+    if (auto result = requireProjectSchemaVersion(*root, loadedSchemaVersion); result.failed())
+        return result;
 
     Project loaded;
     if (auto result = requireString(*root, "id", loaded.id); result.failed()) return result;
@@ -393,7 +555,8 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
     for (const auto& value : *tracks)
     {
         TrackModel track;
-        if (auto result = parseTrack(value, track); result.failed()) return result;
+        if (auto result = parseTrack(value, track, loadedSchemaVersion); result.failed())
+            return result;
         loaded.tracks.push_back(std::move(track));
     }
 
@@ -417,6 +580,8 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
             [&](const auto& track) { return track.id == plugin.ownerId; });
         if (owner == loaded.tracks.end())
             return juce::Result::fail("Plug-in owner track does not exist");
+        if (owner->type != TrackType::audio)
+            return juce::Result::fail("MIDI track plug-ins are not supported yet");
         if (pluginOwners.contains(plugin.ownerId))
             return juce::Result::fail("Only one VST3 slot is allowed per track");
         if (plugin.format != "VST3" || plugin.isInstrument)
@@ -429,7 +594,7 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
     if (auto result = readJson(paths.provenanceJson(), provenanceDocument); result.failed()) return result;
     juce::DynamicObject* provenance = nullptr;
     if (auto result = requireObject(provenanceDocument, provenance, "provenance.json"); result.failed()) return result;
-    if (auto result = requireSchemaVersion(*provenance); result.failed()) return result;
+    if (auto result = requireProvenanceSchemaVersion(*provenance); result.failed()) return result;
     if (provenance->getProperty("projectId").toString() != loaded.id)
         return juce::Result::fail("Provenance document does not match the project");
     if (auto result = parseStringArray(*provenance, "ingredientManifestIds",

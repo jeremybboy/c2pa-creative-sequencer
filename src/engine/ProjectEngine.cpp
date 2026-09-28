@@ -17,18 +17,26 @@ namespace c2paseq
 {
 namespace
 {
-juce::String nextAudioTrackName(const Project& project)
+juce::String nextTrackName(const Project& project, TrackType type)
 {
-    auto highestNumber = static_cast<int>(project.tracks.size());
+    const auto prefix = type == TrackType::midi ? juce::String("MIDI ")
+                                                : juce::String("Audio ");
+    auto highestNumber = 0;
     for (const auto& track : project.tracks)
     {
-        if (! track.name.startsWith("Audio "))
+        if (track.type != type || ! track.name.startsWith(prefix))
             continue;
-        const auto suffix = track.name.fromFirstOccurrenceOf("Audio ", false, false);
+        const auto suffix = track.name.substring(prefix.length());
         if (suffix.containsOnly("0123456789"))
             highestNumber = std::max(highestNumber, suffix.getIntValue());
     }
-    return "Audio " + juce::String(highestNumber + 1);
+    return prefix + juce::String(highestNumber + 1);
+}
+
+bool isAudioTrack(const Project& project, int index)
+{
+    return juce::isPositiveAndBelow(index, static_cast<int>(project.tracks.size()))
+        && project.tracks[static_cast<std::size_t>(index)].type == TrackType::audio;
 }
 }
 
@@ -53,6 +61,7 @@ juce::Result ProjectEngine::createProject(const juce::File& projectFolder,
         TrackModel track;
         track.id = juce::Uuid().toString();
         track.name = "Audio " + juce::String(index + 1);
+        track.type = TrackType::audio;
         newProject.tracks.push_back(std::move(track));
     }
     if (! tracktion.createProjectEdit(newPaths.arrangementEdit()))
@@ -186,6 +195,9 @@ juce::Result ProjectEngine::importAudio(const juce::File& source,
 {
     if (! project.has_value() || ! paths.has_value() || trackIndex < 0)
         return juce::Result::fail("Create or open a project before importing audio");
+    if (juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size()))
+        && ! isAudioTrack(*project, trackIndex))
+        return juce::Result::fail("Audio can only be imported onto an Audio track");
 
     AudioFileMetadata metadata;
     if (auto result = tracktion.inspectAudioFile(source, metadata); result.failed())
@@ -230,6 +242,8 @@ juce::Result ProjectEngine::moveClip(const juce::String& clipId,
         if (trackIndex < 0)
             return juce::Result::fail("Invalid target track");
         ensureTrackCount(trackIndex + 1);
+        if (! isAudioTrack(value, trackIndex))
+            return juce::Result::fail("Audio clips can only be moved onto an Audio track");
         for (auto& track : value.tracks)
         {
             const auto found = std::find_if(track.clips.begin(), track.clips.end(),
@@ -467,6 +481,9 @@ juce::Result ProjectEngine::pasteClipboard(double destinationSeconds, int destin
             maximumTrack = std::max(maximumTrack, baseTrack + item.relativeTrack);
         ensureTrackCount(maximumTrack + 1);
         for (const auto& item : clipboard)
+            if (! isAudioTrack(value, baseTrack + item.relativeTrack))
+                return juce::Result::fail("Audio clips can only be pasted onto Audio tracks");
+        for (const auto& item : clipboard)
         {
             auto pasted = item.clip;
             pasted.id = juce::Uuid().toString();
@@ -535,19 +552,36 @@ juce::Result ProjectEngine::addAudioTrack()
     {
         TrackModel track;
         track.id = juce::Uuid().toString();
-        track.name = nextAudioTrackName(value);
+        track.name = nextTrackName(value, TrackType::audio);
+        track.type = TrackType::audio;
         value.tracks.push_back(std::move(track));
         return juce::Result::ok();
     });
 }
 
-juce::Result ProjectEngine::deleteAudioTrack(int trackIndex)
+juce::Result ProjectEngine::addMidiTrack()
+{
+    return mutateProject([](Project& value)
+    {
+        TrackModel track;
+        track.id = juce::Uuid().toString();
+        track.name = nextTrackName(value, TrackType::midi);
+        track.type = TrackType::midi;
+        value.tracks.push_back(std::move(track));
+        return juce::Result::ok();
+    });
+}
+
+juce::Result ProjectEngine::deleteTrack(int trackIndex)
 {
     return mutateProject([trackIndex](Project& value)
     {
         if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(value.tracks.size())))
             return juce::Result::fail("Invalid track");
-        if (value.tracks.size() <= 1)
+        const auto& candidate = value.tracks[static_cast<std::size_t>(trackIndex)];
+        const auto audioTrackCount = std::count_if(value.tracks.begin(), value.tracks.end(),
+            [](const auto& track) { return track.type == TrackType::audio; });
+        if (candidate.type == TrackType::audio && audioTrackCount <= 1)
             return juce::Result::fail("A project must keep at least one audio track");
 
         const auto ownerId = value.tracks[static_cast<std::size_t>(trackIndex)].id;
@@ -556,6 +590,11 @@ juce::Result ProjectEngine::deleteAudioTrack(int trackIndex)
         value.tracks.erase(value.tracks.begin() + trackIndex);
         return juce::Result::ok();
     });
+}
+
+juce::Result ProjectEngine::deleteAudioTrack(int trackIndex)
+{
+    return deleteTrack(trackIndex);
 }
 
 juce::Result ProjectEngine::setTrackName(int trackIndex, const juce::String& name)
@@ -573,8 +612,8 @@ juce::Result ProjectEngine::setTrackName(int trackIndex, const juce::String& nam
 juce::Result ProjectEngine::setTrackMute(int trackIndex, bool muted)
 {
     if (! project.has_value()
-        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
-        return juce::Result::fail("Invalid track");
+        || ! isAudioTrack(*project, trackIndex))
+        return juce::Result::fail("Mute is unavailable until the MIDI track has an instrument");
     auto previous = *project;
     project->tracks[static_cast<std::size_t>(trackIndex)].muted = muted;
     return commitLiveTrackAudibility(std::move(previous), trackIndex, false);
@@ -583,8 +622,8 @@ juce::Result ProjectEngine::setTrackMute(int trackIndex, bool muted)
 juce::Result ProjectEngine::setTrackSolo(int trackIndex, bool soloed)
 {
     if (! project.has_value()
-        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
-        return juce::Result::fail("Invalid track");
+        || ! isAudioTrack(*project, trackIndex))
+        return juce::Result::fail("Solo is unavailable until the MIDI track has an instrument");
     auto previous = *project;
     project->tracks[static_cast<std::size_t>(trackIndex)].soloed = soloed;
     return commitLiveTrackAudibility(std::move(previous), trackIndex, true);
@@ -617,8 +656,8 @@ juce::Result ProjectEngine::setTrackPan(int trackIndex, double pan)
 juce::Result ProjectEngine::beginTrackMixGesture(int trackIndex)
 {
     if (! project.has_value()
-        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
-        return juce::Result::fail("Invalid track");
+        || ! isAudioTrack(*project, trackIndex))
+        return juce::Result::fail("Mixer controls are unavailable until the MIDI track has an instrument");
     if (trackMixGestureBefore.has_value())
         return trackMixGestureTrack == trackIndex
             ? juce::Result::ok()
@@ -685,6 +724,7 @@ juce::Result ProjectEngine::setTrackPlugin(int trackIndex,
 {
     if (! project.has_value()
         || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size()))
+        || project->tracks[static_cast<std::size_t>(trackIndex)].type != TrackType::audio
         || descriptor.format != "VST3" || descriptor.isInstrument)
         return juce::Result::fail("Invalid track VST3 audio effect");
 
@@ -851,10 +891,12 @@ std::vector<ArrangementTrackSnapshot> ProjectEngine::arrangementSnapshot() const
         ArrangementTrackSnapshot trackSnapshot;
         trackSnapshot.id = track.id;
         trackSnapshot.name = track.name;
+        trackSnapshot.type = track.type;
         trackSnapshot.gainDb = track.gainDb;
         trackSnapshot.pan = track.pan;
         trackSnapshot.muted = track.muted;
         trackSnapshot.soloed = track.soloed;
+        trackSnapshot.midiClipCount = track.midiClips.size();
         if (const auto* plugin = pluginForTrack(static_cast<int>(snapshot.size())))
             trackSnapshot.plugin = TrackPluginSnapshot {
                 plugin->pluginIdentifier, plugin->name, plugin->vendor,
@@ -897,6 +939,8 @@ juce::Result ProjectEngine::rebuildEditFromProject()
         if (auto result = tracktion.setTrackProperties(static_cast<int>(trackIndex), track.name,
                 track.gainDb, track.pan, track.muted, track.soloed); result.failed())
             return result;
+        if (track.type != TrackType::audio)
+            continue;
         for (const auto& segment : buildPlaybackClipSegments(track.clips))
         {
             const auto& clip = track.clips[segment.clipIndex];
@@ -1028,6 +1072,7 @@ void ProjectEngine::ensureTrackCount(int count)
         TrackModel track;
         track.id = juce::Uuid().toString();
         track.name = "Audio " + juce::String(project->tracks.size() + 1);
+        track.type = TrackType::audio;
         project->tracks.push_back(std::move(track));
     }
 }

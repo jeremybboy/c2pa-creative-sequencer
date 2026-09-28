@@ -327,7 +327,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     zoomOut.onClick = [this] { zoomBy(0.8, timelineBounds.getWidth() * 0.5); };
     zoomIn.onClick = [this] { zoomBy(1.25, timelineBounds.getWidth() * 0.5); };
     audioSettings.onClick = [this] { showAudioSettings(); };
-    addTrackButton.onClick = [this] { addAudioTrack(); };
+    addTrackButton.onClick = [this] { showAddTrackMenu(); };
 
     undoButton.setTooltip("Undo (Command-Z)");
     redoButton.setTooltip("Redo (Shift-Command-Z)");
@@ -337,6 +337,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     zoomOut.setTooltip("Zoom out (Command-minus)");
     zoomIn.setTooltip("Zoom in (Command-plus)");
     audioSettings.setTooltip("Audio device settings");
+    addTrackButton.setTooltip("Add an Audio or MIDI track");
 
     position.setFont(juce::FontOptions(14.0f, juce::Font::bold));
     position.setJustificationType(juce::Justification::centred);
@@ -963,20 +964,38 @@ void ArrangementView::redoEdit()
     }
 }
 
-void ArrangementView::addAudioTrack()
+void ArrangementView::showAddTrackMenu()
 {
-    applyEditResult(audioEngine.addAudioTrack(), "Added audio track");
+    juce::PopupMenu menu;
+    menu.addItem(1, "Audio Track");
+    menu.addItem(2, "MIDI Track");
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addTrackButton),
+        [safe = juce::Component::SafePointer<ArrangementView>(this)](int result)
+        {
+            if (safe == nullptr)
+                return;
+            if (result == 1) safe->addTrack(TrackType::audio);
+            if (result == 2) safe->addTrack(TrackType::midi);
+        });
 }
 
-void ArrangementView::requestDeleteAudioTrack(int trackIndex)
+void ArrangementView::addTrack(TrackType type)
+{
+    const auto result = type == TrackType::midi ? audioEngine.addMidiTrack()
+                                                : audioEngine.addAudioTrack();
+    applyEditResult(result, type == TrackType::midi ? "Added MIDI track"
+                                                     : "Added audio track");
+}
+
+void ArrangementView::requestDeleteTrack(int trackIndex)
 {
     if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
         return;
 
     const auto& track = snapshots[static_cast<std::size_t>(trackIndex)];
-    if (track.clips.empty() && ! track.plugin.has_value())
+    if (track.clips.empty() && track.midiClipCount == 0 && ! track.plugin.has_value())
     {
-        deleteAudioTrack(trackIndex);
+        deleteTrack(trackIndex);
         return;
     }
 
@@ -984,6 +1003,13 @@ void ArrangementView::requestDeleteAudioTrack(int trackIndex)
     if (! track.clips.empty())
         contents << juce::String(static_cast<int>(track.clips.size()))
                  << (track.clips.size() == 1 ? " clip" : " clips");
+    if (track.midiClipCount > 0)
+    {
+        if (contents.isNotEmpty())
+            contents << " and ";
+        contents << juce::String(static_cast<int>(track.midiClipCount))
+                 << (track.midiClipCount == 1 ? " MIDI clip" : " MIDI clips");
+    }
     if (track.plugin.has_value())
     {
         if (contents.isNotEmpty())
@@ -993,10 +1019,11 @@ void ArrangementView::requestDeleteAudioTrack(int trackIndex)
 
     const auto options = juce::MessageBoxOptions()
         .withIconType(juce::MessageBoxIconType::WarningIcon)
-        .withTitle("Delete Audio Track?")
+        .withTitle(track.type == TrackType::midi ? "Delete MIDI Track?"
+                                                 : "Delete Audio Track?")
         .withMessage("\"" + track.name + "\" contains " + contents
-                     + ". Deleting the track removes them from the arrangement."
-                       " The original media files remain unchanged.")
+                     + ". Deleting the track removes this project data from the arrangement."
+                       " Original audio media files remain unchanged.")
         .withButton("Delete Track")
         .withButton("Cancel")
         .withAssociatedComponent(this);
@@ -1004,11 +1031,11 @@ void ArrangementView::requestDeleteAudioTrack(int trackIndex)
         [safe = juce::Component::SafePointer<ArrangementView>(this), trackIndex](int result)
         {
             if (safe != nullptr && result == 0)
-                safe->deleteAudioTrack(trackIndex);
+                safe->deleteTrack(trackIndex);
         });
 }
 
-void ArrangementView::deleteAudioTrack(int trackIndex)
+void ArrangementView::deleteTrack(int trackIndex)
 {
     if (juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
     {
@@ -1016,7 +1043,7 @@ void ArrangementView::deleteAudioTrack(int trackIndex)
         for (const auto& clip : deleted.clips)
             selectedClipIds.erase(clip.id);
     }
-    applyEditResult(audioEngine.deleteAudioTrack(trackIndex), "Deleted audio track");
+    applyEditResult(audioEngine.deleteTrack(trackIndex), "Deleted track");
 }
 
 void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files, int x, int y)
@@ -1065,7 +1092,7 @@ void ArrangementView::rebuildArrangement()
         auto header = std::make_unique<TrackHeaderView>(static_cast<int>(trackIndex));
         header->setState(snapshots[trackIndex].name, snapshots[trackIndex].gainDb,
                          snapshots[trackIndex].pan, snapshots[trackIndex].muted,
-                         snapshots[trackIndex].soloed, colour);
+                         snapshots[trackIndex].soloed, snapshots[trackIndex].type, colour);
         header->setPluginState(snapshots[trackIndex].plugin,
                                audioEngine.availableVst3Plugins());
         header->onNameChanged = [this](int index, const auto& name)
@@ -1135,7 +1162,7 @@ void ArrangementView::rebuildArrangement()
         {
             applyEditResult(audioEngine.removeTrackPlugin(index), "Removed VST3");
         };
-        header->onDeleteTrack = [this](int index) { requestDeleteAudioTrack(index); };
+        header->onDeleteTrack = [this](int index) { requestDeleteTrack(index); };
         headerContainer.addAndMakeVisible(*header);
         trackHeaders.push_back(std::move(header));
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MusicalTime.h"
 #include "provenance/ProvenanceModel.h"
 
 #include <juce_core/juce_core.h>
@@ -8,6 +9,15 @@
 
 namespace c2paseq
 {
+enum class TrackType
+{
+    audio,
+    midi
+};
+
+[[nodiscard]] juce::String trackTypeId(TrackType);
+[[nodiscard]] bool trackTypeFromId(const juce::String&, TrackType&);
+
 struct ClipModel
 {
     juce::String id;
@@ -20,15 +30,34 @@ struct ClipModel
     double fadeOutSeconds = 0.0;
 };
 
+struct MidiNote
+{
+    juce::String id;
+    int noteNumber = 60;
+    BeatPosition start;
+    BeatDuration duration { 1.0 };
+    int velocity = 100;
+};
+
+struct MidiClipModel
+{
+    juce::String id;
+    BeatPosition start;
+    BeatDuration length { 4.0 };
+    std::vector<MidiNote> notes;
+};
+
 struct TrackModel
 {
     juce::String id;
     juce::String name;
+    TrackType type = TrackType::audio;
     double gainDb = 0.0;
     double pan = 0.0;
     bool muted = false;
     bool soloed = false;
     std::vector<ClipModel> clips;
+    std::vector<MidiClipModel> midiClips;
 };
 
 struct MediaReference
