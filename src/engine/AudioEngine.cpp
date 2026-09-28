@@ -105,7 +105,16 @@ juce::Result AudioEngine::trimClip(const juce::String& id, double start,
 }
 
 juce::Result AudioEngine::deleteClip(const juce::String& id) { return projectEngine.deleteClip(id); }
+juce::Result AudioEngine::deleteClips(const std::vector<juce::String>& ids) { return projectEngine.deleteClips(ids); }
 juce::Result AudioEngine::duplicateClip(const juce::String& id) { return projectEngine.duplicateClip(id); }
+juce::Result AudioEngine::copyClips(const std::vector<juce::String>& ids) { return projectEngine.copyClips(ids); }
+juce::Result AudioEngine::cutClips(const std::vector<juce::String>& ids) { return projectEngine.cutClips(ids); }
+juce::Result AudioEngine::duplicateClips(const std::vector<juce::String>& ids) { return projectEngine.duplicateClips(ids); }
+juce::Result AudioEngine::copyTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.copyTimeRange(selection); }
+juce::Result AudioEngine::cutTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.cutTimeRange(selection); }
+juce::Result AudioEngine::duplicateTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.duplicateTimeRange(selection); }
+juce::Result AudioEngine::pasteClipboard(double destination, int track) { return projectEngine.pasteClipboard(destination, track); }
+bool AudioEngine::hasClipboard() const noexcept { return projectEngine.hasClipboard(); }
 juce::Result AudioEngine::splitClip(const juce::String& id, double position)
 {
     return projectEngine.splitClip(id, position);

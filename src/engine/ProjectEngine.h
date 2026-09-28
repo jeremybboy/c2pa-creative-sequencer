@@ -2,6 +2,7 @@
 
 #include "project/Project.h"
 #include "project/ProjectPaths.h"
+#include "timeline/ArrangementSelection.h"
 
 #include <optional>
 #include <functional>
@@ -25,6 +26,7 @@ struct TrackPluginSnapshot
 struct ArrangementClipSnapshot
 {
     juce::String id;
+    juce::String mediaId;
     juce::String name;
     juce::File mediaFile;
     double startSeconds = 0.0;
@@ -68,7 +70,17 @@ public:
                                         double sourceOffsetSeconds,
                                         double lengthSeconds);
     [[nodiscard]] juce::Result deleteClip(const juce::String& clipId);
+    [[nodiscard]] juce::Result deleteClips(const std::vector<juce::String>& clipIds);
     [[nodiscard]] juce::Result duplicateClip(const juce::String& clipId);
+    [[nodiscard]] juce::Result copyClips(const std::vector<juce::String>& clipIds);
+    [[nodiscard]] juce::Result cutClips(const std::vector<juce::String>& clipIds);
+    [[nodiscard]] juce::Result duplicateClips(const std::vector<juce::String>& clipIds);
+    [[nodiscard]] juce::Result copyTimeRange(const ArrangementTimeSelection& selection);
+    [[nodiscard]] juce::Result cutTimeRange(const ArrangementTimeSelection& selection);
+    [[nodiscard]] juce::Result duplicateTimeRange(const ArrangementTimeSelection& selection);
+    [[nodiscard]] juce::Result pasteClipboard(double destinationSeconds,
+                                              int destinationTrack = -1);
+    [[nodiscard]] bool hasClipboard() const noexcept;
     [[nodiscard]] juce::Result splitClip(const juce::String& clipId,
                                          double positionSeconds);
     [[nodiscard]] juce::Result addAudioTrack();
@@ -106,11 +118,26 @@ private:
     [[nodiscard]] const PluginState* pluginForTrack(int trackIndex) const;
     void ensureTrackCount(int count);
 
+    struct ClipboardClip
+    {
+        ClipModel clip;
+        int relativeTrack = 0;
+        double relativeStartSeconds = 0.0;
+    };
+
+    [[nodiscard]] juce::Result fillClipboardFromClips(
+        const std::vector<juce::String>& clipIds);
+    [[nodiscard]] juce::Result fillClipboardFromTimeRange(
+        const ArrangementTimeSelection& selection);
+
     TracktionAdapter& tracktion;
     ProvenanceService& provenance;
     std::optional<Project> project;
     std::optional<ProjectPaths> paths;
     std::vector<Project> undoHistory;
     std::vector<Project> redoHistory;
+    std::vector<ClipboardClip> clipboard;
+    int clipboardBaseTrack = 0;
+    double clipboardDurationSeconds = 0.0;
 };
 }

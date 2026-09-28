@@ -256,9 +256,10 @@ ArrangementView::ArrangementView(AudioEngine& engine)
         setTimeSelection(ArrangementTimeSelection::between(
             start, end, firstTrack, lastTrack));
     };
-    timelineSurface->onInsertionPoint = [this](double seconds, int, bool bypass)
+    timelineSurface->onInsertionPoint = [this](double seconds, int track, bool bypass)
     {
         insertionPointSeconds = bypass ? seconds : geometry.snapToBeat(seconds);
+        insertionPointTrack = track;
         audioEngine.seek(*insertionPointSeconds);
         clearTimeSelection();
         refreshTransport();
@@ -310,7 +311,9 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     loop.onClick = [this]
     {
         const auto enabled = loop.getToggleState();
-        audioEngine.setLooping(enabled, selectedClipId);
+        const auto selected = selectedClipIds.size() == 1
+            ? *selectedClipIds.begin() : juce::String();
+        audioEngine.setLooping(enabled, selected);
         const auto snapshot = audioEngine.transportSnapshot();
         projectMessage = snapshot.looping
             ? "Loop: " + juce::String(snapshot.loopStartSeconds, 3)
@@ -463,28 +466,39 @@ bool ArrangementView::keyPressed(const juce::KeyPress& key)
     if (exportInProgress)
         return true;
 
-    switch (commandForKeyPress(key))
+    const auto command = commandForKeyPress(key);
+    if (textEditorHasFocus()
+        && (command == ArrangementCommand::selectAll
+            || command == ArrangementCommand::copy
+            || command == ArrangementCommand::cut
+            || command == ArrangementCommand::paste))
+        return false;
+
+    switch (command)
     {
         case ArrangementCommand::togglePlayPause: togglePlayback(); return true;
         case ArrangementCommand::save: saveProject(); return true;
         case ArrangementCommand::undo: undoEdit(); return true;
         case ArrangementCommand::redo: redoEdit(); return true;
-        case ArrangementCommand::duplicateClip:
-            if (selectedClipId.isNotEmpty())
-                applyEditResult(audioEngine.duplicateClip(selectedClipId), "Duplicated clip");
-            return true;
+        case ArrangementCommand::selectAll: selectAllClips(); return true;
+        case ArrangementCommand::copy: copySelection(); return true;
+        case ArrangementCommand::cut: cutSelection(); return true;
+        case ArrangementCommand::paste: pasteSelection(); return true;
+        case ArrangementCommand::duplicateClip: duplicateSelection(); return true;
         case ArrangementCommand::splitClip:
-            if (selectedClipId.isNotEmpty())
-                applyEditResult(audioEngine.splitClip(selectedClipId,
+            if (selectedClipIds.size() == 1)
+                applyEditResult(audioEngine.splitClip(*selectedClipIds.begin(),
                     audioEngine.transportSnapshot().positionSeconds), "Split clip");
             return true;
         case ArrangementCommand::deleteClip:
-            if (selectedClipId.isNotEmpty())
+            if (! selectedClipIds.empty())
             {
-                applyEditResult(audioEngine.deleteClip(selectedClipId), "Deleted clip");
-                selectedClipId.clear();
+                const auto ids = selectedClipVector();
+                selectedClipIds.clear();
+                applyEditResult(audioEngine.deleteClips(ids), "Deleted selected clips");
             }
             return true;
+        case ArrangementCommand::loopSelection: return true;
         case ArrangementCommand::zoomIn:
             zoomBy(1.25, timelineBounds.getWidth() * 0.5); return true;
         case ArrangementCommand::zoomOut:
@@ -567,7 +581,7 @@ void ArrangementView::refreshTransport()
     exportButton.setEnabled(audioEngine.hasProject());
     loop.setEnabled(audioEngine.hasProject());
     addTrackButton.setEnabled(audioEngine.hasProject());
-    credentialsButton.setEnabled(selectedClipId.isNotEmpty());
+    credentialsButton.setEnabled(selectedClipIds.size() == 1);
     undoButton.setEnabled(audioEngine.canUndo());
     redoButton.setEnabled(audioEngine.canRedo());
     const auto prefix = projectMessage.isNotEmpty() ? projectMessage + "  |  " : juce::String();
@@ -889,7 +903,7 @@ void ArrangementView::showSelectedCredentials()
 {
     for (const auto& track : snapshots)
         for (const auto& clip : track.clips)
-            if (clip.id == selectedClipId)
+            if (selectedClipIds.contains(clip.id))
             {
                 const auto& info = clip.provenance;
                 auto details = "File: " + clip.mediaFile.getFileName()
@@ -996,9 +1010,8 @@ void ArrangementView::deleteAudioTrack(int trackIndex)
     if (juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
     {
         const auto& deleted = snapshots[static_cast<std::size_t>(trackIndex)];
-        if (std::any_of(deleted.clips.begin(), deleted.clips.end(),
-                [&](const auto& clip) { return clip.id == selectedClipId; }))
-            selectedClipId.clear();
+        for (const auto& clip : deleted.clips)
+            selectedClipIds.erase(clip.id);
     }
     applyEditResult(audioEngine.deleteAudioTrack(trackIndex), "Deleted audio track");
 }
@@ -1112,7 +1125,7 @@ void ArrangementView::rebuildArrangement()
                 clip.mediaFile, clip.name, clip.id, static_cast<int>(trackIndex),
                 clip.startSeconds, clip.sourceOffsetSeconds, clip.lengthSeconds, colour,
                 clip.provenance.status);
-            view->setSelected(clip.id == selectedClipId);
+            view->setSelected(selectedClipIds.contains(clip.id));
             view->setTimeSelection(timeSelection.startSeconds, timeSelection.endSeconds,
                 timeSelection.isValid()
                     && static_cast<int>(trackIndex) >= timeSelection.firstTrack
@@ -1217,22 +1230,96 @@ void ArrangementView::handleWheel(const juce::MouseEvent& event,
 
 void ArrangementView::selectClip(const juce::String& id)
 {
-    selectedClipId = id;
+    selectedClipIds.clear();
+    if (id.isNotEmpty())
+        selectedClipIds.insert(id);
     if (id.isNotEmpty())
         clearTimeSelection();
     for (auto& view : waveformViews)
-        view->setSelected(view->id() == selectedClipId);
+        view->setSelected(selectedClipIds.contains(view->id()));
     grabKeyboardFocus();
+}
+
+void ArrangementView::selectAllClips()
+{
+    clearTimeSelection();
+    selectedClipIds.clear();
+    for (const auto& track : snapshots)
+        for (const auto& clip : track.clips)
+            selectedClipIds.insert(clip.id);
+    for (auto& view : waveformViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
+    projectMessage = "Selected " + juce::String(static_cast<int>(selectedClipIds.size()))
+        + " clips";
+    refreshTransport();
+}
+
+std::vector<juce::String> ArrangementView::selectedClipVector() const
+{
+    return { selectedClipIds.begin(), selectedClipIds.end() };
+}
+
+bool ArrangementView::textEditorHasFocus() const
+{
+    auto* focused = juce::Component::getCurrentlyFocusedComponent();
+    return dynamic_cast<juce::TextEditor*>(focused) != nullptr;
+}
+
+void ArrangementView::copySelection()
+{
+    const auto result = timeSelection.isValid()
+        ? audioEngine.copyTimeRange(timeSelection)
+        : audioEngine.copyClips(selectedClipVector());
+    projectMessage = result.wasOk() ? "Copied selection"
+                                    : "Copy error: " + result.getErrorMessage();
+    refreshTransport();
+}
+
+void ArrangementView::cutSelection()
+{
+    const auto result = timeSelection.isValid()
+        ? audioEngine.cutTimeRange(timeSelection)
+        : audioEngine.cutClips(selectedClipVector());
+    if (result.wasOk())
+    {
+        selectedClipIds.clear();
+        clearTimeSelection();
+    }
+    applyEditResult(result, "Cut selection");
+}
+
+void ArrangementView::pasteSelection()
+{
+    const auto destination = timeSelection.isValid() ? timeSelection.startSeconds
+        : insertionPointSeconds.value_or(audioEngine.transportSnapshot().positionSeconds);
+    const auto destinationTrack = timeSelection.isValid() ? timeSelection.firstTrack
+        : insertionPointTrack.value_or(-1);
+    const auto result = audioEngine.pasteClipboard(destination, destinationTrack);
+    if (result.wasOk())
+    {
+        selectedClipIds.clear();
+        clearTimeSelection();
+        insertionPointSeconds = destination;
+    }
+    applyEditResult(result, "Pasted selection");
+}
+
+void ArrangementView::duplicateSelection()
+{
+    const auto result = timeSelection.isValid()
+        ? audioEngine.duplicateTimeRange(timeSelection)
+        : audioEngine.duplicateClips(selectedClipVector());
+    applyEditResult(result, "Duplicated selection");
 }
 
 void ArrangementView::setTimeSelection(ArrangementTimeSelection selection)
 {
     timeSelection = selection;
     if (timeSelection.isValid())
-        selectedClipId.clear();
+        selectedClipIds.clear();
     for (auto& view : waveformViews)
     {
-        view->setSelected(view->id() == selectedClipId);
+        view->setSelected(selectedClipIds.contains(view->id()));
         const auto onSelectedTrack = timeSelection.isValid()
             && view->track() >= timeSelection.firstTrack
             && view->track() <= timeSelection.lastTrack;

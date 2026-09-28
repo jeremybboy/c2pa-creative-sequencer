@@ -15,10 +15,20 @@ ArrangementCommand commandForKeyPress(const juce::KeyPress& key)
         return ArrangementCommand::save;
     if (command && (code == 'z' || code == 'Z'))
         return shift ? ArrangementCommand::redo : ArrangementCommand::undo;
+    if (command && (code == 'a' || code == 'A'))
+        return ArrangementCommand::selectAll;
+    if (command && (code == 'c' || code == 'C'))
+        return ArrangementCommand::copy;
+    if (command && (code == 'x' || code == 'X'))
+        return ArrangementCommand::cut;
+    if (command && (code == 'v' || code == 'V'))
+        return ArrangementCommand::paste;
     if (command && (code == 'd' || code == 'D'))
         return ArrangementCommand::duplicateClip;
     if (command && (code == 'e' || code == 'E'))
         return ArrangementCommand::splitClip;
+    if (command && (code == 'l' || code == 'L'))
+        return ArrangementCommand::loopSelection;
     if (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey)
         return ArrangementCommand::deleteClip;
     if (code == '+' || code == '=')

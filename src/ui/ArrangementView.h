@@ -18,6 +18,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -81,6 +82,13 @@ private:
     void zoomBy(double factor, double anchorX);
     void handleWheel(const juce::MouseEvent&, const juce::MouseWheelDetails&);
     void selectClip(const juce::String& id);
+    void selectAllClips();
+    [[nodiscard]] std::vector<juce::String> selectedClipVector() const;
+    [[nodiscard]] bool textEditorHasFocus() const;
+    void copySelection();
+    void cutSelection();
+    void pasteSelection();
+    void duplicateSelection();
     void setTimeSelection(ArrangementTimeSelection selection);
     void clearTimeSelection();
     void handleClipGesture(WaveformView&, WaveformView::DragMode,
@@ -131,9 +139,10 @@ private:
     juce::Slider bpm;
     std::array<int, 4> toolbarDividers {};
 
-    juce::String selectedClipId;
+    std::set<juce::String> selectedClipIds;
     ArrangementTimeSelection timeSelection;
     std::optional<double> insertionPointSeconds;
+    std::optional<int> insertionPointTrack;
     juce::String projectMessage;
     std::unique_ptr<juce::FileChooser> fileChooser;
     std::optional<ExportResult> lastExport;

@@ -43,7 +43,17 @@ public:
     [[nodiscard]] juce::Result trimClip(const juce::String&, double startSeconds,
                                         double sourceOffsetSeconds, double lengthSeconds);
     [[nodiscard]] juce::Result deleteClip(const juce::String&);
+    [[nodiscard]] juce::Result deleteClips(const std::vector<juce::String>&);
     [[nodiscard]] juce::Result duplicateClip(const juce::String&);
+    [[nodiscard]] juce::Result copyClips(const std::vector<juce::String>&);
+    [[nodiscard]] juce::Result cutClips(const std::vector<juce::String>&);
+    [[nodiscard]] juce::Result duplicateClips(const std::vector<juce::String>&);
+    [[nodiscard]] juce::Result copyTimeRange(const ArrangementTimeSelection&);
+    [[nodiscard]] juce::Result cutTimeRange(const ArrangementTimeSelection&);
+    [[nodiscard]] juce::Result duplicateTimeRange(const ArrangementTimeSelection&);
+    [[nodiscard]] juce::Result pasteClipboard(double destinationSeconds,
+                                              int destinationTrack = -1);
+    [[nodiscard]] bool hasClipboard() const noexcept;
     [[nodiscard]] juce::Result splitClip(const juce::String&, double positionSeconds);
     [[nodiscard]] juce::Result addAudioTrack();
     [[nodiscard]] juce::Result deleteAudioTrack(int);

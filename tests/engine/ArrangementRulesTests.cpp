@@ -104,10 +104,16 @@ int main()
         || c2paseq::commandForKeyPress({ 's', command, 's' }) != ArrangementCommand::save
         || c2paseq::commandForKeyPress({ 'z', command, 'z' }) != ArrangementCommand::undo
         || c2paseq::commandForKeyPress({ 'z', commandShift, 'z' }) != ArrangementCommand::redo
+        || c2paseq::commandForKeyPress({ 'a', command, 'a' }) != ArrangementCommand::selectAll
+        || c2paseq::commandForKeyPress({ 'c', command, 'c' }) != ArrangementCommand::copy
+        || c2paseq::commandForKeyPress({ 'x', command, 'x' }) != ArrangementCommand::cut
+        || c2paseq::commandForKeyPress({ 'v', command, 'v' }) != ArrangementCommand::paste
         || c2paseq::commandForKeyPress({ 'd', command, 'd' })
             != ArrangementCommand::duplicateClip
         || c2paseq::commandForKeyPress({ 'e', command, 'e' })
             != ArrangementCommand::splitClip
+        || c2paseq::commandForKeyPress({ 'l', command, 'l' })
+            != ArrangementCommand::loopSelection
         || c2paseq::commandForKeyPress(
                { juce::KeyPress::deleteKey, noModifiers, 0 })
             != ArrangementCommand::deleteClip)
