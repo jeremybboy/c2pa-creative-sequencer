@@ -80,6 +80,11 @@ void AudioEngine::setLooping(bool shouldLoop, const juce::String& selectedClipId
     projectEngine.setLooping(shouldLoop, selectedClipId);
 }
 
+juce::Result AudioEngine::setLoopRangeAndEnable(double startSeconds, double endSeconds)
+{
+    return projectEngine.setLoopRangeAndEnable(startSeconds, endSeconds);
+}
+
 void AudioEngine::setBpm(double bpm)
 {
     tracktion.setBpm(bpm);
@@ -105,7 +110,16 @@ juce::Result AudioEngine::trimClip(const juce::String& id, double start,
 }
 
 juce::Result AudioEngine::deleteClip(const juce::String& id) { return projectEngine.deleteClip(id); }
+juce::Result AudioEngine::deleteClips(const std::vector<juce::String>& ids) { return projectEngine.deleteClips(ids); }
 juce::Result AudioEngine::duplicateClip(const juce::String& id) { return projectEngine.duplicateClip(id); }
+juce::Result AudioEngine::copyClips(const std::vector<juce::String>& ids) { return projectEngine.copyClips(ids); }
+juce::Result AudioEngine::cutClips(const std::vector<juce::String>& ids) { return projectEngine.cutClips(ids); }
+juce::Result AudioEngine::duplicateClips(const std::vector<juce::String>& ids) { return projectEngine.duplicateClips(ids); }
+juce::Result AudioEngine::copyTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.copyTimeRange(selection); }
+juce::Result AudioEngine::cutTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.cutTimeRange(selection); }
+juce::Result AudioEngine::duplicateTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.duplicateTimeRange(selection); }
+juce::Result AudioEngine::pasteClipboard(double destination, int track) { return projectEngine.pasteClipboard(destination, track); }
+bool AudioEngine::hasClipboard() const noexcept { return projectEngine.hasClipboard(); }
 juce::Result AudioEngine::splitClip(const juce::String& id, double position)
 {
     return projectEngine.splitClip(id, position);
@@ -117,6 +131,10 @@ juce::Result AudioEngine::setTrackMute(int i, bool v) { return projectEngine.set
 juce::Result AudioEngine::setTrackSolo(int i, bool v) { return projectEngine.setTrackSolo(i, v); }
 juce::Result AudioEngine::setTrackGain(int i, double v) { return projectEngine.setTrackGain(i, v); }
 juce::Result AudioEngine::setTrackPan(int i, double v) { return projectEngine.setTrackPan(i, v); }
+juce::Result AudioEngine::beginTrackMixGesture(int i) { return projectEngine.beginTrackMixGesture(i); }
+juce::Result AudioEngine::previewTrackGain(int i, double v) { return projectEngine.previewTrackGain(i, v); }
+juce::Result AudioEngine::previewTrackPan(int i, double v) { return projectEngine.previewTrackPan(i, v); }
+juce::Result AudioEngine::endTrackMixGesture(int i) { return projectEngine.endTrackMixGesture(i); }
 const std::vector<PluginDescriptor>& AudioEngine::availableVst3Plugins() const noexcept
 {
     return pluginHost.availablePlugins();

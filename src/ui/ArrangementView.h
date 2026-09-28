@@ -4,6 +4,7 @@
 #include "engine/SampleAuditionPlayer.h"
 #include "export/ExportResult.h"
 #include "timeline/TimelineGeometry.h"
+#include "timeline/ArrangementSelection.h"
 #include "ui/PlacesBrowser.h"
 #include "ui/PlacesStore.h"
 #include "ui/IconButton.h"
@@ -17,6 +18,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -39,6 +41,7 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    void mouseMagnify(const juce::MouseEvent&, float scaleFactor) override;
     bool keyPressed(const juce::KeyPress&) override;
     bool isInterestedInFileDrag(const juce::StringArray&) override;
     void filesDropped(const juce::StringArray&, int x, int y) override;
@@ -80,12 +83,26 @@ private:
     void zoomBy(double factor, double anchorX);
     void handleWheel(const juce::MouseEvent&, const juce::MouseWheelDetails&);
     void selectClip(const juce::String& id);
+    void selectAllClips();
+    [[nodiscard]] std::vector<juce::String> selectedClipVector() const;
+    [[nodiscard]] bool textEditorHasFocus() const;
+    void copySelection();
+    void cutSelection();
+    void pasteSelection();
+    void duplicateSelection();
+    void loopFromSelection();
+    void setTimeSelection(ArrangementTimeSelection selection);
+    void clearTimeSelection();
     void handleClipGesture(WaveformView&, WaveformView::DragMode,
                            int deltaX, int deltaY, bool finished, bool bypassSnap);
     void showProjectResult(const juce::Result&, const juce::String& successMessage);
     void applyEditResult(const juce::Result&, const juce::String& successMessage);
     void deferTrackEdit(std::function<juce::Result(AudioEngine&)>,
                         juce::String successMessage);
+    void beginTrackMixGesture(int trackIndex);
+    void previewTrackGain(int trackIndex, double value);
+    void previewTrackPan(int trackIndex, double value);
+    void endTrackMixGesture(int trackIndex, const juce::String& successMessage);
     [[nodiscard]] int trackAt(int parentY) const;
     [[nodiscard]] double timeAt(int parentX, bool snap) const;
     [[nodiscard]] juce::Colour colourForTrack(int index) const;
@@ -128,7 +145,10 @@ private:
     juce::Slider bpm;
     std::array<int, 4> toolbarDividers {};
 
-    juce::String selectedClipId;
+    std::set<juce::String> selectedClipIds;
+    ArrangementTimeSelection timeSelection;
+    std::optional<double> insertionPointSeconds;
+    std::optional<int> insertionPointTrack;
     juce::String projectMessage;
     std::unique_ptr<juce::FileChooser> fileChooser;
     std::optional<ExportResult> lastExport;

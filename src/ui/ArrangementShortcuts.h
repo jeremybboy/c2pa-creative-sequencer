@@ -11,9 +11,14 @@ enum class ArrangementCommand
     save,
     undo,
     redo,
+    selectAll,
+    copy,
+    cut,
+    paste,
     duplicateClip,
     splitClip,
     deleteClip,
+    loopSelection,
     zoomIn,
     zoomOut
 };

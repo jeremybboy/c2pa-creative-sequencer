@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 
 namespace c2paseq
 {
@@ -29,12 +30,14 @@ class TimelineSurface final : public juce::Component
 {
 public:
     void setState(TimelineGeometry newGeometry, int newTrackCount,
-                  const TransportSnapshot& transport, double newVerticalOffset)
+                  const TransportSnapshot& transport, double newVerticalOffset,
+                  ArrangementTimeSelection newSelection)
     {
         geometry = newGeometry;
         trackCount = std::max(minimumVisibleTracks, newTrackCount);
         setTransportState(transport);
         verticalOffset = newVerticalOffset;
+        selection = newSelection;
         repaint();
     }
 
@@ -104,6 +107,23 @@ public:
             g.drawHorizontalLine(y, 0.0f, static_cast<float>(getWidth()));
         }
 
+        if (selection.isValid())
+        {
+            const auto startX = static_cast<float>(geometry.timeToX(selection.startSeconds));
+            const auto endX = static_cast<float>(geometry.timeToX(selection.endSeconds));
+            const auto top = static_cast<float>(rulerHeight + selection.firstTrack * trackHeight)
+                - static_cast<float>(verticalOffset);
+            const auto bottom = static_cast<float>(rulerHeight
+                + (selection.lastTrack + 1) * trackHeight) - static_cast<float>(verticalOffset);
+            auto selectedBounds = juce::Rectangle<float>(startX, top,
+                std::max(1.0f, endX - startX), std::max(1.0f, bottom - top))
+                    .getIntersection(getLocalBounds().toFloat());
+            g.setColour(juce::Colour::fromRGB(255, 213, 92).withAlpha(0.13f));
+            g.fillRect(selectedBounds);
+            g.setColour(juce::Colour::fromRGB(255, 224, 125).withAlpha(0.75f));
+            g.drawRect(selectedBounds, 1.0f);
+        }
+
         const auto playheadX = static_cast<int>(std::round(geometry.timeToX(playhead)));
         if (juce::isPositiveAndBelow(playheadX, getWidth()))
         {
@@ -119,10 +139,40 @@ public:
 
     void mouseDown(const juce::MouseEvent& event) override
     {
-        if (onBackgroundClick)
+        dragStartTime = geometry.xToTime(static_cast<double>(event.x));
+        dragStartTrack = trackForY(event.y);
+        dragBypassSnap = event.mods.isAltDown();
+        if (event.y < rulerHeight)
+        {
+            if (onBackgroundClick) onBackgroundClick();
+            if (onSeek) onSeek(dragStartTime);
+        }
+        else if (onBackgroundClick)
+        {
             onBackgroundClick();
-        if (onSeek)
-            onSeek(geometry.xToTime(static_cast<double>(event.x)));
+        }
+    }
+
+    void mouseDrag(const juce::MouseEvent& event) override
+    {
+        if (dragStartTrack < 0 || ! onTimeSelection)
+            return;
+        onTimeSelection(dragStartTime,
+            geometry.xToTime(static_cast<double>(event.x)), dragStartTrack,
+            trackForY(event.y), dragBypassSnap, false);
+    }
+
+    void mouseUp(const juce::MouseEvent& event) override
+    {
+        if (dragStartTrack < 0)
+            return;
+        const auto end = geometry.xToTime(static_cast<double>(event.x));
+        if (event.mouseWasDraggedSinceMouseDown() && onTimeSelection)
+            onTimeSelection(dragStartTime, end, dragStartTrack, trackForY(event.y),
+                            dragBypassSnap, true);
+        else if (onInsertionPoint)
+            onInsertionPoint(dragStartTime, dragStartTrack, dragBypassSnap);
+        dragStartTrack = -1;
     }
 
     void mouseWheelMove(const juce::MouseEvent& event,
@@ -134,9 +184,18 @@ public:
 
     std::function<void(double)> onSeek;
     std::function<void()> onBackgroundClick;
+    std::function<void(double, double, int, int, bool, bool)> onTimeSelection;
+    std::function<void(double, int, bool)> onInsertionPoint;
     std::function<void(const juce::MouseEvent&, const juce::MouseWheelDetails&)> onWheel;
 
 private:
+    [[nodiscard]] int trackForY(int y) const noexcept
+    {
+        return juce::jlimit(0, std::max(0, trackCount - 1),
+            static_cast<int>(std::floor(
+                (y - rulerHeight + verticalOffset) / static_cast<double>(trackHeight))));
+    }
+
     TimelineGeometry geometry;
     int trackCount = minimumVisibleTracks;
     double playhead = 0.0;
@@ -144,6 +203,10 @@ private:
     double loopStart = 0.0;
     double loopEnd = 0.0;
     double verticalOffset = 0.0;
+    ArrangementTimeSelection selection;
+    double dragStartTime = 0.0;
+    int dragStartTrack = -1;
+    bool dragBypassSnap = false;
 };
 
 ArrangementView::ArrangementView(AudioEngine& engine)
@@ -178,7 +241,31 @@ ArrangementView::ArrangementView(AudioEngine& engine)
         audioEngine.seek(geometry.snapToBeat(seconds));
         refreshTransport();
     };
-    timelineSurface->onBackgroundClick = [this] { selectClip({}); };
+    timelineSurface->onBackgroundClick = [this]
+    {
+        selectClip({});
+        clearTimeSelection();
+    };
+    timelineSurface->onTimeSelection = [this](double start, double end,
+                                               int firstTrack, int lastTrack,
+                                               bool bypass, bool)
+    {
+        if (! bypass)
+        {
+            start = geometry.snapToBeat(start);
+            end = geometry.snapToBeat(end);
+        }
+        setTimeSelection(ArrangementTimeSelection::between(
+            start, end, firstTrack, lastTrack));
+    };
+    timelineSurface->onInsertionPoint = [this](double seconds, int track, bool bypass)
+    {
+        insertionPointSeconds = bypass ? seconds : geometry.snapToBeat(seconds);
+        insertionPointTrack = track;
+        audioEngine.seek(*insertionPointSeconds);
+        clearTimeSelection();
+        refreshTransport();
+    };
     timelineSurface->onWheel = [this](const auto& event, const auto& wheel)
     {
         handleWheel(event, wheel);
@@ -226,7 +313,10 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     loop.onClick = [this]
     {
         const auto enabled = loop.getToggleState();
-        audioEngine.setLooping(enabled, selectedClipId);
+        if (enabled && (timeSelection.isValid() || ! selectedClipIds.empty()))
+            loopFromSelection();
+        else
+            audioEngine.setLooping(enabled);
         const auto snapshot = audioEngine.transportSnapshot();
         projectMessage = snapshot.looping
             ? "Loop: " + juce::String(snapshot.loopStartSeconds, 3)
@@ -379,28 +469,39 @@ bool ArrangementView::keyPressed(const juce::KeyPress& key)
     if (exportInProgress)
         return true;
 
-    switch (commandForKeyPress(key))
+    const auto command = commandForKeyPress(key);
+    if (textEditorHasFocus()
+        && (command == ArrangementCommand::selectAll
+            || command == ArrangementCommand::copy
+            || command == ArrangementCommand::cut
+            || command == ArrangementCommand::paste))
+        return false;
+
+    switch (command)
     {
         case ArrangementCommand::togglePlayPause: togglePlayback(); return true;
         case ArrangementCommand::save: saveProject(); return true;
         case ArrangementCommand::undo: undoEdit(); return true;
         case ArrangementCommand::redo: redoEdit(); return true;
-        case ArrangementCommand::duplicateClip:
-            if (selectedClipId.isNotEmpty())
-                applyEditResult(audioEngine.duplicateClip(selectedClipId), "Duplicated clip");
-            return true;
+        case ArrangementCommand::selectAll: selectAllClips(); return true;
+        case ArrangementCommand::copy: copySelection(); return true;
+        case ArrangementCommand::cut: cutSelection(); return true;
+        case ArrangementCommand::paste: pasteSelection(); return true;
+        case ArrangementCommand::duplicateClip: duplicateSelection(); return true;
         case ArrangementCommand::splitClip:
-            if (selectedClipId.isNotEmpty())
-                applyEditResult(audioEngine.splitClip(selectedClipId,
+            if (selectedClipIds.size() == 1)
+                applyEditResult(audioEngine.splitClip(*selectedClipIds.begin(),
                     audioEngine.transportSnapshot().positionSeconds), "Split clip");
             return true;
         case ArrangementCommand::deleteClip:
-            if (selectedClipId.isNotEmpty())
+            if (! selectedClipIds.empty())
             {
-                applyEditResult(audioEngine.deleteClip(selectedClipId), "Deleted clip");
-                selectedClipId.clear();
+                const auto ids = selectedClipVector();
+                selectedClipIds.clear();
+                applyEditResult(audioEngine.deleteClips(ids), "Deleted selected clips");
             }
             return true;
+        case ArrangementCommand::loopSelection: loopFromSelection(); return true;
         case ArrangementCommand::zoomIn:
             zoomBy(1.25, timelineBounds.getWidth() * 0.5); return true;
         case ArrangementCommand::zoomOut:
@@ -483,7 +584,7 @@ void ArrangementView::refreshTransport()
     exportButton.setEnabled(audioEngine.hasProject());
     loop.setEnabled(audioEngine.hasProject());
     addTrackButton.setEnabled(audioEngine.hasProject());
-    credentialsButton.setEnabled(selectedClipId.isNotEmpty());
+    credentialsButton.setEnabled(selectedClipIds.size() == 1);
     undoButton.setEnabled(audioEngine.canUndo());
     redoButton.setEnabled(audioEngine.canRedo());
     const auto prefix = projectMessage.isNotEmpty() ? projectMessage + "  |  " : juce::String();
@@ -805,7 +906,7 @@ void ArrangementView::showSelectedCredentials()
 {
     for (const auto& track : snapshots)
         for (const auto& clip : track.clips)
-            if (clip.id == selectedClipId)
+            if (selectedClipIds.contains(clip.id))
             {
                 const auto& info = clip.provenance;
                 auto details = "File: " + clip.mediaFile.getFileName()
@@ -912,9 +1013,8 @@ void ArrangementView::deleteAudioTrack(int trackIndex)
     if (juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
     {
         const auto& deleted = snapshots[static_cast<std::size_t>(trackIndex)];
-        if (std::any_of(deleted.clips.begin(), deleted.clips.end(),
-                [&](const auto& clip) { return clip.id == selectedClipId; }))
-            selectedClipId.clear();
+        for (const auto& clip : deleted.clips)
+            selectedClipIds.erase(clip.id);
     }
     applyEditResult(audioEngine.deleteAudioTrack(trackIndex), "Deleted audio track");
 }
@@ -990,10 +1090,28 @@ void ArrangementView::rebuildArrangement()
             deferTrackEdit([index, value](AudioEngine& engine)
                 { return engine.setTrackGain(index, value); }, "Changed track gain");
         };
+        header->onGainGestureStart = [this](int index) { beginTrackMixGesture(index); };
+        header->onGainPreview = [this](int index, double value)
+        {
+            previewTrackGain(index, value);
+        };
+        header->onGainGestureEnd = [this](int index)
+        {
+            endTrackMixGesture(index, "Changed track gain");
+        };
         header->onPanChanged = [this](int index, double value)
         {
             deferTrackEdit([index, value](AudioEngine& engine)
                 { return engine.setTrackPan(index, value); }, "Changed track pan");
+        };
+        header->onPanGestureStart = [this](int index) { beginTrackMixGesture(index); };
+        header->onPanPreview = [this](int index, double value)
+        {
+            previewTrackPan(index, value);
+        };
+        header->onPanGestureEnd = [this](int index)
+        {
+            endTrackMixGesture(index, "Changed track pan");
         };
         header->onScanPlugins = [this] { scanPlugins(); };
         header->onLoadPlugin = [this](int index, const auto& identifier)
@@ -1028,7 +1146,11 @@ void ArrangementView::rebuildArrangement()
                 clip.mediaFile, clip.name, clip.id, static_cast<int>(trackIndex),
                 clip.startSeconds, clip.sourceOffsetSeconds, clip.lengthSeconds, colour,
                 clip.provenance.status);
-            view->setSelected(clip.id == selectedClipId);
+            view->setSelected(selectedClipIds.contains(clip.id));
+            view->setTimeSelection(timeSelection.startSeconds, timeSelection.endSeconds,
+                timeSelection.isValid()
+                    && static_cast<int>(trackIndex) >= timeSelection.firstTrack
+                    && static_cast<int>(trackIndex) <= timeSelection.lastTrack);
             view->onSelected = [this](auto& selected) { selectClip(selected.id()); };
             view->onGesture = [this](auto& selected, auto mode, int dx, int dy,
                                      bool finished, bool bypass)
@@ -1058,7 +1180,7 @@ void ArrangementView::scanPlugins()
 void ArrangementView::layoutArrangement()
 {
     timelineSurface->setState(geometry, static_cast<int>(snapshots.size()),
-        audioEngine.transportSnapshot(), verticalOffset);
+        audioEngine.transportSnapshot(), verticalOffset, timeSelection);
     for (auto& view : waveformViews)
     {
         const auto x = juce::roundToInt(geometry.timeToX(view->start()));
@@ -1117,7 +1239,12 @@ void ArrangementView::handleWheel(const juce::MouseEvent& event,
 {
     if (event.mods.isCommandDown())
     {
-        zoomBy(wheel.deltaY > 0.0f ? 1.12 : 0.89, event.position.x);
+        const auto dominantDelta = std::abs(wheel.deltaY) >= std::abs(wheel.deltaX)
+            ? wheel.deltaY : wheel.deltaX;
+        const auto factor = juce::jlimit(0.75, 1.33,
+            std::exp(static_cast<double>(dominantDelta) * 0.7));
+        if (std::abs(dominantDelta) > 0.0001f)
+            zoomBy(factor, event.position.x);
         return;
     }
     if (event.mods.isShiftDown() || std::abs(wheel.deltaX) > std::abs(wheel.deltaY))
@@ -1127,12 +1254,162 @@ void ArrangementView::handleWheel(const juce::MouseEvent& event,
         verticalScroll.setCurrentRangeStart(verticalOffset - wheel.deltaY * trackHeight * 2.0);
 }
 
+void ArrangementView::mouseMagnify(const juce::MouseEvent& event, float scaleFactor)
+{
+    if (scaleFactor > 0.0f && std::abs(scaleFactor - 1.0f) > 0.0001f)
+        zoomBy(juce::jlimit(0.75, 1.33, static_cast<double>(scaleFactor)),
+               event.position.x);
+}
+
 void ArrangementView::selectClip(const juce::String& id)
 {
-    selectedClipId = id;
+    selectedClipIds.clear();
+    if (id.isNotEmpty())
+        selectedClipIds.insert(id);
+    if (id.isNotEmpty())
+        clearTimeSelection();
     for (auto& view : waveformViews)
-        view->setSelected(view->id() == selectedClipId);
+        view->setSelected(selectedClipIds.contains(view->id()));
     grabKeyboardFocus();
+}
+
+void ArrangementView::selectAllClips()
+{
+    clearTimeSelection();
+    selectedClipIds.clear();
+    for (const auto& track : snapshots)
+        for (const auto& clip : track.clips)
+            selectedClipIds.insert(clip.id);
+    for (auto& view : waveformViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
+    projectMessage = "Selected " + juce::String(static_cast<int>(selectedClipIds.size()))
+        + " clips";
+    refreshTransport();
+}
+
+std::vector<juce::String> ArrangementView::selectedClipVector() const
+{
+    return { selectedClipIds.begin(), selectedClipIds.end() };
+}
+
+bool ArrangementView::textEditorHasFocus() const
+{
+    auto* focused = juce::Component::getCurrentlyFocusedComponent();
+    return dynamic_cast<juce::TextEditor*>(focused) != nullptr;
+}
+
+void ArrangementView::copySelection()
+{
+    const auto result = timeSelection.isValid()
+        ? audioEngine.copyTimeRange(timeSelection)
+        : audioEngine.copyClips(selectedClipVector());
+    projectMessage = result.wasOk() ? "Copied selection"
+                                    : "Copy error: " + result.getErrorMessage();
+    refreshTransport();
+}
+
+void ArrangementView::cutSelection()
+{
+    const auto result = timeSelection.isValid()
+        ? audioEngine.cutTimeRange(timeSelection)
+        : audioEngine.cutClips(selectedClipVector());
+    if (result.wasOk())
+    {
+        selectedClipIds.clear();
+        clearTimeSelection();
+    }
+    applyEditResult(result, "Cut selection");
+}
+
+void ArrangementView::pasteSelection()
+{
+    const auto destination = timeSelection.isValid() ? timeSelection.startSeconds
+        : insertionPointSeconds.value_or(audioEngine.transportSnapshot().positionSeconds);
+    const auto destinationTrack = timeSelection.isValid() ? timeSelection.firstTrack
+        : insertionPointTrack.value_or(-1);
+    const auto result = audioEngine.pasteClipboard(destination, destinationTrack);
+    if (result.wasOk())
+    {
+        selectedClipIds.clear();
+        clearTimeSelection();
+        insertionPointSeconds = destination;
+    }
+    applyEditResult(result, "Pasted selection");
+}
+
+void ArrangementView::duplicateSelection()
+{
+    const auto result = timeSelection.isValid()
+        ? audioEngine.duplicateTimeRange(timeSelection)
+        : audioEngine.duplicateClips(selectedClipVector());
+    applyEditResult(result, "Duplicated selection");
+}
+
+void ArrangementView::loopFromSelection()
+{
+    auto start = 0.0;
+    auto end = 0.0;
+    auto found = false;
+    if (timeSelection.isValid())
+    {
+        start = timeSelection.startSeconds;
+        end = timeSelection.endSeconds;
+        found = true;
+    }
+    else
+    {
+        start = std::numeric_limits<double>::max();
+        for (const auto& track : snapshots)
+            for (const auto& clip : track.clips)
+                if (selectedClipIds.contains(clip.id))
+                {
+                    found = true;
+                    start = std::min(start, clip.startSeconds);
+                    end = std::max(end, clip.startSeconds + clip.lengthSeconds);
+                }
+    }
+
+    if (! found)
+    {
+        projectMessage = "Select a time range or clip before using Loop Selection";
+        refreshTransport();
+        return;
+    }
+    const auto result = audioEngine.setLoopRangeAndEnable(start, end);
+    projectMessage = result.wasOk()
+        ? "Looped selection: " + juce::String(start, 3) + " - "
+            + juce::String(end, 3) + " s"
+        : "Loop error: " + result.getErrorMessage();
+    refreshTransport();
+}
+
+void ArrangementView::setTimeSelection(ArrangementTimeSelection selection)
+{
+    timeSelection = selection;
+    if (timeSelection.isValid())
+        selectedClipIds.clear();
+    for (auto& view : waveformViews)
+    {
+        view->setSelected(selectedClipIds.contains(view->id()));
+        const auto onSelectedTrack = timeSelection.isValid()
+            && view->track() >= timeSelection.firstTrack
+            && view->track() <= timeSelection.lastTrack;
+        view->setTimeSelection(timeSelection.startSeconds, timeSelection.endSeconds,
+                               onSelectedTrack);
+    }
+    timelineSurface->setState(geometry, static_cast<int>(snapshots.size()),
+        audioEngine.transportSnapshot(), verticalOffset, timeSelection);
+    grabKeyboardFocus();
+}
+
+void ArrangementView::clearTimeSelection()
+{
+    timeSelection = {};
+    for (auto& view : waveformViews)
+        view->setTimeSelection(0.0, 0.0, false);
+    if (timelineSurface != nullptr)
+        timelineSurface->setState(geometry, static_cast<int>(snapshots.size()),
+            audioEngine.transportSnapshot(), verticalOffset, timeSelection);
 }
 
 void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMode mode,
@@ -1140,6 +1417,19 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
 {
     if (! finished)
     {
+        if (mode == WaveformView::DragMode::selectTime)
+        {
+            auto first = view.start() + view.gestureStartX() / geometry.pixelsPerSecond;
+            auto second = first + deltaX / geometry.pixelsPerSecond;
+            if (! bypassSnap)
+            {
+                first = geometry.snapToBeat(first);
+                second = geometry.snapToBeat(second);
+            }
+            setTimeSelection(ArrangementTimeSelection::betweenWithin(
+                first, second, view.start(), view.start() + view.length(), view.track()));
+            return;
+        }
         auto bounds = view.gestureBounds();
         if (mode == WaveformView::DragMode::move)
             bounds.translate(deltaX, deltaY);
@@ -1156,6 +1446,23 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
     }
 
     const auto deltaSeconds = deltaX / geometry.pixelsPerSecond;
+    if (mode == WaveformView::DragMode::selectTime)
+    {
+        auto first = view.start() + view.gestureStartX() / geometry.pixelsPerSecond;
+        auto second = first + deltaSeconds;
+        if (! bypassSnap)
+        {
+            first = geometry.snapToBeat(first);
+            second = geometry.snapToBeat(second);
+        }
+        setTimeSelection(ArrangementTimeSelection::betweenWithin(
+            first, second, view.start(), view.start() + view.length(), view.track()));
+        insertionPointSeconds = timeSelection.startSeconds;
+        projectMessage = "Selected " + juce::String(timeSelection.endSeconds
+            - timeSelection.startSeconds, 3) + " s";
+        refreshTransport();
+        return;
+    }
     if (mode == WaveformView::DragMode::move)
     {
         auto start = std::max(0.0, view.start() + deltaSeconds);
@@ -1212,6 +1519,51 @@ void ArrangementView::deferTrackEdit(
             if (safe != nullptr)
                 safe->applyEditResult(pendingEdit(safe->audioEngine), message);
         });
+}
+
+void ArrangementView::beginTrackMixGesture(int trackIndex)
+{
+    const auto result = audioEngine.beginTrackMixGesture(trackIndex);
+    if (result.failed())
+    {
+        projectMessage = "Mixer error: " + result.getErrorMessage();
+        refreshTransport();
+    }
+}
+
+void ArrangementView::previewTrackGain(int trackIndex, double value)
+{
+    const auto result = audioEngine.previewTrackGain(trackIndex, value);
+    if (result.wasOk()
+        && juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
+        snapshots[static_cast<std::size_t>(trackIndex)].gainDb = value;
+    else if (result.failed())
+        projectMessage = "Mixer error: " + result.getErrorMessage();
+}
+
+void ArrangementView::previewTrackPan(int trackIndex, double value)
+{
+    const auto result = audioEngine.previewTrackPan(trackIndex, value);
+    if (result.wasOk()
+        && juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
+        snapshots[static_cast<std::size_t>(trackIndex)].pan = value;
+    else if (result.failed())
+        projectMessage = "Mixer error: " + result.getErrorMessage();
+}
+
+void ArrangementView::endTrackMixGesture(int trackIndex,
+                                          const juce::String& successMessage)
+{
+    const auto result = audioEngine.endTrackMixGesture(trackIndex);
+    projectMessage = result.wasOk() ? successMessage
+                                    : "Mixer error: " + result.getErrorMessage();
+    if (result.failed())
+        juce::MessageManager::callAsync(
+            [safe = juce::Component::SafePointer<ArrangementView>(this)]
+            {
+                if (safe != nullptr) safe->rebuildArrangement();
+            });
+    refreshTransport();
 }
 
 int ArrangementView::trackAt(int parentY) const

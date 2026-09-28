@@ -10,7 +10,7 @@ class WaveformView final : public juce::Component,
                            private juce::ChangeListener
 {
 public:
-    enum class DragMode { move, trimStart, trimEnd };
+    enum class DragMode { move, trimStart, trimEnd, selectTime };
 
     WaveformView(juce::AudioFormatManager& formatManager,
                  juce::AudioThumbnailCache& thumbnailCache,
@@ -30,6 +30,7 @@ public:
     void mouseUp(const juce::MouseEvent&) override;
     void mouseMove(const juce::MouseEvent&) override;
     void setSelected(bool shouldBeSelected);
+    void setTimeSelection(double startSeconds, double endSeconds, bool active);
 
     [[nodiscard]] const juce::String& id() const noexcept { return identifier; }
     [[nodiscard]] int track() const noexcept { return trackNumber; }
@@ -42,6 +43,7 @@ public:
                                                  : sourceOffset + duration;
     }
     [[nodiscard]] juce::Rectangle<int> gestureBounds() const noexcept { return dragStartBounds; }
+    [[nodiscard]] int gestureStartX() const noexcept { return dragStartLocalX; }
 
     std::function<void(WaveformView&)> onSelected;
     std::function<void(WaveformView&, DragMode, int, int, bool, bool)> onGesture;
@@ -60,7 +62,11 @@ private:
     juce::Colour clipColour;
     ProvenanceStatus provenance = ProvenanceStatus::noCredentials;
     bool selected = false;
+    bool timeSelectionActive = false;
+    double timeSelectionStart = 0.0;
+    double timeSelectionEnd = 0.0;
     DragMode dragMode = DragMode::move;
     juce::Rectangle<int> dragStartBounds;
+    int dragStartLocalX = 0;
 };
 }

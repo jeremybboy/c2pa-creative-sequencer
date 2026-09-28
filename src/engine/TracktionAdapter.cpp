@@ -299,6 +299,36 @@ juce::Result TracktionAdapter::setTrackSolo(int trackIndex, bool soloed)
     return juce::Result::ok();
 }
 
+juce::Result TracktionAdapter::setTrackGain(int trackIndex, double gainDb)
+{
+    if (edit == nullptr || trackIndex < 0)
+        return juce::Result::fail("Invalid audio track");
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    if (auto* volume = tracks[trackIndex]->getVolumePlugin())
+    {
+        volume->setVolumeDb(static_cast<float>(juce::jlimit(-60.0, 12.0, gainDb)));
+        return juce::Result::ok();
+    }
+    return juce::Result::fail("Audio track has no volume control");
+}
+
+juce::Result TracktionAdapter::setTrackPan(int trackIndex, double pan)
+{
+    if (edit == nullptr || trackIndex < 0)
+        return juce::Result::fail("Invalid audio track");
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Audio track was not found");
+    if (auto* volume = tracks[trackIndex]->getVolumePlugin())
+    {
+        volume->setPan(static_cast<float>(juce::jlimit(-1.0, 1.0, pan)));
+        return juce::Result::ok();
+    }
+    return juce::Result::fail("Audio track has no pan control");
+}
+
 void TracktionAdapter::registerPluginDescription(const juce::PluginDescription& description)
 {
     engine.getPluginManager().knownPluginList.addType(description);

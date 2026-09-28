@@ -1,5 +1,6 @@
 #include "engine/AudioEngine.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -112,6 +113,13 @@ int main()
         || ! close(selectedLoop.loopEndSeconds, 5.0))
         return fail(14, "selected clip did not configure the live transport loop");
     engine.setLooping(false);
+    if (engine.setLoopRangeAndEnable(1.25, 2.75).failed())
+        return fail(14, "time-selection loop could not be enabled");
+    const auto timeSelectionLoop = engine.transportSnapshot();
+    if (! timeSelectionLoop.looping || ! close(timeSelectionLoop.loopStartSeconds, 1.25)
+        || ! close(timeSelectionLoop.loopEndSeconds, 2.75))
+        return fail(14, "time-selection loop range was not exact");
+    engine.setLooping(false);
 
     engine.seek(0.5);
     engine.play();
@@ -128,17 +136,51 @@ int main()
     const auto afterSolo = engine.transportSnapshot();
     if (! afterSolo.playing || afterSolo.positionSeconds < 0.49)
         return fail(14, "solo stopped playback or reset the playhead");
-    engine.pause();
 
-    if (engine.setTrackName(1, "Vocal").failed()
-        || engine.setTrackGain(1, -6.0).failed()
-        || engine.setTrackPan(1, 0.4).failed())
-        return fail(14, "track control mutation failed");
-    if (! engine.undo())
-        return fail(15, "undo failed");
+    if (engine.beginTrackMixGesture(1).failed()
+        || engine.previewTrackGain(1, -3.0).failed()
+        || engine.previewTrackGain(1, -6.0).failed())
+        return fail(14, "live gain gesture failed");
+    const auto duringGain = engine.transportSnapshot();
+    if (! duringGain.playing || duringGain.positionSeconds < 0.49)
+        return fail(14, "gain preview stopped playback or reset the playhead");
+    if (engine.endTrackMixGesture(1).failed())
+        return fail(14, "live gain gesture could not commit");
+    const auto afterGain = engine.transportSnapshot();
+    if (! afterGain.playing || afterGain.positionSeconds < 0.49)
+        return fail(14, "gain commit stopped playback or reset the playhead");
+    engine.pause();
+    tracks = engine.arrangementSnapshot();
+    if (! close(tracks[1].gainDb, -6.0) || ! engine.undo())
+        return fail(15, "gain gesture did not create one undoable edit");
+    tracks = engine.arrangementSnapshot();
+    if (! close(tracks[1].gainDb, 0.0) || ! engine.redo())
+        return fail(16, "gain undo/redo did not restore the live value");
+
+    engine.seek(0.5);
+    engine.play();
+    if (engine.beginTrackMixGesture(1).failed()
+        || engine.previewTrackPan(1, -0.2).failed()
+        || engine.previewTrackPan(1, 0.4).failed())
+        return fail(16, "live pan gesture failed");
+    const auto duringPan = engine.transportSnapshot();
+    if (! duringPan.playing || duringPan.positionSeconds < 0.49)
+        return fail(16, "pan preview stopped playback or reset the playhead");
+    if (engine.endTrackMixGesture(1).failed())
+        return fail(16, "live pan gesture could not commit");
+    const auto afterPan = engine.transportSnapshot();
+    if (! afterPan.playing || afterPan.positionSeconds < 0.49)
+        return fail(16, "pan commit stopped playback or reset the playhead");
+    engine.pause();
+    tracks = engine.arrangementSnapshot();
+    if (! close(tracks[1].pan, 0.4) || ! engine.undo())
+        return fail(16, "pan gesture did not create one undoable edit");
     tracks = engine.arrangementSnapshot();
     if (! close(tracks[1].pan, 0.0) || ! engine.redo())
-        return fail(16, "undo/redo did not restore track pan");
+        return fail(16, "pan undo/redo did not restore the live value");
+
+    if (engine.setTrackName(1, "Vocal").failed())
+        return fail(14, "track control mutation failed");
 
     engine.setTimelineView(144.0, 8.0);
     engine.setLooping(true);
@@ -197,8 +239,85 @@ int main()
         || engine.arrangementSnapshot().size() != 1)
         return fail(28, "the final audio track was not protected from deletion");
 
+    const auto clipboardProject = temporary.root.getChildFile("Clipboard.c2paseq");
+    if (engine.createProject(clipboardProject, "Clipboard").failed()
+        || engine.importAudio(source, 0, 0.0).failed())
+        return fail(29, "could not create clipboard fixture");
+    tracks = engine.arrangementSnapshot();
+    const auto clipboardSourceId = tracks[0].clips[0].id;
+    const auto clipboardMediaId = tracks[0].clips[0].mediaId;
+    const auto range = c2paseq::ArrangementTimeSelection::between(0.5, 1.25, 0, 0);
+
+    if (engine.copyTimeRange(range).failed() || ! engine.hasClipboard()
+        || engine.pasteClipboard(3.0, 0).failed())
+        return fail(30, "partial-range copy or paste failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[0].clips.size() != 2)
+        return fail(31, "partial paste produced the wrong clip count");
+    const auto pasted = std::find_if(tracks[0].clips.begin(), tracks[0].clips.end(),
+        [](const auto& clip) { return close(clip.startSeconds, 3.0); });
+    if (pasted == tracks[0].clips.end() || pasted->mediaId != clipboardMediaId
+        || ! close(pasted->sourceOffsetSeconds, 0.5)
+        || ! close(pasted->lengthSeconds, 0.75))
+        return fail(32, "partial copy did not preserve media/source range");
+    const auto pastedId = pasted->id;
+    if (! engine.undo() || engine.arrangementSnapshot()[0].clips.size() != 1
+        || ! engine.redo() || engine.arrangementSnapshot()[0].clips.size() != 2)
+        return fail(33, "paste was not one undoable action");
+
+    if (engine.cutTimeRange(range).failed())
+        return fail(34, "partial cut failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[0].clips.size() != 3)
+        return fail(35, "partial cut did not leave two surviving pieces");
+    const auto cutLeft = std::find_if(tracks[0].clips.begin(), tracks[0].clips.end(),
+        [](const auto& clip) { return close(clip.startSeconds, 0.0); });
+    const auto cutRight = std::find_if(tracks[0].clips.begin(), tracks[0].clips.end(),
+        [](const auto& clip) { return close(clip.startSeconds, 1.25); });
+    const auto later = std::find_if(tracks[0].clips.begin(), tracks[0].clips.end(),
+        [](const auto& clip) { return close(clip.startSeconds, 3.0); });
+    if (cutLeft == tracks[0].clips.end() || cutRight == tracks[0].clips.end()
+        || later == tracks[0].clips.end() || ! close(cutLeft->lengthSeconds, 0.5)
+        || ! close(cutRight->sourceOffsetSeconds, 1.25)
+        || ! close(cutRight->lengthSeconds, 0.75)
+        || later->id != pastedId)
+        return fail(36, "cut did not preserve the gap, survivors, or later material");
+    if (! engine.undo() || engine.arrangementSnapshot()[0].clips.size() != 2
+        || ! engine.redo() || engine.arrangementSnapshot()[0].clips.size() != 3)
+        return fail(37, "cut was not one undoable action");
+
+    if (! engine.undo())
+        return fail(38, "could not restore pre-cut arrangement");
+    const auto duplicateRange = c2paseq::ArrangementTimeSelection::between(0.25, 0.5, 0, 0);
+    if (engine.duplicateTimeRange(duplicateRange).failed())
+        return fail(39, "partial duplicate failed");
+    tracks = engine.arrangementSnapshot();
+    const auto fragment = std::find_if(tracks[0].clips.begin(), tracks[0].clips.end(),
+        [&](const auto& clip)
+        {
+            return clip.id != clipboardSourceId && clip.id != pastedId
+                && close(clip.startSeconds, 0.5);
+        });
+    if (fragment == tracks[0].clips.end() || fragment->mediaId != clipboardMediaId
+        || ! close(fragment->sourceOffsetSeconds, 0.25)
+        || ! close(fragment->lengthSeconds, 0.25))
+        return fail(40, "partial duplicate did not preserve its source range");
+    if (! engine.undo() || engine.arrangementSnapshot()[0].clips.size() != 2
+        || ! engine.redo() || engine.arrangementSnapshot()[0].clips.size() != 3)
+        return fail(41, "duplicate was not one undoable action");
+
+    if (engine.copyClips({ pastedId }).failed() || engine.pasteClipboard(5.0, 0).failed())
+        return fail(42, "whole-clip clipboard failed");
+    tracks = engine.arrangementSnapshot();
+    const auto wholePaste = std::find_if(tracks[0].clips.begin(), tracks[0].clips.end(),
+        [](const auto& clip) { return close(clip.startSeconds, 5.0); });
+    if (wholePaste == tracks[0].clips.end() || wholePaste->mediaId != clipboardMediaId
+        || ! close(wholePaste->sourceOffsetSeconds, 0.5)
+        || ! close(wholePaste->lengthSeconds, 0.75))
+        return fail(43, "whole-clip paste changed clip properties");
+
     std::cout << "arrangement editing: import, move, trim, split, duplicate, delete, "
                  "live loop range, mute/solo transport preservation, track controls, undo/redo, "
-                 "dynamic track add/delete, and reopen passed\n";
+                 "dynamic track add/delete, partial clipboard editing, and reopen passed\n";
     return 0;
 }

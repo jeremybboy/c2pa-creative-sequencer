@@ -71,6 +71,8 @@ public:
                                                    bool soloed);
     [[nodiscard]] juce::Result setTrackMute(int trackIndex, bool muted);
     [[nodiscard]] juce::Result setTrackSolo(int trackIndex, bool soloed);
+    [[nodiscard]] juce::Result setTrackGain(int trackIndex, double gainDb);
+    [[nodiscard]] juce::Result setTrackPan(int trackIndex, double pan);
     void registerPluginDescription(const juce::PluginDescription&);
     [[nodiscard]] juce::Result setTrackPlugin(int trackIndex,
                                                const juce::PluginDescription&,

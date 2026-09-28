@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace c2paseq
 {
@@ -61,6 +62,9 @@ juce::Result ProjectEngine::createProject(const juce::File& projectFolder,
     paths = std::move(newPaths);
     undoHistory.clear();
     redoHistory.clear();
+    clipboard.clear();
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
     if (auto result = rebuildEditFromProject(); result.failed())
     {
         closeProject();
@@ -114,6 +118,9 @@ juce::Result ProjectEngine::openProject(const juce::File& projectFolder)
     paths = std::move(newPaths);
     undoHistory.clear();
     redoHistory.clear();
+    clipboard.clear();
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
     if (auto result = rebuildEditFromProject(); result.failed())
     {
         closeProject();
@@ -128,6 +135,9 @@ void ProjectEngine::closeProject()
     paths.reset();
     undoHistory.clear();
     redoHistory.clear();
+    clipboard.clear();
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
     tracktion.closeProjectEdit();
 }
 
@@ -154,6 +164,20 @@ void ProjectEngine::setLooping(bool shouldLoop, const juce::String& selectedClip
     }
     project->looping = shouldLoop;
     tracktion.setLooping(shouldLoop);
+}
+
+juce::Result ProjectEngine::setLoopRangeAndEnable(double startSeconds,
+                                                   double endSeconds)
+{
+    if (! project.has_value() || startSeconds < 0.0
+        || endSeconds <= startSeconds + 0.001)
+        return juce::Result::fail("Invalid loop selection");
+    project->loopStartSeconds = startSeconds;
+    project->loopEndSeconds = endSeconds;
+    project->looping = true;
+    tracktion.setLoopRange(startSeconds, endSeconds);
+    tracktion.setLooping(true);
+    return juce::Result::ok();
 }
 
 juce::Result ProjectEngine::importAudio(const juce::File& source,
@@ -259,6 +283,25 @@ juce::Result ProjectEngine::deleteClip(const juce::String& clipId)
     });
 }
 
+juce::Result ProjectEngine::deleteClips(const std::vector<juce::String>& clipIds)
+{
+    return mutateProject([&](Project& value)
+    {
+        auto removed = 0;
+        for (auto& track : value.tracks)
+        {
+            const auto before = track.clips.size();
+            std::erase_if(track.clips, [&](const auto& clip)
+            {
+                return std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end();
+            });
+            removed += static_cast<int>(before - track.clips.size());
+        }
+        return removed > 0 ? juce::Result::ok()
+                           : juce::Result::fail("No selected clips were found");
+    });
+}
+
 juce::Result ProjectEngine::duplicateClip(const juce::String& clipId)
 {
     return mutateProject([&](Project& value)
@@ -277,6 +320,186 @@ juce::Result ProjectEngine::duplicateClip(const juce::String& clipId)
         }
         return juce::Result::fail("Clip was not found");
     });
+}
+
+juce::Result ProjectEngine::fillClipboardFromClips(
+    const std::vector<juce::String>& clipIds)
+{
+    if (! project.has_value() || clipIds.empty())
+        return juce::Result::fail("No clips are selected");
+
+    clipboard.clear();
+    auto minimumTrack = static_cast<int>(project->tracks.size());
+    auto minimumStart = std::numeric_limits<double>::max();
+    auto maximumEnd = 0.0;
+    auto foundAny = false;
+    for (std::size_t trackIndex = 0; trackIndex < project->tracks.size(); ++trackIndex)
+        for (const auto& clip : project->tracks[trackIndex].clips)
+            if (std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end())
+            {
+                foundAny = true;
+                minimumTrack = std::min(minimumTrack, static_cast<int>(trackIndex));
+                minimumStart = std::min(minimumStart, clip.startSeconds);
+                maximumEnd = std::max(maximumEnd, clip.startSeconds + clip.lengthSeconds);
+            }
+
+    if (! foundAny)
+        return juce::Result::fail("No selected clips were found");
+
+    clipboardBaseTrack = minimumTrack;
+    clipboardDurationSeconds = maximumEnd - minimumStart;
+    for (std::size_t trackIndex = 0; trackIndex < project->tracks.size(); ++trackIndex)
+        for (const auto& clip : project->tracks[trackIndex].clips)
+            if (std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end())
+                clipboard.push_back({ clip, static_cast<int>(trackIndex) - minimumTrack,
+                                      clip.startSeconds - minimumStart });
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::fillClipboardFromTimeRange(
+    const ArrangementTimeSelection& selection)
+{
+    if (! project.has_value() || ! selection.isValid())
+        return juce::Result::fail("No valid time selection");
+
+    clipboard.clear();
+    clipboardBaseTrack = selection.firstTrack;
+    clipboardDurationSeconds = selection.endSeconds - selection.startSeconds;
+    const auto lastTrack = std::min(selection.lastTrack,
+        static_cast<int>(project->tracks.size()) - 1);
+    for (auto trackIndex = selection.firstTrack; trackIndex <= lastTrack; ++trackIndex)
+    {
+        for (const auto& clip : project->tracks[static_cast<std::size_t>(trackIndex)].clips)
+        {
+            const auto overlapStart = std::max(selection.startSeconds, clip.startSeconds);
+            const auto overlapEnd = std::min(selection.endSeconds,
+                                             clip.startSeconds + clip.lengthSeconds);
+            if (overlapEnd <= overlapStart + 0.001)
+                continue;
+            auto fragment = clip;
+            fragment.startSeconds = overlapStart;
+            fragment.sourceOffsetSeconds += overlapStart - clip.startSeconds;
+            fragment.lengthSeconds = overlapEnd - overlapStart;
+            clipboard.push_back({ fragment, trackIndex - selection.firstTrack,
+                                  overlapStart - selection.startSeconds });
+        }
+    }
+    return clipboard.empty() ? juce::Result::fail("The time selection contains no audio")
+                             : juce::Result::ok();
+}
+
+juce::Result ProjectEngine::copyClips(const std::vector<juce::String>& clipIds)
+{
+    return fillClipboardFromClips(clipIds);
+}
+
+juce::Result ProjectEngine::copyTimeRange(const ArrangementTimeSelection& selection)
+{
+    return fillClipboardFromTimeRange(selection);
+}
+
+juce::Result ProjectEngine::cutClips(const std::vector<juce::String>& clipIds)
+{
+    if (auto result = fillClipboardFromClips(clipIds); result.failed())
+        return result;
+    return deleteClips(clipIds);
+}
+
+juce::Result ProjectEngine::cutTimeRange(const ArrangementTimeSelection& selection)
+{
+    if (auto result = fillClipboardFromTimeRange(selection); result.failed())
+        return result;
+
+    return mutateProject([&](Project& value)
+    {
+        const auto lastTrack = std::min(selection.lastTrack,
+            static_cast<int>(value.tracks.size()) - 1);
+        for (auto trackIndex = selection.firstTrack; trackIndex <= lastTrack; ++trackIndex)
+        {
+            auto& clips = value.tracks[static_cast<std::size_t>(trackIndex)].clips;
+            std::vector<ClipModel> replacement;
+            replacement.reserve(clips.size() + 2);
+            for (const auto& clip : clips)
+            {
+                const auto clipEnd = clip.startSeconds + clip.lengthSeconds;
+                const auto overlapStart = std::max(selection.startSeconds, clip.startSeconds);
+                const auto overlapEnd = std::min(selection.endSeconds, clipEnd);
+                if (overlapEnd <= overlapStart + 0.001)
+                {
+                    replacement.push_back(clip);
+                    continue;
+                }
+
+                const auto leftLength = overlapStart - clip.startSeconds;
+                const auto rightLength = clipEnd - overlapEnd;
+                if (leftLength > 0.001)
+                {
+                    auto left = clip;
+                    left.lengthSeconds = leftLength;
+                    replacement.push_back(std::move(left));
+                }
+                if (rightLength > 0.001)
+                {
+                    auto right = clip;
+                    if (leftLength > 0.001)
+                        right.id = juce::Uuid().toString();
+                    right.startSeconds = overlapEnd;
+                    right.sourceOffsetSeconds += overlapEnd - clip.startSeconds;
+                    right.lengthSeconds = rightLength;
+                    replacement.push_back(std::move(right));
+                }
+            }
+            clips = std::move(replacement);
+        }
+        return juce::Result::ok();
+    });
+}
+
+juce::Result ProjectEngine::pasteClipboard(double destinationSeconds, int destinationTrack)
+{
+    if (! project.has_value() || clipboard.empty() || destinationSeconds < 0.0)
+        return juce::Result::fail("Nothing valid is available to paste");
+    const auto baseTrack = destinationTrack >= 0 ? destinationTrack : clipboardBaseTrack;
+    return mutateProject([&](Project& value)
+    {
+        auto maximumTrack = baseTrack;
+        for (const auto& item : clipboard)
+            maximumTrack = std::max(maximumTrack, baseTrack + item.relativeTrack);
+        ensureTrackCount(maximumTrack + 1);
+        for (const auto& item : clipboard)
+        {
+            auto pasted = item.clip;
+            pasted.id = juce::Uuid().toString();
+            pasted.startSeconds = destinationSeconds + item.relativeStartSeconds;
+            value.tracks[static_cast<std::size_t>(baseTrack + item.relativeTrack)]
+                .clips.push_back(std::move(pasted));
+        }
+        return juce::Result::ok();
+    });
+}
+
+juce::Result ProjectEngine::duplicateClips(const std::vector<juce::String>& clipIds)
+{
+    if (auto result = fillClipboardFromClips(clipIds); result.failed())
+        return result;
+    auto minimumStart = std::numeric_limits<double>::max();
+    for (const auto& track : project->tracks)
+        for (const auto& clip : track.clips)
+            if (std::find(clipIds.begin(), clipIds.end(), clip.id) != clipIds.end())
+                minimumStart = std::min(minimumStart, clip.startSeconds);
+    return pasteClipboard(minimumStart + clipboardDurationSeconds, clipboardBaseTrack);
+}
+
+juce::Result ProjectEngine::duplicateTimeRange(const ArrangementTimeSelection& selection)
+{
+    if (auto result = fillClipboardFromTimeRange(selection); result.failed())
+        return result;
+    return pasteClipboard(selection.endSeconds, selection.firstTrack);
+}
+
+bool ProjectEngine::hasClipboard() const noexcept
+{
+    return ! clipboard.empty();
 }
 
 juce::Result ProjectEngine::splitClip(const juce::String& clipId,
@@ -369,24 +592,92 @@ juce::Result ProjectEngine::setTrackSolo(int trackIndex, bool soloed)
 
 juce::Result ProjectEngine::setTrackGain(int trackIndex, double gainDb)
 {
-    return mutateProject([&](Project& value)
+    if (auto result = beginTrackMixGesture(trackIndex); result.failed())
+        return result;
+    if (auto result = previewTrackGain(trackIndex, gainDb); result.failed())
     {
-        if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(value.tracks.size())))
-            return juce::Result::fail("Invalid track");
-        value.tracks[static_cast<std::size_t>(trackIndex)].gainDb = juce::jlimit(-60.0, 12.0, gainDb);
-        return juce::Result::ok();
-    });
+        cancelTrackMixGesture();
+        return result;
+    }
+    return endTrackMixGesture(trackIndex);
 }
 
 juce::Result ProjectEngine::setTrackPan(int trackIndex, double pan)
 {
-    return mutateProject([&](Project& value)
+    if (auto result = beginTrackMixGesture(trackIndex); result.failed())
+        return result;
+    if (auto result = previewTrackPan(trackIndex, pan); result.failed())
     {
-        if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(value.tracks.size())))
-            return juce::Result::fail("Invalid track");
-        value.tracks[static_cast<std::size_t>(trackIndex)].pan = juce::jlimit(-1.0, 1.0, pan);
+        cancelTrackMixGesture();
+        return result;
+    }
+    return endTrackMixGesture(trackIndex);
+}
+
+juce::Result ProjectEngine::beginTrackMixGesture(int trackIndex)
+{
+    if (! project.has_value()
+        || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
+        return juce::Result::fail("Invalid track");
+    if (trackMixGestureBefore.has_value())
+        return trackMixGestureTrack == trackIndex
+            ? juce::Result::ok()
+            : juce::Result::fail("Another mixer gesture is active");
+    trackMixGestureBefore = *project;
+    trackMixGestureTrack = trackIndex;
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::previewTrackGain(int trackIndex, double gainDb)
+{
+    if (! project.has_value() || ! trackMixGestureBefore.has_value()
+        || trackIndex != trackMixGestureTrack)
+        return juce::Result::fail("Track gain gesture is not active");
+    const auto value = juce::jlimit(-60.0, 12.0, gainDb);
+    if (auto result = tracktion.setTrackGain(trackIndex, value); result.failed())
+        return result;
+    project->tracks[static_cast<std::size_t>(trackIndex)].gainDb = value;
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::previewTrackPan(int trackIndex, double pan)
+{
+    if (! project.has_value() || ! trackMixGestureBefore.has_value()
+        || trackIndex != trackMixGestureTrack)
+        return juce::Result::fail("Track pan gesture is not active");
+    const auto value = juce::jlimit(-1.0, 1.0, pan);
+    if (auto result = tracktion.setTrackPan(trackIndex, value); result.failed())
+        return result;
+    project->tracks[static_cast<std::size_t>(trackIndex)].pan = value;
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::endTrackMixGesture(int trackIndex)
+{
+    if (! project.has_value() || ! trackMixGestureBefore.has_value()
+        || trackIndex != trackMixGestureTrack)
+        return juce::Result::fail("Track mixer gesture is not active");
+
+    auto previous = std::move(*trackMixGestureBefore);
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
+    const auto& before = previous.tracks[static_cast<std::size_t>(trackIndex)];
+    const auto& after = project->tracks[static_cast<std::size_t>(trackIndex)];
+    if (std::abs(before.gainDb - after.gainDb) < 0.000001
+        && std::abs(before.pan - after.pan) < 0.000001)
         return juce::Result::ok();
-    });
+
+    if (auto result = saveProject(); result.failed())
+    {
+        *project = std::move(previous);
+        const auto& restored = project->tracks[static_cast<std::size_t>(trackIndex)];
+        (void) tracktion.setTrackGain(trackIndex, restored.gainDb);
+        (void) tracktion.setTrackPan(trackIndex, restored.pan);
+        return result;
+    }
+    undoHistory.push_back(std::move(previous));
+    redoHistory.clear();
+    return juce::Result::ok();
 }
 
 juce::Result ProjectEngine::setTrackPlugin(int trackIndex,
@@ -578,6 +869,7 @@ std::vector<ArrangementTrackSnapshot> ProjectEngine::arrangementSnapshot() const
 
             trackSnapshot.clips.push_back({
                 clip.id,
+                clip.mediaId,
                 media->originalFileName,
                 paths->root().getChildFile(media->relativePath),
                 clip.startSeconds,
@@ -706,6 +998,25 @@ juce::Result ProjectEngine::commitLiveTrackAudibility(Project previous,
     undoHistory.push_back(std::move(previous));
     redoHistory.clear();
     return juce::Result::ok();
+}
+
+void ProjectEngine::cancelTrackMixGesture()
+{
+    if (! project.has_value() || ! trackMixGestureBefore.has_value()
+        || ! juce::isPositiveAndBelow(trackMixGestureTrack,
+            static_cast<int>(trackMixGestureBefore->tracks.size())))
+    {
+        trackMixGestureBefore.reset();
+        trackMixGestureTrack = -1;
+        return;
+    }
+    const auto index = trackMixGestureTrack;
+    *project = std::move(*trackMixGestureBefore);
+    trackMixGestureBefore.reset();
+    trackMixGestureTrack = -1;
+    const auto& restored = project->tracks[static_cast<std::size_t>(index)];
+    (void) tracktion.setTrackGain(index, restored.gainDb);
+    (void) tracktion.setTrackPan(index, restored.pan);
 }
 
 void ProjectEngine::ensureTrackCount(int count)

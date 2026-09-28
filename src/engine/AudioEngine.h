@@ -35,6 +35,8 @@ public:
     void stop();
     void seek(double positionSeconds);
     void setLooping(bool shouldLoop, const juce::String& selectedClipId = {});
+    [[nodiscard]] juce::Result setLoopRangeAndEnable(double startSeconds,
+                                                     double endSeconds);
     void setBpm(double bpm);
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
@@ -43,7 +45,17 @@ public:
     [[nodiscard]] juce::Result trimClip(const juce::String&, double startSeconds,
                                         double sourceOffsetSeconds, double lengthSeconds);
     [[nodiscard]] juce::Result deleteClip(const juce::String&);
+    [[nodiscard]] juce::Result deleteClips(const std::vector<juce::String>&);
     [[nodiscard]] juce::Result duplicateClip(const juce::String&);
+    [[nodiscard]] juce::Result copyClips(const std::vector<juce::String>&);
+    [[nodiscard]] juce::Result cutClips(const std::vector<juce::String>&);
+    [[nodiscard]] juce::Result duplicateClips(const std::vector<juce::String>&);
+    [[nodiscard]] juce::Result copyTimeRange(const ArrangementTimeSelection&);
+    [[nodiscard]] juce::Result cutTimeRange(const ArrangementTimeSelection&);
+    [[nodiscard]] juce::Result duplicateTimeRange(const ArrangementTimeSelection&);
+    [[nodiscard]] juce::Result pasteClipboard(double destinationSeconds,
+                                              int destinationTrack = -1);
+    [[nodiscard]] bool hasClipboard() const noexcept;
     [[nodiscard]] juce::Result splitClip(const juce::String&, double positionSeconds);
     [[nodiscard]] juce::Result addAudioTrack();
     [[nodiscard]] juce::Result deleteAudioTrack(int);
@@ -52,6 +64,10 @@ public:
     [[nodiscard]] juce::Result setTrackSolo(int, bool);
     [[nodiscard]] juce::Result setTrackGain(int, double);
     [[nodiscard]] juce::Result setTrackPan(int, double);
+    [[nodiscard]] juce::Result beginTrackMixGesture(int);
+    [[nodiscard]] juce::Result previewTrackGain(int, double);
+    [[nodiscard]] juce::Result previewTrackPan(int, double);
+    [[nodiscard]] juce::Result endTrackMixGesture(int);
     [[nodiscard]] const std::vector<PluginDescriptor>& availableVst3Plugins() const noexcept;
     [[nodiscard]] juce::Result scanVst3Plugins(const juce::FileSearchPath& paths = {});
     [[nodiscard]] juce::Result loadTrackPlugin(int, const juce::String& identifier);

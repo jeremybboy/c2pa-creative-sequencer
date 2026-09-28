@@ -2,6 +2,7 @@
 
 #include "project/Project.h"
 #include "project/ProjectPaths.h"
+#include "timeline/ArrangementSelection.h"
 
 #include <optional>
 #include <functional>
@@ -25,6 +26,7 @@ struct TrackPluginSnapshot
 struct ArrangementClipSnapshot
 {
     juce::String id;
+    juce::String mediaId;
     juce::String name;
     juce::File mediaFile;
     double startSeconds = 0.0;
@@ -57,6 +59,8 @@ public:
     void closeProject();
     void setBpm(double bpm);
     void setLooping(bool shouldLoop, const juce::String& selectedClipId);
+    [[nodiscard]] juce::Result setLoopRangeAndEnable(double startSeconds,
+                                                     double endSeconds);
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
                                            double startSeconds);
@@ -68,7 +72,17 @@ public:
                                         double sourceOffsetSeconds,
                                         double lengthSeconds);
     [[nodiscard]] juce::Result deleteClip(const juce::String& clipId);
+    [[nodiscard]] juce::Result deleteClips(const std::vector<juce::String>& clipIds);
     [[nodiscard]] juce::Result duplicateClip(const juce::String& clipId);
+    [[nodiscard]] juce::Result copyClips(const std::vector<juce::String>& clipIds);
+    [[nodiscard]] juce::Result cutClips(const std::vector<juce::String>& clipIds);
+    [[nodiscard]] juce::Result duplicateClips(const std::vector<juce::String>& clipIds);
+    [[nodiscard]] juce::Result copyTimeRange(const ArrangementTimeSelection& selection);
+    [[nodiscard]] juce::Result cutTimeRange(const ArrangementTimeSelection& selection);
+    [[nodiscard]] juce::Result duplicateTimeRange(const ArrangementTimeSelection& selection);
+    [[nodiscard]] juce::Result pasteClipboard(double destinationSeconds,
+                                              int destinationTrack = -1);
+    [[nodiscard]] bool hasClipboard() const noexcept;
     [[nodiscard]] juce::Result splitClip(const juce::String& clipId,
                                          double positionSeconds);
     [[nodiscard]] juce::Result addAudioTrack();
@@ -78,6 +92,10 @@ public:
     [[nodiscard]] juce::Result setTrackSolo(int trackIndex, bool soloed);
     [[nodiscard]] juce::Result setTrackGain(int trackIndex, double gainDb);
     [[nodiscard]] juce::Result setTrackPan(int trackIndex, double pan);
+    [[nodiscard]] juce::Result beginTrackMixGesture(int trackIndex);
+    [[nodiscard]] juce::Result previewTrackGain(int trackIndex, double gainDb);
+    [[nodiscard]] juce::Result previewTrackPan(int trackIndex, double pan);
+    [[nodiscard]] juce::Result endTrackMixGesture(int trackIndex);
     [[nodiscard]] juce::Result setTrackPlugin(int trackIndex,
                                                const PluginDescriptor&);
     [[nodiscard]] juce::Result setTrackPluginBypassed(int trackIndex, bool bypassed);
@@ -102,9 +120,22 @@ private:
     [[nodiscard]] juce::Result commitLiveTrackAudibility(Project previous,
                                                          int trackIndex,
                                                          bool solo);
+    void cancelTrackMixGesture();
     [[nodiscard]] PluginState* pluginForTrack(int trackIndex);
     [[nodiscard]] const PluginState* pluginForTrack(int trackIndex) const;
     void ensureTrackCount(int count);
+
+    struct ClipboardClip
+    {
+        ClipModel clip;
+        int relativeTrack = 0;
+        double relativeStartSeconds = 0.0;
+    };
+
+    [[nodiscard]] juce::Result fillClipboardFromClips(
+        const std::vector<juce::String>& clipIds);
+    [[nodiscard]] juce::Result fillClipboardFromTimeRange(
+        const ArrangementTimeSelection& selection);
 
     TracktionAdapter& tracktion;
     ProvenanceService& provenance;
@@ -112,5 +143,10 @@ private:
     std::optional<ProjectPaths> paths;
     std::vector<Project> undoHistory;
     std::vector<Project> redoHistory;
+    std::vector<ClipboardClip> clipboard;
+    int clipboardBaseTrack = 0;
+    double clipboardDurationSeconds = 0.0;
+    std::optional<Project> trackMixGestureBefore;
+    int trackMixGestureTrack = -1;
 };
 }
