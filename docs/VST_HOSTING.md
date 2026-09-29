@@ -42,6 +42,10 @@ Audio: source clips → arrangement trim/occlusion → track effect → gain/pan
 MIDI: beat-based notes → track instrument → gain/pan/mute/solo → master
 ```
 
+MIDI instrument tracks use the same live gain, pan, mute, solo, and meter path as
+Audio tracks once an instrument is loaded. Live plug-in parameter state is captured
+before editor close, arrangement rebuild, explicit save, and project reopen.
+
 Both live playback and offline stereo 24-bit WAV rendering use that graph. Normal
 Export then runs the unchanged mandatory C2PA pipeline: render, build claim, sign,
 embed, reopen, and validate. PR 008 does not describe the plug-in, its parameters,

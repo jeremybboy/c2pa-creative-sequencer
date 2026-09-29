@@ -1577,10 +1577,36 @@ void ArrangementView::pasteSelection()
 
 void ArrangementView::duplicateSelection()
 {
+    std::set<juce::String> existingIds;
+    for (const auto& track : snapshots)
+    {
+        for (const auto& clip : track.clips)
+            existingIds.insert(clip.id);
+        for (const auto& clip : track.midiClips)
+            existingIds.insert(clip.id);
+    }
     const auto result = timeSelection.isValid()
         ? audioEngine.duplicateTimeRange(timeSelection)
         : audioEngine.duplicateClips(selectedClipVector());
     applyEditResult(result, "Duplicated selection");
+    if (result.failed())
+        return;
+
+    selectedClipIds.clear();
+    for (const auto& track : snapshots)
+    {
+        for (const auto& clip : track.clips)
+            if (! existingIds.contains(clip.id))
+                selectedClipIds.insert(clip.id);
+        for (const auto& clip : track.midiClips)
+            if (! existingIds.contains(clip.id))
+                selectedClipIds.insert(clip.id);
+    }
+    clearTimeSelection();
+    for (auto& view : waveformViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
+    for (auto& view : midiClipViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
 }
 
 void ArrangementView::loopFromSelection()

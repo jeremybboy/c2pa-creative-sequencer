@@ -20,8 +20,8 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 - Create MIDI clips from an exact arrangement time selection and open a piano keyboard, absolute
   song-bar ruler, beat grid, and velocity lane.
 - Draw, select, move, resize, delete, and velocity-edit notes.
-- Copy, paste, and duplicate notes.
-- Move, trim, copy, paste, and duplicate MIDI clips in the arrangement.
+- Copy, paste, and duplicate notes; inserted notes become the active selection so repeated Command-D advances.
+- Move, trim, copy, paste, and duplicate MIDI clips in the arrangement; duplicated clips likewise become the active selection.
 - Provide live drag feedback and pointer-dependent trackpad pinch zoom for time or pitch range.
 - Show the arrangement playhead in the piano roll while transport crosses the open MIDI clip.
 
@@ -29,7 +29,7 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 
 - Allow one VST3 instrument on a MIDI track and schedule project MIDI notes into Tracktion.
 - Use a deterministic test synthesizer for realtime audible playback.
-- Persist instrument identity/state and keep existing Audio effects behavior unchanged.
+- Persist instrument identity/state, including live parameter changes across editor close, arrangement rebuild, save, and reopen, while keeping existing Audio effects behavior unchanged.
 - Render arranged instrument output through the normal offline audio mix and existing signed export.
 - Loading a different VST3 instrument replaces the track's single existing slot.
 

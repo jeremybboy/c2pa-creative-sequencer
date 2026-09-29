@@ -410,6 +410,19 @@ juce::Result TracktionAdapter::setTrackPlugin(int trackIndex,
         return juce::Result::fail("VST3 load failed: " + error);
     }
 
+    if (stateBase64.isNotEmpty())
+    {
+        juce::MemoryBlock restoredState;
+        if (! restoredState.fromBase64Encoding(stateBase64))
+        {
+            external->deleteFromParent();
+            return juce::Result::fail("Saved VST3 state is invalid");
+        }
+        if (auto* instance = external->getAudioPluginInstance())
+            instance->setStateInformation(restoredState.getData(),
+                                          static_cast<int>(restoredState.getSize()));
+    }
+
     external->setEnabled(! bypassed);
     edit->getTransport().ensureContextAllocated(true);
     return juce::Result::ok();
@@ -456,7 +469,16 @@ juce::Result TracktionAdapter::captureTrackPluginState(int trackIndex,
         return juce::Result::fail("Track has no loaded VST3");
 
     plugin->flushPluginStateToValueTree();
-    stateBase64 = plugin->state.getProperty("state").toString();
+    if (auto* instance = plugin->getAudioPluginInstance())
+    {
+        juce::MemoryBlock state;
+        instance->getStateInformation(state);
+        stateBase64 = state.toBase64Encoding();
+    }
+    else
+    {
+        stateBase64 = plugin->state.getProperty("state").toString();
+    }
     bypassed = ! plugin->isEnabled();
     missing = plugin->isMissing();
     return juce::Result::ok();

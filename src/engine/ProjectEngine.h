@@ -75,6 +75,7 @@ public:
     [[nodiscard]] juce::Result createProject(const juce::File& projectFolder,
                                              const juce::String& projectName);
     [[nodiscard]] juce::Result saveProject();
+    void captureLivePluginStates();
     [[nodiscard]] juce::Result openProject(const juce::File& projectFolder);
     void closeProject();
     void setBpm(double bpm);

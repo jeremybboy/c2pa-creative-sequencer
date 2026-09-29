@@ -101,9 +101,16 @@ int main()
     const auto duplicateId = tracks[1].clips[1].id;
     if (duplicateId == originalId || ! close(tracks[1].clips[1].startSeconds, 5.75))
         return fail(11, "duplicate identity or placement was incorrect");
+    if (engine.duplicateClips({ duplicateId }).failed())
+        return fail(11, "repeated duplicate failed");
+    tracks = engine.arrangementSnapshot();
+    if (tracks[1].clips.size() != 3
+        || ! close(tracks[1].clips[2].startSeconds, 7.25))
+        return fail(11, "repeated duplicate did not advance to the next section");
+    const auto repeatedDuplicateId = tracks[1].clips[2].id;
 
     if (engine.splitClip(originalId, 5.0).failed()
-        || engine.deleteClip(duplicateId).failed())
+        || engine.deleteClips({ duplicateId, repeatedDuplicateId }).failed())
         return fail(12, "split or delete failed");
     tracks = engine.arrangementSnapshot();
     if (tracks[1].clips.size() != 2)

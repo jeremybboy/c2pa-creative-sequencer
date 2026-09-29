@@ -13,13 +13,16 @@ PluginHost::PluginHost(TracktionAdapter& adapter, ProjectEngine& project,
       showEditorWindows(shouldShowEditorWindows)
 {
     registerCachedPlugins();
-    tracktion.setBeforeEditReplacement([this] { closeAllEditors(); });
+    tracktion.setBeforeEditReplacement([this]
+    {
+        closeAllEditors(false);
+    });
 }
 
 PluginHost::~PluginHost()
 {
     tracktion.setBeforeEditReplacement({});
-    closeAllEditors();
+    closeAllEditors(true);
 }
 
 const std::vector<PluginDescriptor>& PluginHost::availablePlugins() const noexcept
@@ -92,11 +95,14 @@ void PluginHost::registerCachedPlugins()
 
 void PluginHost::closeEditor(int trackIndex)
 {
-    windows.erase(trackIndex);
+    if (windows.erase(trackIndex) > 0)
+        (void) projectEngine.saveProject();
 }
 
-void PluginHost::closeAllEditors()
+void PluginHost::closeAllEditors(bool persistState)
 {
+    if (persistState && ! windows.empty())
+        (void) projectEngine.saveProject();
     windows.clear();
 }
 }

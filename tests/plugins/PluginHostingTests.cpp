@@ -1,6 +1,10 @@
 #include "engine/AudioEngine.h"
+#include "engine/ProjectEngine.h"
+#include "engine/TracktionAdapter.h"
 #include "export/RenderService.h"
+#include "plugins/PluginHost.h"
 #include "plugins/PluginScanner.h"
+#include "provenance/ProvenanceService.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -270,6 +274,42 @@ int main()
         || tracks[0].plugin->missing || tracks[0].plugin->bypassed)
         return fail(14, "VST3 identity/state was not restored after reopen");
 
+    c2paseq::TracktionAdapter stateAdapter;
+    c2paseq::ProvenanceService stateProvenance;
+    c2paseq::ProjectEngine stateProject(stateAdapter, stateProvenance);
+    c2paseq::PluginHost stateHost(stateAdapter, stateProject,
+                                  root.getChildFile("state-cache.xml"), false);
+    const auto stateProjectFolder = root.getChildFile("State Persistence.c2paseq");
+    if (stateHost.scanVst3(paths).failed()
+        || stateProject.createProject(stateProjectFolder, "State Persistence").failed()
+        || stateProject.importAudio(source, 0, 0.0).failed()
+        || stateHost.loadTrackPlugin(0, found->identifier).failed())
+        return fail(14, "could not create VST3 state persistence fixture");
+    const auto initialHostedState = savedPluginState(stateProjectFolder);
+    auto* stateInstance = stateAdapter.trackPluginInstance(0);
+    if (stateInstance == nullptr || stateInstance->getParameters().isEmpty())
+        return fail(14, "hosted VST3 parameter was unavailable");
+    stateInstance->getParameters().getUnchecked(0)->setValueNotifyingHost(0.8f);
+    if (std::abs(stateInstance->getParameters().getUnchecked(0)->getValue() - 0.8f) > 0.001f)
+        return fail(14, "hosted VST3 parameter did not accept a live edit");
+    if (stateProject.importAudio(source, 1, 0.0).failed())
+        return fail(14, "arrangement rebuild failed after VST3 parameter change");
+    const auto changedHostedState = savedPluginState(stateProjectFolder);
+    stateInstance = stateAdapter.trackPluginInstance(0);
+    const auto rebuiltValue = stateInstance != nullptr && ! stateInstance->getParameters().isEmpty()
+        ? stateInstance->getParameters().getUnchecked(0)->getValue() : -1.0f;
+    if (changedHostedState.isEmpty() || changedHostedState == initialHostedState)
+        return fail(14, "live VST3 parameter state was not captured before rebuild; value="
+            + juce::String(rebuiltValue, 3) + ", before="
+            + juce::String(initialHostedState.length()) + ", after="
+            + juce::String(changedHostedState.length()));
+    if (stateProject.openProject(stateProjectFolder).failed())
+        return fail(14, "saved VST3 parameter fixture could not reopen");
+    stateInstance = stateAdapter.trackPluginInstance(0);
+    if (stateInstance == nullptr || stateInstance->getParameters().isEmpty()
+        || std::abs(stateInstance->getParameters().getUnchecked(0)->getValue() - 0.8f) > 0.001f)
+        return fail(14, "saved VST3 parameter state was not restored after reopen");
+
     const auto missingProject = root.getChildFile("Missing Plugin.c2paseq");
     if (! project.copyDirectoryTo(missingProject)
         || ! pointSavedPluginAtMissingBundle(missingProject))
@@ -352,6 +392,18 @@ int main()
     if (! midiTrack.plugin.has_value() || midiTrack.plugin->identifier != synth->identifier
         || midiTrack.plugin->missing || midiTrack.plugin->bypassed)
         return fail(24, "MIDI track did not expose exactly one loaded instrument");
+    if (midiEngine.setTrackGain(midiTrackIndex, -6.0).failed()
+        || midiEngine.setTrackPan(midiTrackIndex, -0.25).failed()
+        || midiEngine.setTrackMute(midiTrackIndex, true).failed()
+        || midiEngine.setTrackMute(midiTrackIndex, false).failed()
+        || midiEngine.setTrackSolo(midiTrackIndex, true).failed()
+        || midiEngine.setTrackSolo(midiTrackIndex, false).failed()
+        || std::abs(midiEngine.transportSnapshot().positionSeconds - 0.5) > 0.02)
+        return fail(24, "MIDI instrument mixer controls failed or changed transport state");
+    midiTracks = midiEngine.arrangementSnapshot();
+    if (std::abs(midiTracks[static_cast<std::size_t>(midiTrackIndex)].gainDb + 6.0) > 0.001
+        || std::abs(midiTracks[static_cast<std::size_t>(midiTrackIndex)].pan + 0.25) > 0.001)
+        return fail(24, "MIDI instrument mixer values were not retained");
     if (midiEngine.setTrackPluginBypassed(midiTrackIndex, true).failed()
         || std::abs(midiEngine.transportSnapshot().positionSeconds - 0.5) > 0.02
         || midiEngine.setTrackPluginBypassed(midiTrackIndex, false).failed()

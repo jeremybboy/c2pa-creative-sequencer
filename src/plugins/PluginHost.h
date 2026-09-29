@@ -30,7 +30,7 @@ public:
 private:
     void registerCachedPlugins();
     void closeEditor(int trackIndex);
-    void closeAllEditors();
+    void closeAllEditors(bool persistState);
 
     TracktionAdapter& tracktion;
     ProjectEngine& projectEngine;

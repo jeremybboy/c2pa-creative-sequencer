@@ -64,6 +64,7 @@ private:
     std::vector<ArrangementMidiNoteSnapshot> noteClipboard;
     double clipboardSpanBeats = 0.0;
     double pasteCursorBeats = 0.0;
+    bool selectInsertedNotesOnNextUpdate = false;
     ArrangementMidiNoteSnapshot dragNote;
     std::optional<ArrangementMidiNoteSnapshot> dragPreview;
     DragMode dragMode = DragMode::none;
