@@ -3,6 +3,7 @@
 #include "engine/ProjectEngine.h"
 #include "engine/SampleAuditionPlayer.h"
 #include "export/ExportResult.h"
+#include "midi/ComputerKeyboardMapping.h"
 #include "timeline/TimelineGeometry.h"
 #include "timeline/ArrangementSelection.h"
 #include "ui/PlacesBrowser.h"
@@ -19,6 +20,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <map>
 #include <optional>
 #include <set>
 #include <thread>
@@ -45,6 +47,8 @@ public:
     void resized() override;
     void mouseMagnify(const juce::MouseEvent&, float scaleFactor) override;
     bool keyPressed(const juce::KeyPress&) override;
+    bool keyStateChanged(bool isKeyDown) override;
+    void focusLost(FocusChangeType) override;
     bool isInterestedInFileDrag(const juce::StringArray&) override;
     void filesDropped(const juce::StringArray&, int x, int y) override;
     bool isInterestedInDragSource(const SourceDetails&) override;
@@ -92,6 +96,12 @@ private:
     void openPianoRoll(const juce::String& clipId);
     void closePianoRoll();
     void refreshPianoRoll();
+    void selectTrackForInput(int trackIndex);
+    [[nodiscard]] int trackIndexForClip(const juce::String& clipId) const;
+    void setComputerKeyboardEnabled(bool enabled);
+    [[nodiscard]] bool handleComputerKeyboardKeyPress(const juce::KeyPress&);
+    void releaseComputerKeyboardNotes();
+    void allComputerKeyboardNotesOff();
     void selectAllClips();
     [[nodiscard]] std::vector<juce::String> selectedClipVector() const;
     [[nodiscard]] bool textEditorHasFocus() const;
@@ -150,6 +160,7 @@ private:
     IconButton zoomOut { "Zoom Out", IconButton::Icon::zoomOut };
     IconButton zoomIn { "Zoom In", IconButton::Icon::zoomIn };
     IconButton audioSettings { "Audio Settings", IconButton::Icon::audio };
+    IconButton computerKeyboard { "Computer MIDI Keyboard", IconButton::Icon::keyboard };
     juce::TextButton addTrackButton { "+ Track" };
     juce::Label position;
     juce::Label projectName;
@@ -158,6 +169,14 @@ private:
     std::array<int, 4> toolbarDividers {};
 
     std::set<juce::String> selectedClipIds;
+    struct ActiveComputerNote
+    {
+        int trackIndex = -1;
+        int noteNumber = -1;
+    };
+    std::map<int, ActiveComputerNote> activeComputerNotes;
+    int selectedTrackIndex = -1;
+    int computerKeyboardOctave = 0;
     ArrangementTimeSelection timeSelection;
     std::optional<double> insertionPointSeconds;
     std::optional<int> insertionPointTrack;

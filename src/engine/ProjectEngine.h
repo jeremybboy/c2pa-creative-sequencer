@@ -164,10 +164,11 @@ public:
     [[nodiscard]] std::vector<ArrangementTrackSnapshot> arrangementSnapshot() const;
 
 private:
-    [[nodiscard]] juce::Result rebuildEditFromProject();
+    [[nodiscard]] juce::Result rebuildEditFromProject(bool preserveTransport = true);
     [[nodiscard]] juce::Result commitMutation(Project previous);
     [[nodiscard]] juce::Result mutateProject(
         const std::function<juce::Result(Project&)>& mutation);
+    [[nodiscard]] juce::Result addTrackLive(TrackType type);
     [[nodiscard]] juce::Result commitLiveTrackAudibility(Project previous,
                                                          int trackIndex,
                                                          bool solo);

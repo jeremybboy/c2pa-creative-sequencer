@@ -66,6 +66,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/engine/SampleAuditionPlayer.h
     src/engine/TracktionAdapter.cpp
     src/engine/TracktionAdapter.h
+    src/midi/ComputerKeyboardMapping.cpp
+    src/midi/ComputerKeyboardMapping.h
     src/export/ExportController.cpp
     src/export/ExportController.h
     src/export/ExportResult.h
@@ -278,6 +280,8 @@ if(BUILD_TESTING)
         tests/engine/ArrangementRulesTests.cpp
         src/engine/ClipOcclusion.cpp
         src/engine/ClipOcclusion.h
+        src/midi/ComputerKeyboardMapping.cpp
+        src/midi/ComputerKeyboardMapping.h
         src/project/Project.h
         src/transport/ArrangementLoop.cpp
         src/transport/ArrangementLoop.h

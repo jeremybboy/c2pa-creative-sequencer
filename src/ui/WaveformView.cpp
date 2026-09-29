@@ -59,8 +59,12 @@ void WaveformView::paint(juce::Graphics& graphics)
     auto waveformBounds = bounds.reduced(8.0f).withTrimmedTop(18.0f);
     graphics.setColour(juce::Colour::fromRGB(224, 218, 207));
     if (thumbnail.getTotalLength() > 0.0)
-        thumbnail.drawChannels(graphics, waveformBounds.toNearestInt(), sourceOffset,
-                               sourceOffset + duration, 1.0f);
+    {
+        const auto displayedOffset = previewSourceOffset.value_or(sourceOffset);
+        const auto displayedDuration = previewDuration.value_or(duration);
+        thumbnail.drawChannels(graphics, waveformBounds.toNearestInt(), displayedOffset,
+                               displayedOffset + displayedDuration, 1.0f);
+    }
     else
         graphics.drawText("Building waveform...", waveformBounds,
                           juce::Justification::centred);
@@ -121,6 +125,20 @@ void WaveformView::mouseMove(const juce::MouseEvent& event)
 void WaveformView::setSelected(bool shouldBeSelected)
 {
     selected = shouldBeSelected;
+    repaint();
+}
+
+void WaveformView::setTrimPreview(double sourceOffsetSeconds, double lengthSeconds)
+{
+    previewSourceOffset = sourceOffsetSeconds;
+    previewDuration = std::max(0.001, lengthSeconds);
+    repaint();
+}
+
+void WaveformView::clearTrimPreview()
+{
+    previewSourceOffset.reset();
+    previewDuration.reset();
     repaint();
 }
 

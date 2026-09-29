@@ -1,4 +1,5 @@
 #include "engine/ClipOcclusion.h"
+#include "midi/ComputerKeyboardMapping.h"
 #include "transport/ArrangementLoop.h"
 #include "ui/ArrangementShortcuts.h"
 
@@ -119,7 +120,19 @@ int main()
             != ArrangementCommand::deleteClip)
         return fail(7, "arrangement keyboard mapping is incomplete");
 
+    using Keyboard = c2paseq::ComputerKeyboardMapping;
+    if (Keyboard::noteForKey('a', 0) != 48
+        || Keyboard::noteForKey('W', 0) != 49
+        || Keyboard::noteForKey('k', 0) != 60
+        || Keyboard::noteForKey('l', 1) != 74
+        || Keyboard::noteForKey('q', 0).has_value()
+        || ! Keyboard::isOctaveDownKey('z')
+        || ! Keyboard::isOctaveUpKey('X')
+        || Keyboard::clampOctaveOffset(-99) != Keyboard::minimumOctaveOffset
+        || Keyboard::clampOctaveOffset(99) != Keyboard::maximumOctaveOffset)
+        return fail(8, "computer MIDI keyboard mapping or octave limits are incorrect");
+
     std::cout << "arrangement rules: overlap priority, loop ranges, cross-track mixing, "
-                 "and shortcuts passed\n";
+                 "shortcuts, and computer MIDI keyboard mapping passed\n";
     return 0;
 }

@@ -18,6 +18,7 @@ public:
         zoomIn,
         zoomOut,
         audio,
+        keyboard,
         close
     };
 

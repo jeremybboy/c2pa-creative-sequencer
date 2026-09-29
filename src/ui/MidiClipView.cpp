@@ -28,14 +28,22 @@ void MidiClipView::paint(juce::Graphics& g)
                      juce::Justification::centredLeft, 1);
 
     auto noteArea = bounds.reduced(7.0f).withTrimmedTop(20.0f);
+    const auto displayedOffset = previewSourceOffsetBeats.value_or(0.0);
+    const auto displayedLength = std::max(0.001,
+        previewLengthBeats.value_or(clip.lengthBeats));
     constexpr auto lowPitch = 36;
     constexpr auto highPitch = 84;
     for (const auto& note : clip.notes)
     {
+        const auto visibleStart = std::max(note.startBeats, displayedOffset);
+        const auto visibleEnd = std::min(note.startBeats + note.durationBeats,
+                                         displayedOffset + displayedLength);
+        if (visibleEnd <= visibleStart)
+            continue;
         const auto x = noteArea.getX() + static_cast<float>(
-            note.startBeats / std::max(0.001, clip.lengthBeats)) * noteArea.getWidth();
+            (visibleStart - displayedOffset) / displayedLength) * noteArea.getWidth();
         const auto width = std::max(2.0f, static_cast<float>(
-            note.durationBeats / std::max(0.001, clip.lengthBeats)) * noteArea.getWidth());
+            (visibleEnd - visibleStart) / displayedLength) * noteArea.getWidth());
         const auto pitch = juce::jlimit(lowPitch, highPitch, note.noteNumber);
         const auto y = noteArea.getBottom() - static_cast<float>(pitch - lowPitch + 1)
             / static_cast<float>(highPitch - lowPitch + 1) * noteArea.getHeight();
@@ -88,6 +96,20 @@ void MidiClipView::mouseDoubleClick(const juce::MouseEvent&)
 void MidiClipView::setSelected(bool shouldBeSelected)
 {
     selected = shouldBeSelected;
+    repaint();
+}
+
+void MidiClipView::setTrimPreview(double sourceOffsetBeats, double lengthBeats)
+{
+    previewSourceOffsetBeats = sourceOffsetBeats;
+    previewLengthBeats = std::max(0.001, lengthBeats);
+    repaint();
+}
+
+void MidiClipView::clearTrimPreview()
+{
+    previewSourceOffsetBeats.reset();
+    previewLengthBeats.reset();
     repaint();
 }
 }

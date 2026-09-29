@@ -72,7 +72,9 @@ juce::Result PluginHost::removeTrackPlugin(int trackIndex)
     return projectEngine.removeTrackPlugin(trackIndex);
 }
 
-juce::Result PluginHost::openTrackPluginEditor(int trackIndex)
+juce::Result PluginHost::openTrackPluginEditor(
+    int trackIndex,
+    std::function<bool(const juce::KeyPress&)> keyHandler)
 {
     closeEditor(trackIndex);
     auto* instance = tracktion.trackPluginInstance(trackIndex);
@@ -82,7 +84,7 @@ juce::Result PluginHost::openTrackPluginEditor(int trackIndex)
     auto window = std::make_unique<PluginWindow>(*instance, [this, trackIndex]
     {
         closeEditor(trackIndex);
-    }, showEditorWindows);
+    }, std::move(keyHandler), showEditorWindows);
     windows[trackIndex] = std::move(window);
     return juce::Result::ok();
 }

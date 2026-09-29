@@ -4,6 +4,8 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include <optional>
+
 namespace c2paseq
 {
 class WaveformView final : public juce::Component,
@@ -31,6 +33,8 @@ public:
     void mouseMove(const juce::MouseEvent&) override;
     void setSelected(bool shouldBeSelected);
     void setTimeSelection(double startSeconds, double endSeconds, bool active);
+    void setTrimPreview(double sourceOffsetSeconds, double lengthSeconds);
+    void clearTrimPreview();
 
     [[nodiscard]] const juce::String& id() const noexcept { return identifier; }
     [[nodiscard]] int track() const noexcept { return trackNumber; }
@@ -59,6 +63,8 @@ private:
     double timelineStart = 0.0;
     double sourceOffset = 0.0;
     double duration = 0.0;
+    std::optional<double> previewSourceOffset;
+    std::optional<double> previewDuration;
     juce::Colour clipColour;
     ProvenanceStatus provenance = ProvenanceStatus::noCredentials;
     bool selected = false;

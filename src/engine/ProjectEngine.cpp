@@ -93,7 +93,7 @@ juce::Result ProjectEngine::createProject(const juce::File& projectFolder,
     midiClipboard.clear();
     trackMixGestureBefore.reset();
     trackMixGestureTrack = -1;
-    if (auto result = rebuildEditFromProject(); result.failed())
+    if (auto result = rebuildEditFromProject(false); result.failed())
     {
         closeProject();
         return result;
@@ -157,7 +157,7 @@ juce::Result ProjectEngine::openProject(const juce::File& projectFolder)
     midiClipboard.clear();
     trackMixGestureBefore.reset();
     trackMixGestureTrack = -1;
-    if (auto result = rebuildEditFromProject(); result.failed())
+    if (auto result = rebuildEditFromProject(false); result.failed())
     {
         closeProject();
         return result;
@@ -866,28 +866,12 @@ juce::Result ProjectEngine::splitClip(const juce::String& clipId,
 
 juce::Result ProjectEngine::addAudioTrack()
 {
-    return mutateProject([](Project& value)
-    {
-        TrackModel track;
-        track.id = juce::Uuid().toString();
-        track.name = nextTrackName(value, TrackType::audio);
-        track.type = TrackType::audio;
-        value.tracks.push_back(std::move(track));
-        return juce::Result::ok();
-    });
+    return addTrackLive(TrackType::audio);
 }
 
 juce::Result ProjectEngine::addMidiTrack()
 {
-    return mutateProject([](Project& value)
-    {
-        TrackModel track;
-        track.id = juce::Uuid().toString();
-        track.name = nextTrackName(value, TrackType::midi);
-        track.type = TrackType::midi;
-        value.tracks.push_back(std::move(track));
-        return juce::Result::ok();
-    });
+    return addTrackLive(TrackType::midi);
 }
 
 juce::Result ProjectEngine::deleteTrack(int trackIndex)
@@ -1267,10 +1251,11 @@ std::vector<ArrangementTrackSnapshot> ProjectEngine::arrangementSnapshot() const
     return snapshot;
 }
 
-juce::Result ProjectEngine::rebuildEditFromProject()
+juce::Result ProjectEngine::rebuildEditFromProject(bool preserveTransport)
 {
     if (! project.has_value() || ! paths.has_value())
         return juce::Result::fail("No project is open");
+    const auto previousTransport = tracktion.transportSnapshot();
     if (! tracktion.createProjectEdit(paths->arrangementEdit()))
         return juce::Result::fail("Could not rebuild Tracktion arrangement");
     tracktion.setBpm(project->bpm);
@@ -1340,6 +1325,12 @@ juce::Result ProjectEngine::rebuildEditFromProject()
     project->loopEndSeconds = range.endSeconds;
     tracktion.setLoopRange(range.startSeconds, range.endSeconds);
     tracktion.setLooping(project->looping);
+    if (preserveTransport)
+    {
+        tracktion.seek(previousTransport.positionSeconds);
+        if (previousTransport.playing)
+            tracktion.play();
+    }
     return juce::Result::ok();
 }
 
@@ -1375,6 +1366,36 @@ juce::Result ProjectEngine::mutateProject(
         return result;
     }
     return commitMutation(std::move(previous));
+}
+
+juce::Result ProjectEngine::addTrackLive(TrackType type)
+{
+    if (! project.has_value())
+        return juce::Result::fail("No project is open");
+
+    captureLivePluginStates();
+    auto previous = *project;
+    TrackModel track;
+    track.id = juce::Uuid().toString();
+    track.name = nextTrackName(*project, type);
+    track.type = type;
+    project->tracks.push_back(track);
+    const auto trackIndex = static_cast<int>(project->tracks.size()) - 1;
+
+    auto result = tracktion.setTrackProperties(trackIndex, track.name, track.gainDb,
+                                               track.pan, track.muted, track.soloed);
+    if (result.wasOk())
+        result = saveProject();
+    if (result.failed())
+    {
+        *project = std::move(previous);
+        (void) rebuildEditFromProject();
+        return result;
+    }
+
+    undoHistory.push_back(std::move(previous));
+    redoHistory.clear();
+    return juce::Result::ok();
 }
 
 juce::Result ProjectEngine::commitLiveTrackAudibility(Project previous,

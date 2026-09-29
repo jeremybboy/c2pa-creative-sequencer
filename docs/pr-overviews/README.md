@@ -9,7 +9,8 @@ snapshot retained to explain what was known when the overview was prepared.
 
 | PR | Overview | Status snapshot | Pull request |
 | --- | --- | --- | --- |
-| 019 | [VST3 instrument playback + render](PR-019-vst3-instrument-playback/implementation-brief.md) | Implementation and automated verification complete; Surge XT manual acceptance pending | [#19](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/19) |
+| 020 | [Explicit computer-keyboard monitoring](PR-020-computer-keyboard-monitoring/implementation-brief.md) · [Visual](PR-020-computer-keyboard-monitoring/overview.png) | Implementation and automated verification complete; human acceptance passed on 2026-09-29 | [#20](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/20) |
+| 019 | [VST3 instrument playback + render](PR-019-vst3-instrument-playback/implementation-brief.md) | Merged after manual acceptance on 2026-09-29 | [#19](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/19) |
 | 018 | [MIDI foundation + piano roll](PR-018-midi-foundation/implementation-brief.md) · [Visual](PR-018-midi-foundation/overview.png) · [Editable SVG](PR-018-midi-foundation/overview.svg) | Merged: MIDI model, arrangement editing, and piano roll; no instrument playback | [#18](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/18) |
 | 017 | [Arrangement Selection, Clipboard, Looping + Live Mixer Controls](PR-017-arrangement-editing/implementation-brief.md) · [Visual](PR-017-arrangement-editing/overview.png) | Local and GitHub automated acceptance passed; human acceptance pending on 2026-09-28 | [#17](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/17) |
 
