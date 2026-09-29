@@ -191,6 +191,11 @@ juce::Result AudioEngine::beginTrackMixGesture(int i) { return projectEngine.beg
 juce::Result AudioEngine::previewTrackGain(int i, double v) { return projectEngine.previewTrackGain(i, v); }
 juce::Result AudioEngine::previewTrackPan(int i, double v) { return projectEngine.previewTrackPan(i, v); }
 juce::Result AudioEngine::endTrackMixGesture(int i) { return projectEngine.endTrackMixGesture(i); }
+juce::Result AudioEngine::sendLiveMidiMessage(int i, const juce::MidiMessage& message)
+{
+    return tracktion.sendLiveMidiMessage(i, message);
+}
+void AudioEngine::allNotesOff(int i) { tracktion.allNotesOff(i); }
 const std::vector<PluginDescriptor>& AudioEngine::availableVst3Plugins() const noexcept
 {
     return pluginHost.availablePlugins();
@@ -213,9 +218,10 @@ juce::Result AudioEngine::setTrackPluginBypassed(int i, bool bypassed)
     return pluginHost.setTrackPluginBypassed(i, bypassed);
 }
 juce::Result AudioEngine::removeTrackPlugin(int i) { return pluginHost.removeTrackPlugin(i); }
-juce::Result AudioEngine::openTrackPluginEditor(int i)
+juce::Result AudioEngine::openTrackPluginEditor(
+    int i, std::function<bool(const juce::KeyPress&)> keyHandler)
 {
-    return pluginHost.openTrackPluginEditor(i);
+    return pluginHost.openTrackPluginEditor(i, std::move(keyHandler));
 }
 bool AudioEngine::undo() { return projectEngine.undo(); }
 bool AudioEngine::redo() { return projectEngine.redo(); }

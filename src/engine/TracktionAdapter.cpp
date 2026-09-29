@@ -370,6 +370,31 @@ juce::Result TracktionAdapter::setTrackPan(int trackIndex, double pan)
     return juce::Result::fail("Audio track has no pan control");
 }
 
+juce::Result TracktionAdapter::sendLiveMidiMessage(
+    int trackIndex, const juce::MidiMessage& message)
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("MIDI monitoring track was not found");
+    auto* instance = trackPluginInstance(trackIndex);
+    if (instance == nullptr || ! instance->acceptsMidi())
+        return juce::Result::fail("Selected MIDI track has no active instrument");
+
+    edit->getTransport().ensureContextAllocated();
+    tracks[trackIndex]->injectLiveMidiMessage(message, {});
+    return juce::Result::ok();
+}
+
+void TracktionAdapter::allNotesOff(int trackIndex)
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return;
+    tracks[trackIndex]->injectLiveMidiMessage(juce::MidiMessage::allNotesOff(1), {});
+}
+
 void TracktionAdapter::registerPluginDescription(const juce::PluginDescription& description)
 {
     engine.getPluginManager().knownPluginList.addType(description);

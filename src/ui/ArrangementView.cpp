@@ -147,6 +147,13 @@ public:
             && dragStartTime <= selection.endSeconds
             && dragStartTrack >= selection.firstTrack
             && dragStartTrack <= selection.lastTrack;
+        if (event.mods.isPopupMenu())
+        {
+            if (onCreateMidiClip)
+                onCreateMidiClip(dragStartTime, dragStartTrack, event.mods.isAltDown());
+            dragStartTrack = -1;
+            return;
+        }
         if (event.y < rulerHeight)
         {
             if (onBackgroundClick) onBackgroundClick();
@@ -178,14 +185,6 @@ public:
         else if (! clickedInsideSelection && onInsertionPoint)
             onInsertionPoint(dragStartTime, dragStartTrack, dragBypassSnap);
         dragStartTrack = -1;
-    }
-
-    void mouseDoubleClick(const juce::MouseEvent& event) override
-    {
-        if (event.y < rulerHeight || ! onCreateMidiClip)
-            return;
-        onCreateMidiClip(geometry.xToTime(static_cast<double>(event.x)),
-                         trackForY(event.y), event.mods.isAltDown());
     }
 
     void mouseWheelMove(const juce::MouseEvent& event,
@@ -377,6 +376,12 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     zoomOut.onClick = [this] { zoomBy(0.8, timelineBounds.getWidth() * 0.5); };
     zoomIn.onClick = [this] { zoomBy(1.25, timelineBounds.getWidth() * 0.5); };
     audioSettings.onClick = [this] { showAudioSettings(); };
+    computerKeyboard.setClickingTogglesState(true);
+    computerKeyboard.onClick = [this]
+    {
+        setComputerKeyboardEnabled(computerKeyboard.getToggleState());
+        grabKeyboardFocus();
+    };
     addTrackButton.onClick = [this] { showAddTrackMenu(); };
 
     undoButton.setTooltip("Undo (Command-Z)");
@@ -387,6 +392,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     zoomOut.setTooltip("Zoom out (Command-minus)");
     zoomIn.setTooltip("Zoom in (Command-plus)");
     audioSettings.setTooltip("Audio device settings");
+    computerKeyboard.setTooltip("Enable computer MIDI keyboard (A-L notes, Z/X octave)");
     addTrackButton.setTooltip("Add an Audio or MIDI track");
 
     position.setFont(juce::FontOptions(14.0f, juce::Font::bold));
@@ -408,11 +414,11 @@ ArrangementView::ArrangementView(AudioEngine& engine)
         layoutArrangement();
     };
 
-    const std::array<juce::Button*, 17> buttons {
+    const std::array<juce::Button*, 18> buttons {
         &newProject, &openProjectButton, &saveProjectButton, &exportButton,
         &credentialsButton, &signingButton, &audioSoftBindingButton, &fingerprintButton,
         &undoButton, &redoButton, &playPause, &stop, &loop,
-        &zoomOut, &zoomIn, &audioSettings, &addTrackButton
+        &zoomOut, &zoomIn, &audioSettings, &computerKeyboard, &addTrackButton
     };
     for (auto* button : buttons)
     {
@@ -425,6 +431,8 @@ ArrangementView::ArrangementView(AudioEngine& engine)
                                      juce::Colour::fromRGB(42, 139, 157));
     fingerprintButton.setColour(juce::TextButton::buttonOnColourId,
                                 juce::Colour::fromRGB(80, 125, 183));
+    computerKeyboard.setColour(juce::TextButton::buttonOnColourId,
+                               juce::Colour::fromRGB(197, 151, 49));
 
     addAndMakeVisible(browser);
     addAndMakeVisible(*timelineSurface);
@@ -448,6 +456,7 @@ ArrangementView::ArrangementView(AudioEngine& engine)
 
 ArrangementView::~ArrangementView()
 {
+    allComputerKeyboardNotesOff();
     exportCancellationRequested.store(true);
     if (exportThread.joinable()) exportThread.join();
     horizontalScroll.removeListener(this);
@@ -498,6 +507,7 @@ void ArrangementView::resized()
     placeButton(audioSoftBindingButton, 62); placeButton(fingerprintButton, 52);
 
     audioSettings.setBounds(top.removeFromRight(32).reduced(1));
+    computerKeyboard.setBounds(top.removeFromRight(32).reduced(1));
     zoomIn.setBounds(top.removeFromRight(30).reduced(1));
     zoomOut.setBounds(top.removeFromRight(30).reduced(1));
     addTrackButton.setBounds(top.removeFromRight(58).reduced(1));
@@ -567,7 +577,134 @@ bool ArrangementView::keyPressed(const juce::KeyPress& key)
             zoomBy(0.8, timelineBounds.getWidth() * 0.5); return true;
         case ArrangementCommand::none: break;
     }
+    if (computerKeyboard.getToggleState() && ! textEditorHasFocus()
+        && handleComputerKeyboardKeyPress(key))
+        return true;
     return false;
+}
+
+bool ArrangementView::keyStateChanged(bool isKeyDown)
+{
+    if (! computerKeyboard.getToggleState())
+        return false;
+    if (! isKeyDown)
+        allComputerKeyboardNotesOff();
+    else
+        releaseComputerKeyboardNotes();
+    return ! activeComputerNotes.empty();
+}
+
+void ArrangementView::focusLost(FocusChangeType)
+{
+    allComputerKeyboardNotesOff();
+}
+
+void ArrangementView::setComputerKeyboardEnabled(bool enabled)
+{
+    if (! enabled)
+        allComputerKeyboardNotesOff();
+    computerKeyboard.setToggleState(enabled, juce::dontSendNotification);
+    projectMessage = enabled
+        ? "Computer keyboard on | Select a MIDI track | A-L notes | Z/X octave"
+        : "Computer keyboard off";
+    refreshTransport();
+}
+
+bool ArrangementView::handleComputerKeyboardKeyPress(const juce::KeyPress& key)
+{
+    const auto modifiers = key.getModifiers();
+    if (modifiers.isCommandDown() || modifiers.isCtrlDown() || modifiers.isAltDown())
+        return false;
+
+    auto keyCode = key.getKeyCode();
+    if (keyCode >= 'A' && keyCode <= 'Z')
+        keyCode += 'a' - 'A';
+    if (ComputerKeyboardMapping::isOctaveDownKey(keyCode)
+        || ComputerKeyboardMapping::isOctaveUpKey(keyCode))
+    {
+        allComputerKeyboardNotesOff();
+        computerKeyboardOctave = ComputerKeyboardMapping::clampOctaveOffset(
+            computerKeyboardOctave
+                + (ComputerKeyboardMapping::isOctaveUpKey(keyCode) ? 1 : -1));
+        projectMessage = "Computer keyboard octave "
+            + juce::String(computerKeyboardOctave >= 0 ? "+" : "")
+            + juce::String(computerKeyboardOctave);
+        refreshTransport();
+        return true;
+    }
+
+    const auto note = ComputerKeyboardMapping::noteForKey(keyCode,
+                                                           computerKeyboardOctave);
+    if (! note.has_value())
+        return false;
+    if (activeComputerNotes.contains(keyCode))
+        return true;
+    if (! juce::isPositiveAndBelow(selectedTrackIndex,
+                                    static_cast<int>(snapshots.size()))
+        || snapshots[static_cast<std::size_t>(selectedTrackIndex)].type != TrackType::midi)
+    {
+        projectMessage = "Select a MIDI track before playing the computer keyboard";
+        refreshTransport();
+        return true;
+    }
+    const auto& target = snapshots[static_cast<std::size_t>(selectedTrackIndex)];
+    if (! target.plugin.has_value() || target.plugin->missing || target.plugin->bypassed)
+    {
+        projectMessage = "Load and enable an instrument on the selected MIDI track";
+        refreshTransport();
+        return true;
+    }
+
+    const auto result = audioEngine.sendLiveMidiMessage(selectedTrackIndex,
+        juce::MidiMessage::noteOn(1, *note, static_cast<juce::uint8>(100)));
+    if (result.failed())
+    {
+        projectMessage = "MIDI monitor error: " + result.getErrorMessage();
+        refreshTransport();
+        return true;
+    }
+    activeComputerNotes.emplace(keyCode, ActiveComputerNote { selectedTrackIndex, *note });
+    projectMessage = "Computer keyboard | " + target.name
+        + " | Note " + juce::MidiMessage::getMidiNoteName(*note, true, true, 3);
+    refreshTransport();
+    return true;
+}
+
+void ArrangementView::releaseComputerKeyboardNotes()
+{
+    for (auto iterator = activeComputerNotes.begin(); iterator != activeComputerNotes.end();)
+    {
+        const auto keyCode = iterator->first;
+        const auto isDown = juce::KeyPress::isKeyCurrentlyDown(keyCode)
+            || (keyCode >= 'a' && keyCode <= 'z'
+                && juce::KeyPress::isKeyCurrentlyDown(keyCode - ('a' - 'A')));
+        if (isDown)
+        {
+            ++iterator;
+            continue;
+        }
+        const auto active = iterator->second;
+        (void) audioEngine.sendLiveMidiMessage(active.trackIndex,
+            juce::MidiMessage::noteOff(1, active.noteNumber));
+        iterator = activeComputerNotes.erase(iterator);
+    }
+}
+
+void ArrangementView::allComputerKeyboardNotesOff()
+{
+    std::set<int> tracks;
+    for (const auto& [keyCode, active] : activeComputerNotes)
+    {
+        (void) keyCode;
+        tracks.insert(active.trackIndex);
+        (void) audioEngine.sendLiveMidiMessage(active.trackIndex,
+            juce::MidiMessage::noteOff(1, active.noteNumber));
+    }
+    if (selectedTrackIndex >= 0)
+        tracks.insert(selectedTrackIndex);
+    for (const auto trackIndex : tracks)
+        audioEngine.allNotesOff(trackIndex);
+    activeComputerNotes.clear();
 }
 
 bool ArrangementView::isInterestedInFileDrag(const juce::StringArray& files)
@@ -599,6 +736,13 @@ void ArrangementView::itemDropped(const SourceDetails& details)
 
 void ArrangementView::timerCallback()
 {
+    if (computerKeyboard.getToggleState())
+    {
+        if (textEditorHasFocus())
+            allComputerKeyboardNotesOff();
+        else
+            releaseComputerKeyboardNotes();
+    }
     if (sampleAudition.currentFile() != juce::File() && ! sampleAudition.isPlaying())
         stopSampleAudition("Preview finished");
     refreshTransport();
@@ -615,7 +759,13 @@ void ArrangementView::refreshTrackMeters()
     {
         const auto peak = audioEngine.trackLevelSnapshot(static_cast<int>(index));
         const auto& track = snapshots[index];
-        const auto audible = playing && ! track.muted && (! anySolo || track.soloed);
+        const auto liveInput = std::any_of(activeComputerNotes.begin(),
+            activeComputerNotes.end(), [index](const auto& entry)
+            {
+                return entry.second.trackIndex == static_cast<int>(index);
+            });
+        const auto audible = (playing || liveInput) && ! track.muted
+            && (! anySolo || track.soloed);
         trackHeaders[index]->setMeterPeak(peak, audible);
     }
 }
@@ -643,6 +793,7 @@ void ArrangementView::refreshTransport()
     exportButton.setEnabled(audioEngine.hasProject());
     loop.setEnabled(audioEngine.hasProject());
     addTrackButton.setEnabled(audioEngine.hasProject());
+    computerKeyboard.setEnabled(audioEngine.hasProject() && ! exportInProgress);
     const auto oneAudioClipSelected = selectedClipIds.size() == 1
         && std::any_of(snapshots.begin(), snapshots.end(), [this](const auto& track)
         {
@@ -663,6 +814,8 @@ void ArrangementView::refreshTransport()
 
 void ArrangementView::createProject()
 {
+    allComputerKeyboardNotesOff();
+    selectedTrackIndex = -1;
     fileChooser = std::make_unique<juce::FileChooser>("Create Project",
         juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
             .getChildFile("Untitled Project.c2paseq"), "*.c2paseq");
@@ -683,6 +836,8 @@ void ArrangementView::createProject()
 
 void ArrangementView::openProject()
 {
+    allComputerKeyboardNotesOff();
+    selectedTrackIndex = -1;
     fileChooser = std::make_unique<juce::FileChooser>("Open Project",
         juce::File::getSpecialLocation(juce::File::userDocumentsDirectory), "*.c2paseq");
     fileChooser->launchAsync(juce::FileBrowserComponent::openMode
@@ -835,6 +990,8 @@ void ArrangementView::completeBackgroundExport(ExportResult result)
 
 void ArrangementView::setExportInProgress(bool active)
 {
+    if (active)
+        allComputerKeyboardNotesOff();
     exportInProgress = active;
     if (active) stopTimer(); else startTimerHz(30);
     exportButton.setButtonText(active ? "Cancel" : "Export");
@@ -850,6 +1007,7 @@ void ArrangementView::setExportInProgress(bool active)
                              static_cast<juce::Component*>(&playPause),
                              static_cast<juce::Component*>(&stop),
                              static_cast<juce::Component*>(&loop),
+                             static_cast<juce::Component*>(&computerKeyboard),
                              static_cast<juce::Component*>(&bpm) })
         component->setEnabled(! active);
     browser.setEnabled(! active);
@@ -1053,6 +1211,8 @@ void ArrangementView::addTrack(TrackType type)
                                                 : audioEngine.addAudioTrack();
     applyEditResult(result, type == TrackType::midi ? "Added MIDI track"
                                                      : "Added audio track");
+    if (result.wasOk() && ! snapshots.empty())
+        selectTrackForInput(static_cast<int>(snapshots.size()) - 1);
 }
 
 void ArrangementView::requestDeleteTrack(int trackIndex)
@@ -1105,13 +1265,22 @@ void ArrangementView::requestDeleteTrack(int trackIndex)
 
 void ArrangementView::deleteTrack(int trackIndex)
 {
+    allComputerKeyboardNotesOff();
     if (juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
     {
         const auto& deleted = snapshots[static_cast<std::size_t>(trackIndex)];
         for (const auto& clip : deleted.clips)
             selectedClipIds.erase(clip.id);
     }
-    applyEditResult(audioEngine.deleteTrack(trackIndex), "Deleted track");
+    const auto result = audioEngine.deleteTrack(trackIndex);
+    if (result.wasOk())
+    {
+        if (selectedTrackIndex == trackIndex)
+            selectedTrackIndex = -1;
+        else if (selectedTrackIndex > trackIndex)
+            --selectedTrackIndex;
+    }
+    applyEditResult(result, "Deleted track");
 }
 
 void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files, int x, int y)
@@ -1154,6 +1323,9 @@ void ArrangementView::rebuildArrangement()
     midiClipViews.clear();
     trackHeaders.clear();
     snapshots = audioEngine.arrangementSnapshot();
+    if (! juce::isPositiveAndBelow(selectedTrackIndex,
+                                    static_cast<int>(snapshots.size())))
+        selectedTrackIndex = -1;
 
     for (std::size_t trackIndex = 0; trackIndex < snapshots.size(); ++trackIndex)
     {
@@ -1164,6 +1336,8 @@ void ArrangementView::rebuildArrangement()
                          snapshots[trackIndex].soloed, snapshots[trackIndex].type, colour);
         header->setPluginState(snapshots[trackIndex].plugin,
                                audioEngine.availableVst3Plugins());
+        header->setSelectedForInput(static_cast<int>(trackIndex) == selectedTrackIndex);
+        header->onSelected = [this](int index) { selectTrackForInput(index); };
         header->onNameChanged = [this](int index, const auto& name)
         {
             deferTrackEdit([index, name](AudioEngine& engine)
@@ -1213,23 +1387,34 @@ void ArrangementView::rebuildArrangement()
         header->onLocatePlugin = [this] { locatePlugin(); };
         header->onLoadPlugin = [this](int index, const auto& identifier)
         {
+            allComputerKeyboardNotesOff();
+            selectTrackForInput(index);
             applyEditResult(audioEngine.loadTrackPlugin(index, identifier),
                             "Loaded VST3");
         };
         header->onOpenPlugin = [this](int index)
         {
-            const auto result = audioEngine.openTrackPluginEditor(index);
+            selectTrackForInput(index);
+            const auto result = audioEngine.openTrackPluginEditor(index,
+                [safe = juce::Component::SafePointer<ArrangementView>(this)](
+                    const juce::KeyPress& key)
+                {
+                    return safe != nullptr && safe->computerKeyboard.getToggleState()
+                        && safe->handleComputerKeyboardKeyPress(key);
+                });
             projectMessage = result.wasOk() ? "Opened VST3 editor"
                                              : "VST3 error: " + result.getErrorMessage();
             refreshTransport();
         };
         header->onBypassPlugin = [this](int index, bool bypassed)
         {
+            allComputerKeyboardNotesOff();
             applyEditResult(audioEngine.setTrackPluginBypassed(index, bypassed),
                             bypassed ? "Bypassed VST3" : "Enabled VST3");
         };
         header->onRemovePlugin = [this](int index)
         {
+            allComputerKeyboardNotesOff();
             applyEditResult(audioEngine.removeTrackPlugin(index), "Removed VST3");
         };
         header->onDeleteTrack = [this](int index) { requestDeleteTrack(index); };
@@ -1423,12 +1608,44 @@ void ArrangementView::selectClip(const juce::String& id)
     if (id.isNotEmpty())
         selectedClipIds.insert(id);
     if (id.isNotEmpty())
+    {
         clearTimeSelection();
+        selectTrackForInput(trackIndexForClip(id));
+    }
     for (auto& view : waveformViews)
         view->setSelected(selectedClipIds.contains(view->id()));
     for (auto& view : midiClipViews)
         view->setSelected(selectedClipIds.contains(view->id()));
     grabKeyboardFocus();
+}
+
+int ArrangementView::trackIndexForClip(const juce::String& clipId) const
+{
+    for (std::size_t trackIndex = 0; trackIndex < snapshots.size(); ++trackIndex)
+    {
+        const auto& track = snapshots[trackIndex];
+        if (std::any_of(track.clips.begin(), track.clips.end(),
+                [&](const auto& clip) { return clip.id == clipId; })
+            || std::any_of(track.midiClips.begin(), track.midiClips.end(),
+                [&](const auto& clip) { return clip.id == clipId; }))
+            return static_cast<int>(trackIndex);
+    }
+    return -1;
+}
+
+void ArrangementView::selectTrackForInput(int trackIndex)
+{
+    if (! juce::isPositiveAndBelow(trackIndex, static_cast<int>(snapshots.size())))
+        trackIndex = -1;
+    if (selectedTrackIndex != trackIndex)
+        allComputerKeyboardNotesOff();
+    selectedTrackIndex = trackIndex;
+    for (std::size_t index = 0; index < trackHeaders.size(); ++index)
+        trackHeaders[index]->setSelectedForInput(static_cast<int>(index) == selectedTrackIndex);
+    if (selectedTrackIndex >= 0)
+        projectMessage = "Selected track: "
+            + snapshots[static_cast<std::size_t>(selectedTrackIndex)].name;
+    refreshTransport();
 }
 
 void ArrangementView::showMidiClipCreationMenu(double seconds, int trackIndex)
@@ -1444,7 +1661,7 @@ void ArrangementView::showMidiClipCreationMenu(double seconds, int trackIndex)
         || seconds > timeSelection.endSeconds || trackIndex < timeSelection.firstTrack
         || trackIndex > timeSelection.lastTrack)
     {
-        projectMessage = "Drag a time selection on the MIDI lane, then double-click it";
+        projectMessage = "Drag a time selection on the MIDI lane, then right-click it";
         refreshTransport();
         return;
     }
@@ -1663,7 +1880,11 @@ void ArrangementView::setTimeSelection(ArrangementTimeSelection selection)
 {
     timeSelection = selection;
     if (timeSelection.isValid())
+    {
         selectedClipIds.clear();
+        if (timeSelection.firstTrack == timeSelection.lastTrack)
+            selectTrackForInput(timeSelection.firstTrack);
+    }
     for (auto& view : waveformViews)
     {
         view->setSelected(selectedClipIds.contains(view->id()));
@@ -1710,18 +1931,37 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
         }
         auto bounds = view.gestureBounds();
         if (mode == WaveformView::DragMode::move)
+        {
+            view.clearTrimPreview();
             bounds.translate(deltaX, deltaY);
+        }
         else if (mode == WaveformView::DragMode::trimStart)
         {
-            const auto change = juce::jlimit(-bounds.getX(), bounds.getWidth() - 6, deltaX);
-            bounds.setBounds(bounds.getX() + change, bounds.getY(),
-                             bounds.getWidth() - change, bounds.getHeight());
+            const auto changeSeconds = juce::jlimit(
+                std::max(-view.offset(), -view.start()), view.length() - 0.05,
+                deltaX / geometry.pixelsPerSecond);
+            const auto changePixels = juce::roundToInt(
+                changeSeconds * geometry.pixelsPerSecond);
+            bounds.setBounds(bounds.getX() + changePixels, bounds.getY(),
+                             std::max(6, bounds.getWidth() - changePixels),
+                             bounds.getHeight());
+            view.setTrimPreview(view.offset() + changeSeconds,
+                                view.length() - changeSeconds);
         }
         else
-            bounds.setWidth(std::max(6, bounds.getWidth() + deltaX));
+        {
+            const auto maxLength = std::max(0.05, view.sourceLength() - view.offset());
+            const auto previewLength = juce::jlimit(0.05, maxLength,
+                view.length() + deltaX / geometry.pixelsPerSecond);
+            bounds.setWidth(std::max(6, juce::roundToInt(
+                previewLength * geometry.pixelsPerSecond)));
+            view.setTrimPreview(view.offset(), previewLength);
+        }
         view.setBounds(bounds);
         return;
     }
+
+    view.clearTrimPreview();
 
     const auto deltaSeconds = deltaX / geometry.pixelsPerSecond;
     if (mode == WaveformView::DragMode::selectTime)
@@ -1780,18 +2020,41 @@ void ArrangementView::handleMidiClipGesture(MidiClipView& view,
     {
         auto bounds = view.gestureBounds();
         if (mode == MidiClipView::DragMode::move)
+        {
+            view.clearTrimPreview();
             bounds.translate(deltaX, deltaY);
+        }
         else if (mode == MidiClipView::DragMode::trimStart)
         {
-            const auto change = juce::jlimit(-bounds.getX(), bounds.getWidth() - 6, deltaX);
-            bounds.setBounds(bounds.getX() + change, bounds.getY(),
-                             bounds.getWidth() - change, bounds.getHeight());
+            const auto beatDelta = deltaX / geometry.pixelsPerSecond
+                / geometry.beatSeconds();
+            const auto end = view.startBeats() + view.lengthBeats();
+            const auto previewStart = juce::jlimit(0.0, end - 0.25,
+                                                   view.startBeats() + beatDelta);
+            const auto sourceOffset = previewStart - view.startBeats();
+            const auto previewLength = end - previewStart;
+            const auto changePixels = juce::roundToInt(sourceOffset
+                * geometry.beatSeconds() * geometry.pixelsPerSecond);
+            bounds.setBounds(bounds.getX() + changePixels, bounds.getY(),
+                             std::max(6, bounds.getWidth() - changePixels),
+                             bounds.getHeight());
+            view.setTrimPreview(sourceOffset, previewLength);
         }
         else
-            bounds.setWidth(std::max(6, bounds.getWidth() + deltaX));
+        {
+            const auto beatDelta = deltaX / geometry.pixelsPerSecond
+                / geometry.beatSeconds();
+            const auto previewLength = std::max(0.25,
+                view.lengthBeats() + beatDelta);
+            bounds.setWidth(std::max(6, juce::roundToInt(previewLength
+                * geometry.beatSeconds() * geometry.pixelsPerSecond)));
+            view.setTrimPreview(0.0, previewLength);
+        }
         view.setBounds(bounds);
         return;
     }
+
+    view.clearTrimPreview();
 
     const auto deltaBeats = deltaX / geometry.pixelsPerSecond / geometry.beatSeconds();
     const auto snap = [bypassSnap](double beats)

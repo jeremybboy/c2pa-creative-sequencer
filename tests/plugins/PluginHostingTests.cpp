@@ -224,13 +224,21 @@ int main()
         return fail(6, "serialized VST3 parameter state was not restored");
 
     bool editorCloseRequested = false;
+    bool editorKeyReceived = false;
     {
         c2paseq::PluginWindow editorWindow(*instance,
-            [&editorCloseRequested] { editorCloseRequested = true; }, false);
+            [&editorCloseRequested] { editorCloseRequested = true; },
+            [&editorKeyReceived](const juce::KeyPress& key)
+            {
+                editorKeyReceived = key.getKeyCode() == 'a';
+                return editorKeyReceived;
+            }, false);
+        if (! editorWindow.keyPressed(juce::KeyPress('a')))
+            return fail(7, "VST3 editor did not forward computer-keyboard input");
         editorWindow.closeButtonPressed();
     }
-    if (! editorCloseRequested)
-        return fail(7, "VST3 editor close did not request ownership release");
+    if (! editorCloseRequested || ! editorKeyReceived)
+        return fail(7, "VST3 editor lifecycle or key forwarding failed");
 
     c2paseq::AudioEngine engine({}, cache, false);
     if (auto result = engine.scanVst3Plugins(paths); result.failed())
@@ -392,6 +400,16 @@ int main()
     if (! midiTrack.plugin.has_value() || midiTrack.plugin->identifier != synth->identifier
         || midiTrack.plugin->missing || midiTrack.plugin->bypassed)
         return fail(24, "MIDI track did not expose exactly one loaded instrument");
+    if (midiEngine.sendLiveMidiMessage(0,
+            juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100))).wasOk()
+        || midiEngine.sendLiveMidiMessage(midiTrackIndex,
+            juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100))).failed()
+        || std::abs(midiEngine.transportSnapshot().positionSeconds - 0.5) > 0.02)
+        return fail(24, "live MIDI monitoring routing failed or changed transport state");
+    if (midiEngine.sendLiveMidiMessage(midiTrackIndex,
+            juce::MidiMessage::noteOff(1, 60)).failed())
+        return fail(24, "live MIDI note-off routing failed");
+    midiEngine.allNotesOff(midiTrackIndex);
     if (midiEngine.setTrackGain(midiTrackIndex, -6.0).failed()
         || midiEngine.setTrackPan(midiTrackIndex, -0.25).failed()
         || midiEngine.setTrackMute(midiTrackIndex, true).failed()

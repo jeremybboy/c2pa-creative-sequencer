@@ -1,8 +1,8 @@
 # MIDI v1 staged sequence
 
-PR 018 delivered the MIDI data, arrangement, and piano-roll foundation. PR 019 is the separately
-reviewable instrument-playback and rendering slice. Later input and recording work remains separate
-so each dependency can be built, tested, and accepted before the next begins.
+PR 018 delivered the MIDI data, arrangement, and piano-roll foundation. PR 019 delivered the
+instrument-playback and rendering slice. PR 020 is the separately reviewable live computer-keyboard
+monitoring slice; recording remains separate so it cannot be confused with transient monitoring.
 
 Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next authorized checkpoint;
 **PLANNED** = not implemented and must not be presented as working.
@@ -25,7 +25,7 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 - Provide live drag feedback and pointer-dependent trackpad pinch zoom for time or pitch range.
 - Show the arrangement playhead in the piano roll while transport crosses the open MIDI clip.
 
-## Checkpoint 3 — PR 019 VST3 Instrument Playback + Rendering — CURRENT
+## Checkpoint 3 — PR 019 VST3 Instrument Playback + Rendering — COMPLETE
 
 - Allow one VST3 instrument on a MIDI track and schedule project MIDI notes into Tracktion.
 - Use a deterministic test synthesizer for realtime audible playback.
@@ -33,11 +33,14 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 - Render arranged instrument output through the normal offline audio mix and existing signed export.
 - Loading a different VST3 instrument replaces the track's single existing slot.
 
-## Checkpoint 4 — Live Laptop Keyboard + Monitoring — PLANNED
+## Checkpoint 4 — PR 020 Live Computer Keyboard + Monitoring — CURRENT
 
-- Map laptop-keyboard input to MIDI note on/off with octave controls.
-- Route live notes to the selected or armed MIDI track while transport runs.
-- Add focus guards, stuck-note prevention, and all-notes-off safety.
+- Require explicit activation through the toolbar keyboard button; selecting a MIDI track alone does
+  not start listening.
+- Map A–L rows to MIDI note on/off events and use Z/X for octave changes.
+- Route transient live notes to the selected MIDI track's single enabled VST3 instrument whether the
+  transport is stopped or running, without writing notes or moving transport.
+- Stop notes on key release, focus loss, track/instrument changes, export, and keyboard deactivation.
 
 ## Checkpoint 5 — MIDI Recording — PLANNED
 
@@ -46,4 +49,4 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 - Support immediate playback, note editing, and save/reopen.
 
 Audio recording, external MIDI hardware, tempo maps, CLAP, MPE, automation, warping, time
-stretching, advanced routing, and full-DAW expansion remain outside PR 018.
+stretching, advanced routing, and full-DAW expansion remain outside MIDI v1.

@@ -106,6 +106,19 @@ void IconButton::drawIcon(juce::Graphics& g, juce::Rectangle<float> area,
                         area.getHeight() - 6.0f, -0.8f, 0.8f, true);
             g.strokePath(path, juce::PathStrokeType(1.5f));
             break;
+        case Icon::keyboard:
+        {
+            const auto keys = area.reduced(1.0f);
+            g.drawRoundedRectangle(keys, 1.5f, 1.5f);
+            const auto whiteWidth = keys.getWidth() / 7.0f;
+            for (int index = 1; index < 7; ++index)
+                g.drawVerticalLine(static_cast<int>(keys.getX() + whiteWidth * index),
+                                   keys.getY(), keys.getBottom());
+            for (const auto index : { 1, 2, 4, 5, 6 })
+                g.fillRect(keys.getX() + whiteWidth * index - whiteWidth * 0.24f,
+                           keys.getY(), whiteWidth * 0.48f, keys.getHeight() * 0.58f);
+            break;
+        }
         case Icon::close:
             g.drawLine(area.getX() + 2.0f, area.getY() + 2.0f,
                        area.getRight() - 2.0f, area.getBottom() - 2.0f, 1.8f);

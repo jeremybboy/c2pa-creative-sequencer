@@ -4,6 +4,7 @@ namespace c2paseq
 {
 TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
 {
+    addMouseListener(this, true);
     number.setFont(juce::FontOptions(11.0f, juce::Font::bold));
     number.setJustificationType(juce::Justification::centred);
     number.setColour(juce::Label::textColourId, juce::Colour::fromRGB(179, 186, 191));
@@ -143,6 +144,20 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     addAndMakeVisible(panControl);
 }
 
+void TrackHeaderView::setSelectedForInput(bool selected)
+{
+    if (selectedForInput == selected)
+        return;
+    selectedForInput = selected;
+    repaint();
+}
+
+void TrackHeaderView::mouseDown(const juce::MouseEvent&)
+{
+    if (onSelected)
+        onSelected(trackIndex);
+}
+
 void TrackHeaderView::setPluginState(const std::optional<TrackPluginSnapshot>& plugin,
                                      const std::vector<PluginDescriptor>& plugins)
 {
@@ -207,6 +222,11 @@ void TrackHeaderView::paint(juce::Graphics& g)
     g.fillRect(0, 0, 4, getHeight());
     g.setColour(juce::Colour::fromRGB(75, 80, 85));
     g.drawHorizontalLine(getHeight() - 1, 0.0f, static_cast<float>(getWidth()));
+    if (selectedForInput)
+    {
+        g.setColour(accent.brighter(0.25f));
+        g.drawRect(getLocalBounds().reduced(2), 2);
+    }
 
     g.setColour(juce::Colour::fromRGB(31, 33, 35));
     g.fillRoundedRectangle(meterBounds.toFloat(), 2.0f);

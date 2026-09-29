@@ -4,6 +4,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <optional>
+
 namespace c2paseq
 {
 class MidiClipView final : public juce::Component
@@ -20,6 +22,8 @@ public:
     void mouseMove(const juce::MouseEvent&) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void setSelected(bool);
+    void setTrimPreview(double sourceOffsetBeats, double lengthBeats);
+    void clearTrimPreview();
 
     [[nodiscard]] const juce::String& id() const noexcept { return clip.id; }
     [[nodiscard]] int track() const noexcept { return trackNumber; }
@@ -36,6 +40,8 @@ private:
     int trackNumber = 0;
     juce::Colour clipColour;
     bool selected = false;
+    std::optional<double> previewSourceOffsetBeats;
+    std::optional<double> previewLengthBeats;
     DragMode dragMode = DragMode::move;
     juce::Rectangle<int> dragStartBounds;
 };

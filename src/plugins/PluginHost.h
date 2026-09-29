@@ -25,7 +25,9 @@ public:
     [[nodiscard]] juce::Result loadTrackPlugin(int trackIndex, const juce::String& identifier);
     [[nodiscard]] juce::Result setTrackPluginBypassed(int trackIndex, bool bypassed);
     [[nodiscard]] juce::Result removeTrackPlugin(int trackIndex);
-    [[nodiscard]] juce::Result openTrackPluginEditor(int trackIndex);
+    [[nodiscard]] juce::Result openTrackPluginEditor(
+        int trackIndex,
+        std::function<bool(const juce::KeyPress&)> keyHandler = {});
 
 private:
     void registerCachedPlugins();

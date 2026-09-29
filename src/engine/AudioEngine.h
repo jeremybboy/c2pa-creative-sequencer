@@ -91,13 +91,17 @@ public:
     [[nodiscard]] juce::Result previewTrackGain(int, double);
     [[nodiscard]] juce::Result previewTrackPan(int, double);
     [[nodiscard]] juce::Result endTrackMixGesture(int);
+    [[nodiscard]] juce::Result sendLiveMidiMessage(int trackIndex,
+                                                   const juce::MidiMessage&);
+    void allNotesOff(int trackIndex);
     [[nodiscard]] const std::vector<PluginDescriptor>& availableVst3Plugins() const noexcept;
     [[nodiscard]] juce::Result scanVst3Plugins(const juce::FileSearchPath& paths = {});
     [[nodiscard]] juce::Result scanVst3PluginBundle(const juce::File& bundle);
     [[nodiscard]] juce::Result loadTrackPlugin(int, const juce::String& identifier);
     [[nodiscard]] juce::Result setTrackPluginBypassed(int, bool);
     [[nodiscard]] juce::Result removeTrackPlugin(int);
-    [[nodiscard]] juce::Result openTrackPluginEditor(int);
+    [[nodiscard]] juce::Result openTrackPluginEditor(
+        int, std::function<bool(const juce::KeyPress&)> keyHandler = {});
     [[nodiscard]] bool undo();
     [[nodiscard]] bool redo();
     [[nodiscard]] bool canUndo() const noexcept;

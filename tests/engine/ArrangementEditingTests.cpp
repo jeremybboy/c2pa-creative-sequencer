@@ -135,6 +135,12 @@ int main()
     const auto beforeAudibilityChange = engine.transportSnapshot();
     if (! beforeAudibilityChange.playing || beforeAudibilityChange.positionSeconds < 0.49)
         return fail(14, "transport test could not start playback from the test position");
+    if (engine.trimClip(originalId, 4.25, 0.25, 0.75).failed())
+        return fail(14, "live clip edit failed");
+    juce::Thread::sleep(100);
+    const auto afterClipEdit = engine.transportSnapshot();
+    if (! afterClipEdit.playing || afterClipEdit.positionSeconds < 0.49)
+        return fail(14, "editing a clip stopped playback or reset the playhead");
     if (engine.setTrackMute(1, true).failed())
         return fail(14, "live mute failed");
     const auto afterMute = engine.transportSnapshot();
@@ -215,8 +221,15 @@ int main()
         || ! close(right.lengthSeconds, 0.75))
         return fail(19, "split clip timing or source offsets did not survive reopen");
 
+    engine.seek(0.5);
+    engine.play();
     if (engine.addAudioTrack().failed())
         return fail(20, "could not add an audio track");
+    juce::Thread::sleep(100);
+    const auto afterAudioTrackAdd = engine.transportSnapshot();
+    if (! afterAudioTrackAdd.playing || afterAudioTrackAdd.positionSeconds < 0.49)
+        return fail(20, "adding an audio track stopped playback or reset the playhead");
+    engine.pause();
     tracks = engine.arrangementSnapshot();
     if (tracks.size() != 5 || tracks.back().name != "Audio 5")
         return fail(21, "added track did not receive stable default state");
@@ -241,8 +254,15 @@ int main()
         || engine.deleteAudioTrack(99).wasOk())
         return fail(27, "invalid track deletion changed the arrangement");
 
+    engine.seek(0.5);
+    engine.play();
     if (engine.addMidiTrack().failed())
         return fail(28, "could not add a MIDI track");
+    juce::Thread::sleep(100);
+    const auto afterMidiTrackAdd = engine.transportSnapshot();
+    if (! afterMidiTrackAdd.playing || afterMidiTrackAdd.positionSeconds < 0.49)
+        return fail(28, "adding a MIDI track stopped playback or reset the playhead");
+    engine.pause();
     tracks = engine.arrangementSnapshot();
     if (tracks.size() != 5 || tracks.back().type != c2paseq::TrackType::midi
         || tracks.back().name != "MIDI 1" || ! tracks.back().clips.empty())
