@@ -1210,6 +1210,7 @@ void ArrangementView::rebuildArrangement()
             endTrackMixGesture(index, "Changed track pan");
         };
         header->onScanPlugins = [this] { scanPlugins(); };
+        header->onLocatePlugin = [this] { locatePlugin(); };
         header->onLoadPlugin = [this](int index, const auto& identifier)
         {
             applyEditResult(audioEngine.loadTrackPlugin(index, identifier),
@@ -1286,6 +1287,31 @@ void ArrangementView::scanPlugins()
             + " plug-ins cached"
         : "VST3 scan error: " + result.getErrorMessage();
     rebuildArrangement();
+}
+
+void ArrangementView::locatePlugin()
+{
+    const auto initialFolder = juce::File("/Library/Audio/Plug-Ins/VST3");
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Locate a VST3 plug-in", initialFolder, "*.vst3");
+    fileChooser->launchAsync(
+        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [safe = juce::Component::SafePointer<ArrangementView>(this)](const juce::FileChooser& chooser)
+        {
+            if (safe == nullptr)
+                return;
+            const auto bundle = chooser.getResult();
+            if (bundle == juce::File{})
+                return;
+
+            safe->projectMessage = "Loading " + bundle.getFileName() + "...";
+            safe->refreshTransport();
+            const auto result = safe->audioEngine.scanVst3PluginBundle(bundle);
+            safe->projectMessage = result.wasOk()
+                ? "VST3 located: " + bundle.getFileNameWithoutExtension()
+                : "VST3 locate error: " + result.getErrorMessage();
+            safe->rebuildArrangement();
+        });
 }
 
 void ArrangementView::layoutArrangement()

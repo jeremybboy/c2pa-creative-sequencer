@@ -199,6 +199,11 @@ juce::Result AudioEngine::scanVst3Plugins(const juce::FileSearchPath& paths)
 {
     return pluginHost.scanVst3(paths);
 }
+
+juce::Result AudioEngine::scanVst3PluginBundle(const juce::File& bundle)
+{
+    return pluginHost.scanVst3Bundle(bundle);
+}
 juce::Result AudioEngine::loadTrackPlugin(int i, const juce::String& id)
 {
     return pluginHost.loadTrackPlugin(i, id);

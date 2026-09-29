@@ -73,6 +73,7 @@ private:
     void togglePlayback();
     void stopSampleAudition(const juce::String& message = {});
     void scanPlugins();
+    void locatePlugin();
     void undoEdit();
     void redoEdit();
     void showAddTrackMenu();

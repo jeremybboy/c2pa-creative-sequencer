@@ -37,6 +37,14 @@ juce::Result PluginHost::scanVst3(const juce::FileSearchPath& paths)
     return juce::Result::ok();
 }
 
+juce::Result PluginHost::scanVst3Bundle(const juce::File& bundle)
+{
+    if (auto result = scanner.scanVst3Bundle(bundle); result.failed())
+        return result;
+    registerCachedPlugins();
+    return juce::Result::ok();
+}
+
 juce::Result PluginHost::loadTrackPlugin(int trackIndex, const juce::String& identifier)
 {
     const auto& plugins = scanner.cachedPlugins();

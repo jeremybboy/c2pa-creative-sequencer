@@ -31,6 +31,22 @@ juce::Result PluginScanner::scanVst3(const juce::FileSearchPath& paths)
     return saveCache();
 }
 
+juce::Result PluginScanner::scanVst3Bundle(const juce::File& bundle)
+{
+    if (! bundle.exists() || bundle.getFileExtension().compareIgnoreCase(".vst3") != 0)
+        return juce::Result::fail("Choose a valid .vst3 plug-in bundle");
+
+    juce::VST3PluginFormat format;
+    juce::OwnedArray<juce::PluginDescription> found;
+    knownPlugins.scanAndAddFile(bundle.getFullPathName(), false, found, format);
+    if (found.isEmpty())
+        return juce::Result::fail("No compatible VST3 component was found in the selected bundle");
+
+    knownPlugins.sort(juce::KnownPluginList::sortByManufacturer, true);
+    rebuildDescriptors();
+    return saveCache();
+}
+
 juce::FileSearchPath PluginScanner::standardSearchPaths()
 {
     juce::FileSearchPath paths;

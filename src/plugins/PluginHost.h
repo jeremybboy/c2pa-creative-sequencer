@@ -21,6 +21,7 @@ public:
 
     [[nodiscard]] const std::vector<PluginDescriptor>& availablePlugins() const noexcept;
     [[nodiscard]] juce::Result scanVst3(const juce::FileSearchPath& paths = {});
+    [[nodiscard]] juce::Result scanVst3Bundle(const juce::File& bundle);
     [[nodiscard]] juce::Result loadTrackPlugin(int trackIndex, const juce::String& identifier);
     [[nodiscard]] juce::Result setTrackPluginBypassed(int trackIndex, bool bypassed);
     [[nodiscard]] juce::Result removeTrackPlugin(int trackIndex);

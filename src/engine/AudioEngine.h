@@ -93,6 +93,7 @@ public:
     [[nodiscard]] juce::Result endTrackMixGesture(int);
     [[nodiscard]] const std::vector<PluginDescriptor>& availableVst3Plugins() const noexcept;
     [[nodiscard]] juce::Result scanVst3Plugins(const juce::FileSearchPath& paths = {});
+    [[nodiscard]] juce::Result scanVst3PluginBundle(const juce::File& bundle);
     [[nodiscard]] juce::Result loadTrackPlugin(int, const juce::String& identifier);
     [[nodiscard]] juce::Result setTrackPluginBypassed(int, bool);
     [[nodiscard]] juce::Result removeTrackPlugin(int);

@@ -169,6 +169,26 @@ int main()
     if (synth == scanned.end() || synth->vendor != "C2PA Test")
         return fail(4, "VST3 instrument discovery did not preserve fixture metadata");
 
+    const auto locatedCache = root.getChildFile("located-vst3-cache.xml");
+    c2paseq::PluginScanner locatedScanner(locatedCache);
+    if (auto result = locatedScanner.scanVst3Bundle(fixture); result.failed())
+        return fail(4, "targeted VST3 effect discovery failed: " + result.getErrorMessage());
+    if (auto result = locatedScanner.scanVst3Bundle(synthFixture); result.failed())
+        return fail(4, "targeted VST3 instrument discovery failed: " + result.getErrorMessage());
+    const auto& located = locatedScanner.cachedPlugins();
+    const auto locatedEffect = std::find_if(located.begin(), located.end(), [](const auto& plugin)
+    {
+        return plugin.name == "C2PA Test Gain" && ! plugin.isInstrument;
+    });
+    const auto locatedSynth = std::find_if(located.begin(), located.end(), [](const auto& plugin)
+    {
+        return plugin.name == "C2PA Test Synth" && plugin.isInstrument;
+    });
+    if (locatedEffect == located.end() || locatedSynth == located.end())
+        return fail(4, "targeted VST3 discovery did not preserve the existing cache");
+    if (locatedScanner.scanVst3Bundle(root.getChildFile("not-a-plugin.txt")).wasOk())
+        return fail(4, "targeted VST3 discovery accepted an invalid bundle");
+
     juce::VST3PluginFormat format;
     juce::String error;
     auto instance = format.createInstanceFromDescription(found->toJuce(), 48000.0, 512, error);

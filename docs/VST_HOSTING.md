@@ -7,15 +7,19 @@ presets, latency UI, live MIDI input, recording, or plug-in sandboxing.
 
 ## Discovery and controls
 
-Use the **+ VST** button in a track header, then choose **Scan VST3**. The explicit
-scan inspects:
+Use the **VST3/Instrument** button in a track header. **Locate VST3 Plug-in...**
+selects and validates one `.vst3` bundle without probing every installed plug-in;
+it is the preferred path when the desired bundle is already known. **Scan VST3
+Plug-ins...** remains available and inspects both standard folders:
 
 - `~/Library/Audio/Plug-Ins/VST3`
 - `/Library/Audio/Plug-Ins/VST3`
 
 Results are cached at
 `~/Library/Application Support/C2PA Creative Sequencer/vst3-cache.xml`; startup
-loads this metadata but does not rescan the system. The track menu lists scanned
+loads this metadata but does not rescan the system. Locating one bundle adds it to
+the existing cache, while a full scan refreshes the cache from the standard folders.
+The track menu lists discovered
 audio effects on Audio tracks and instruments on MIDI tracks. Each menu provides Open,
 Bypass/Enable, Remove, and direct replacement by selecting another compatible plug-in.
 

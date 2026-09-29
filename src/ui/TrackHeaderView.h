@@ -33,6 +33,7 @@ public:
     std::function<void(int, double)> onPanPreview;
     std::function<void(int)> onPanGestureEnd;
     std::function<void()> onScanPlugins;
+    std::function<void()> onLocatePlugin;
     std::function<void(int, juce::String)> onLoadPlugin;
     std::function<void(int)> onOpenPlugin;
     std::function<void(int, bool)> onBypassPlugin;
