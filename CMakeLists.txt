@@ -168,6 +168,23 @@ if(BUILD_TESTING)
         juce::juce_audio_utils
         juce::juce_recommended_config_flags)
 
+    juce_add_plugin(C2PATestSynthVST3
+        COMPANY_NAME "C2PA Test"
+        BUNDLE_ID "app.c2paseq.TestSynth"
+        PLUGIN_MANUFACTURER_CODE C2PA
+        PLUGIN_CODE TSy1
+        FORMATS VST3
+        PRODUCT_NAME "C2PA Test Synth"
+        IS_SYNTH TRUE
+        NEEDS_MIDI_INPUT TRUE
+        NEEDS_MIDI_OUTPUT FALSE
+        COPY_PLUGIN_AFTER_BUILD FALSE)
+    juce_generate_juce_header(C2PATestSynthVST3)
+    target_sources(C2PATestSynthVST3 PRIVATE tests/plugins/TestSynthPlugin.cpp)
+    target_link_libraries(C2PATestSynthVST3 PRIVATE
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags)
+
     add_executable(C2PACreativeSequencerTests
         tests/app/ApplicationSkeletonTests.cpp
         src/app/AppInfo.h)
@@ -539,14 +556,15 @@ if(BUILD_TESTING)
         TRACKTION_ENABLE_CMAJOR=0
         TRACKTION_ENABLE_CONTROL_SURFACES=0
         TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=0
-        C2PASEQ_TEST_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestGainVST3_VST3>")
+        C2PASEQ_TEST_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestGainVST3_VST3>"
+        C2PASEQ_TEST_SYNTH_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestSynthVST3_VST3>")
     target_link_libraries(C2PAPluginHostingTests PRIVATE
         tracktion::tracktion_engine
         juce::juce_audio_utils
         juce::juce_cryptography
         juce::juce_gui_extra
         juce::juce_recommended_config_flags)
-    add_dependencies(C2PAPluginHostingTests C2PATestGainVST3_VST3)
+    add_dependencies(C2PAPluginHostingTests C2PATestGainVST3_VST3 C2PATestSynthVST3_VST3)
     c2paseq_enable_c2pa(C2PAPluginHostingTests)
     add_test(NAME plugin_hosting COMMAND C2PAPluginHostingTests)
 endif()

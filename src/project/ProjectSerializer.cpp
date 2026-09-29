@@ -580,11 +580,11 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
             [&](const auto& track) { return track.id == plugin.ownerId; });
         if (owner == loaded.tracks.end())
             return juce::Result::fail("Plug-in owner track does not exist");
-        if (owner->type != TrackType::audio)
-            return juce::Result::fail("MIDI track plug-ins are not supported yet");
         if (pluginOwners.contains(plugin.ownerId))
             return juce::Result::fail("Only one VST3 slot is allowed per track");
-        if (plugin.format != "VST3" || plugin.isInstrument)
+        if (plugin.format != "VST3"
+            || (owner->type == TrackType::audio && plugin.isInstrument)
+            || (owner->type == TrackType::midi && ! plugin.isInstrument))
             return juce::Result::fail("Project contains an unsupported plug-in type");
         pluginOwners.add(plugin.ownerId);
         loaded.plugins.push_back(std::move(plugin));

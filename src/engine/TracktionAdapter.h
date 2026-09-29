@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace c2paseq
 {
@@ -32,6 +33,14 @@ struct AudioFileMetadata
     double lengthSeconds = 0.0;
     double sampleRate = 0.0;
     int channels = 0;
+};
+
+struct MidiPlaybackNote
+{
+    int noteNumber = 60;
+    double startBeats = 0.0;
+    double durationBeats = 1.0;
+    int velocity = 100;
 };
 
 class TracktionAdapter final
@@ -63,6 +72,11 @@ public:
                                                double startSeconds,
                                                double sourceOffsetSeconds,
                                                double lengthSeconds);
+    [[nodiscard]] juce::Result insertMidiClip(const juce::String& name,
+                                              int trackIndex,
+                                              double startBeats,
+                                              double lengthBeats,
+                                              const std::vector<MidiPlaybackNote>& notes);
     [[nodiscard]] juce::Result setTrackProperties(int trackIndex,
                                                    const juce::String& name,
                                                    double gainDb,

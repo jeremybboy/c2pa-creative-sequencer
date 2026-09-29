@@ -17,10 +17,10 @@ either an Audio or MIDI track with a new stable UUID and type-specific sequentia
 one removes that track's project data and owned VST3 state without deleting source media; the
 last remaining Audio track cannot be removed. Track creation/deletion participates in undo/redo
 and is saved through the same ordered `tracks` array, so later track indices are derived from
-persisted order rather than used as durable identity. PR 018 MIDI tracks intentionally have no
-instrument, scheduling, audio output, or active mixer controls.
+persisted order rather than used as durable identity. A MIDI track may own exactly one VST3
+instrument state record; loading a different instrument replaces that record and processor.
 
-A VST3 state record is keyed to its owning track and persists the plug-in identifier, display metadata, format/category, bundle reference, JUCE identifiers, effect/instrument classification, bypass/missing flags, and the plug-in's opaque Base64 state. The binary is never copied into the project. If it cannot be restored, the project and track remain usable, the original identity and state are retained, and the slot is displayed as missing and bypassed until removed or the plug-in becomes available again.
+A VST3 state record is keyed to its owning track and persists the plug-in identifier, display metadata, format/category, bundle reference, JUCE identifiers, effect/instrument classification, bypass/missing flags, and the plug-in's opaque Base64 state. Audio tracks accept effects and MIDI tracks accept instruments; every track has at most one slot. The binary is never copied into the project. If it cannot be restored, the project and track remain usable, the original identity and state are retained, and the slot is displayed as missing and bypassed until removed or the plug-in becomes available again.
 
 Each media reference contains a UUID, original filename, project-relative path, byte size, and lowercase SHA-256. `MediaLibrary` copies sources through a temporary file, verifies the copied SHA-256 before committing it, and reuses a previously registered asset with the same hash. WAV, AIFF, and MP3 files are decoded before copying; dropping a file then adds one non-destructive clip to the chosen existing track at the chosen snapped time, creating additional empty tracks only when the target lane requires one. The source file is never modified.
 

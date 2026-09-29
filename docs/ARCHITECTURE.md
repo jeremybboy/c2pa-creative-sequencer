@@ -218,10 +218,12 @@ the rendered PCM now includes enabled track VST3 processing before provenance is
 attached. Detailed plug-in/AI assertions are explicitly deferred to PR 009.
 
 Instrument hosting was deferred from PR 008 because that milestone had no MIDI
-model or note-source path. PR 018 adds the model boundary only: MIDI tracks, clips,
-notes, and beat/second conversion can persist, but no scheduler sends those notes to
-a plug-in and no instrument contributes audio yet. VST3 instrument hosting and MIDI
-playback remain a later, separately testable milestone.
+model or note-source path. PR 018 added the model boundary. PR 019 mirrors each
+beat-based MIDI clip into Tracktion, schedules its notes into one VST3 instrument
+slot on the owning MIDI track, and uses the same graph for hardware playback and
+offline rendering. Track type is enforced at the boundary: Audio tracks accept one
+effect, MIDI tracks accept one instrument, and selecting another plug-in replaces
+the existing slot.
 
 ## PR 011 soft-binding boundary
 
@@ -268,7 +270,7 @@ schema 1 because this PR changes no provenance meaning. Audio and MIDI data cann
 the wrong track type, and existing audio media, plug-in, playback, export, and C2PA paths remain
 unchanged.
 
-The Add Track menu can create either type, but MIDI rows are deliberately silent foundation
-objects. They persist identity, order, name, and future clip data while instrument slots, meters,
-gain/pan, mute/solo, note UI, scheduling, monitoring, and recording remain unavailable. See
-[MIDI v1 dependency sequence](MIDI_ROADMAP.md) for the separately reviewable follow-up phases.
+The Add Track menu creates either type. MIDI rows persist identity, order, name, clips, notes, and
+one optional VST3 instrument state. PR 019 activates their gain/pan, mute/solo, meter, arranged-note
+playback, and offline rendering through Tracktion. Laptop-keyboard monitoring and MIDI recording
+remain unavailable. See [MIDI v1 dependency sequence](MIDI_ROADMAP.md) for the follow-up phases.

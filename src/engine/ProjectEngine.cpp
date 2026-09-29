@@ -1022,9 +1022,14 @@ juce::Result ProjectEngine::setTrackPlugin(int trackIndex,
 {
     if (! project.has_value()
         || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size()))
-        || project->tracks[static_cast<std::size_t>(trackIndex)].type != TrackType::audio
-        || descriptor.format != "VST3" || descriptor.isInstrument)
-        return juce::Result::fail("Invalid track VST3 audio effect");
+        || descriptor.format != "VST3")
+        return juce::Result::fail("Invalid track VST3 plug-in");
+    const auto trackType = project->tracks[static_cast<std::size_t>(trackIndex)].type;
+    if ((trackType == TrackType::audio && descriptor.isInstrument)
+        || (trackType == TrackType::midi && ! descriptor.isInstrument))
+        return juce::Result::fail(trackType == TrackType::midi
+            ? "MIDI tracks require a VST3 instrument"
+            : "Audio tracks require a VST3 audio effect");
 
     const auto previous = *project;
     if (auto result = tracktion.setTrackPlugin(trackIndex, descriptor.toJuce(), {}, false);
@@ -1248,20 +1253,36 @@ juce::Result ProjectEngine::rebuildEditFromProject()
         if (auto result = tracktion.setTrackProperties(static_cast<int>(trackIndex), track.name,
                 track.gainDb, track.pan, track.muted, track.soloed); result.failed())
             return result;
-        if (track.type != TrackType::audio)
-            continue;
-        for (const auto& segment : buildPlaybackClipSegments(track.clips))
+        if (track.type == TrackType::audio)
         {
-            const auto& clip = track.clips[segment.clipIndex];
-            const auto media = std::find_if(project->media.begin(), project->media.end(),
-                [&](const auto& item) { return item.id == clip.mediaId; });
-            if (media == project->media.end())
-                return juce::Result::fail("Clip media is missing");
-            const auto file = paths->root().getChildFile(media->relativePath);
-            if (auto result = tracktion.insertAudioClip(file, media->originalFileName,
-                    static_cast<int>(trackIndex), segment.startSeconds,
-                    segment.sourceOffsetSeconds, segment.lengthSeconds); result.failed())
-                return result;
+            for (const auto& segment : buildPlaybackClipSegments(track.clips))
+            {
+                const auto& clip = track.clips[segment.clipIndex];
+                const auto media = std::find_if(project->media.begin(), project->media.end(),
+                    [&](const auto& item) { return item.id == clip.mediaId; });
+                if (media == project->media.end())
+                    return juce::Result::fail("Clip media is missing");
+                const auto file = paths->root().getChildFile(media->relativePath);
+                if (auto result = tracktion.insertAudioClip(file, media->originalFileName,
+                        static_cast<int>(trackIndex), segment.startSeconds,
+                        segment.sourceOffsetSeconds, segment.lengthSeconds); result.failed())
+                    return result;
+            }
+        }
+        else
+        {
+            for (const auto& clip : track.midiClips)
+            {
+                std::vector<MidiPlaybackNote> notes;
+                notes.reserve(clip.notes.size());
+                for (const auto& note : clip.notes)
+                    notes.push_back({ note.noteNumber, note.start.beats,
+                                      note.duration.beats, note.velocity });
+                if (auto result = tracktion.insertMidiClip("MIDI Clip",
+                        static_cast<int>(trackIndex), clip.start.beats,
+                        clip.length.beats, notes); result.failed())
+                    return result;
+            }
         }
 
         if (auto* plugin = pluginForTrack(static_cast<int>(trackIndex)))

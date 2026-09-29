@@ -1,9 +1,8 @@
-# PR 018 MIDI v1 checkpoint sequence
+# MIDI v1 staged sequence
 
-PR 018 is the umbrella pull request for the complete basic MIDI v1. Work proceeds through the
-checkpoint commits below so each dependency can be reviewed and verified before the next begins.
-After each checkpoint: build Release, run focused tests and the full normal CTest suite, update the
-implementation brief and visual, push, report evidence, and wait for explicit human approval.
+PR 018 delivered the MIDI data, arrangement, and piano-roll foundation. PR 019 is the separately
+reviewable instrument-playback and rendering slice. Later input and recording work remains separate
+so each dependency can be built, tested, and accepted before the next begins.
 
 Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next authorized checkpoint;
 **PLANNED** = not implemented and must not be presented as working.
@@ -26,11 +25,13 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 - Provide live drag feedback and pointer-dependent trackpad pinch zoom for time or pitch range.
 - Show the arrangement playhead in the piano roll while transport crosses the open MIDI clip.
 
-## Checkpoint 3 — VST3 Instrument Hosting + MIDI Playback — CURRENT
+## Checkpoint 3 — PR 019 VST3 Instrument Playback + Rendering — CURRENT
 
 - Allow one VST3 instrument on a MIDI track and schedule project MIDI notes into Tracktion.
 - Use a deterministic test synthesizer for realtime audible playback.
 - Persist instrument identity/state and keep existing Audio effects behavior unchanged.
+- Render arranged instrument output through the normal offline audio mix and existing signed export.
+- Loading a different VST3 instrument replaces the track's single existing slot.
 
 ## Checkpoint 4 — Live Laptop Keyboard + Monitoring — PLANNED
 
@@ -43,13 +44,6 @@ Status legend: **COMPLETE** = implemented and verified; **CURRENT** = next autho
 - Add record arm and capture incoming note events while transport runs.
 - Reconstruct note durations and commit the performance as one beat-based, undoable MIDI clip.
 - Support immediate playback, note editing, and save/reopen.
-
-## Checkpoint 6 — Instrument Rendering + C2PA Export — PLANNED
-
-- Render MIDI instruments through the normal offline audio mix.
-- Verify Audio and MIDI-instrument tracks coexist in playback and export.
-- Preserve the existing signing/validation pipeline and describe MIDI/instrument-originated output
-  truthfully without inventing unsupported C2PA assertions.
 
 Audio recording, external MIDI hardware, tempo maps, CLAP, MPE, automation, warping, time
 stretching, advanced routing, and full-DAW expansion remain outside PR 018.

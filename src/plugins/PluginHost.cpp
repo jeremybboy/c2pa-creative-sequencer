@@ -46,8 +46,6 @@ juce::Result PluginHost::loadTrackPlugin(int trackIndex, const juce::String& ide
     });
     if (found == plugins.end())
         return juce::Result::fail("VST3 is not in the scanned plug-in cache");
-    if (found->isInstrument)
-        return juce::Result::fail("Instrument hosting is deferred; choose a VST3 audio effect");
     closeEditor(trackIndex);
     return projectEngine.setTrackPlugin(trackIndex, *found);
 }
