@@ -1,22 +1,27 @@
 # Constrained VST3 Hosting
 
-PR 008 adds one VST3 **audio effect** slot per audio track on Apple-silicon macOS.
-It deliberately does not add effect chains, a master slot, AU/AAX, instruments,
-MIDI, automation, sidechains, presets, latency UI, or plug-in sandboxing.
+PR 008 adds one VST3 **audio effect** slot per Audio track on Apple-silicon macOS.
+PR 019 reuses that constrained host for one VST3 **instrument** slot per MIDI track.
+It deliberately does not add chains, a master slot, AU/AAX, automation, sidechains,
+presets, latency UI, live MIDI input, recording, or plug-in sandboxing.
 
 ## Discovery and controls
 
-Use the **+ VST** button in a track header, then choose **Scan VST3**. The explicit
-scan inspects:
+Use the **VST3/Instrument** button in a track header. **Locate VST3 Plug-in...**
+selects and validates one `.vst3` bundle without probing every installed plug-in;
+it is the preferred path when the desired bundle is already known. **Scan VST3
+Plug-ins...** remains available and inspects both standard folders:
 
 - `~/Library/Audio/Plug-Ins/VST3`
 - `/Library/Audio/Plug-Ins/VST3`
 
 Results are cached at
 `~/Library/Application Support/C2PA Creative Sequencer/vst3-cache.xml`; startup
-loads this metadata but does not rescan the system. The track menu lists scanned
-audio effects and provides Open, Bypass/Enable, and Remove for the selected slot.
-Instrument entries are not loadable in this milestone.
+loads this metadata but does not rescan the system. Locating one bundle adds it to
+the existing cache, while a full scan refreshes the cache from the standard folders.
+The track menu lists discovered
+audio effects on Audio tracks and instruments on MIDI tracks. Each menu provides Open,
+Bypass/Enable, Remove, and direct replacement by selecting another compatible plug-in.
 
 The editor window uses the plug-in's editor when one is provided and otherwise
 uses JUCE's generic parameter editor. The project stores opaque parameter state,
@@ -33,8 +38,13 @@ the track menu after the arrangement edit if it is still needed.
 The Tracktion Engine graph is:
 
 ```text
-source clips → arrangement trim/occlusion → track VST3 → track gain/pan/mute/solo → master
+Audio: source clips → arrangement trim/occlusion → track effect → gain/pan/mute/solo → master
+MIDI: beat-based notes → track instrument → gain/pan/mute/solo → master
 ```
+
+MIDI instrument tracks use the same live gain, pan, mute, solo, and meter path as
+Audio tracks once an instrument is loaded. Live plug-in parameter state is captured
+before editor close, arrangement rebuild, explicit save, and project reopen.
 
 Both live playback and offline stereo 24-bit WAV rendering use that graph. Normal
 Export then runs the unchanged mandatory C2PA pipeline: render, build claim, sign,
@@ -64,12 +74,11 @@ plug-in runtime/assets contract for this host to test. Integration requires that
 external repository to provide an Apple-silicon VST3 audio-effect bundle plus its
 build and runtime-asset instructions; its source must not be copied here.
 
-Surge XT was not forced into PR 008: it is an instrument, while that milestone's
-host intentionally accepted audio effects only. PR 018 introduces the MIDI data and
-track-type foundation, but no MIDI scheduler or instrument-processing path; VST3
-instrument hosting remains a separate staged milestone. A deterministic stereo
-gain-effect VST3 is built only for tests and proves the existing effect host without
-depending on installed plug-ins or commercial CI software.
+Surge XT was not forced into PR 008 because it is an instrument. PR 019 now permits it
+as a manual reference synth on a MIDI track, while automated verification uses a small
+deterministic stereo VST3 synth built only for tests. The fixture proves discovery,
+MIDI scheduling, state persistence, replacement, and non-silent offline rendering
+without depending on installed third-party plug-ins or commercial CI software.
 
 ## Verified PR 008 evidence
 

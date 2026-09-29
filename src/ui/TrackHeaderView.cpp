@@ -76,6 +76,7 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     {
         juce::PopupMenu menu;
         menu.addItem(1, "Scan VST3 Plug-ins...");
+        menu.addItem(5, "Locate VST3 Plug-in...");
         if (currentPlugin.has_value())
         {
             menu.addSeparator();
@@ -88,19 +89,21 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
             menu.addItem(4, "Remove");
         }
         menu.addSeparator();
-        menu.addSectionHeader("VST3 Audio Effects");
+        menu.addSectionHeader(currentType == TrackType::midi
+            ? "VST3 Instruments" : "VST3 Audio Effects");
         auto itemId = 1000;
         auto effectCount = 0;
         for (const auto& plugin : availablePlugins)
         {
-            if (plugin.isInstrument)
+            if (plugin.isInstrument != (currentType == TrackType::midi))
                 continue;
             menu.addItem(itemId++, plugin.vendor.isNotEmpty()
                 ? plugin.vendor + " — " + plugin.name : plugin.name);
             ++effectCount;
         }
         if (effectCount == 0)
-            menu.addItem(999, "No scanned audio effects", false);
+            menu.addItem(999, currentType == TrackType::midi
+                ? "No scanned instruments" : "No scanned audio effects", false);
 
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(pluginMenu),
             [safe = juce::Component::SafePointer<TrackHeaderView>(this)](int result)
@@ -108,6 +111,7 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
                 if (safe == nullptr || result == 0)
                     return;
                 if (result == 1 && safe->onScanPlugins) safe->onScanPlugins();
+                else if (result == 5 && safe->onLocatePlugin) safe->onLocatePlugin();
                 else if (result == 2 && safe->onOpenPlugin) safe->onOpenPlugin(safe->trackIndex);
                 else if (result == 3 && safe->onBypassPlugin && safe->currentPlugin)
                     safe->onBypassPlugin(safe->trackIndex, ! safe->currentPlugin->bypassed);
@@ -117,7 +121,7 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
                     auto selected = result - 1000;
                     for (const auto& plugin : safe->availablePlugins)
                     {
-                        if (plugin.isInstrument)
+                        if (plugin.isInstrument != (safe->currentType == TrackType::midi))
                             continue;
                         if (selected-- == 0)
                         {
@@ -144,16 +148,12 @@ void TrackHeaderView::setPluginState(const std::optional<TrackPluginSnapshot>& p
 {
     currentPlugin = plugin;
     availablePlugins = plugins;
-    if (currentType == TrackType::midi)
-    {
-        pluginMenu.setButtonText("MIDI");
-        pluginMenu.setTooltip("Instrument hosting is not part of PR 018");
-        return;
-    }
     if (! currentPlugin.has_value())
     {
-        pluginMenu.setButtonText("VST3");
-        pluginMenu.setTooltip("Scan, load, and manage one VST3 audio effect");
+        pluginMenu.setButtonText(currentType == TrackType::midi ? "Instrument" : "VST3");
+        pluginMenu.setTooltip(currentType == TrackType::midi
+            ? "Scan, load, and manage one VST3 instrument"
+            : "Scan, load, and manage one VST3 audio effect");
         return;
     }
     pluginMenu.setButtonText(currentPlugin->missing ? "Missing" : currentPlugin->name);
@@ -167,7 +167,6 @@ void TrackHeaderView::setState(const juce::String& trackName, double gainDb, dou
 {
     accent = colour;
     currentType = type;
-    const auto audioControlsEnabled = currentType == TrackType::audio;
     nameEditor.setText(trackName, juce::dontSendNotification);
     gain.setValue(gainDb, juce::dontSendNotification);
     panControl.setValue(pan, juce::dontSendNotification);
@@ -182,8 +181,8 @@ void TrackHeaderView::setState(const juce::String& trackName, double gainDb, dou
                              static_cast<juce::Component*>(&gain),
                              static_cast<juce::Component*>(&panControl) })
     {
-        component->setEnabled(audioControlsEnabled);
-        component->setVisible(audioControlsEnabled);
+        component->setEnabled(true);
+        component->setVisible(true);
     }
     mute.setColour(juce::TextButton::buttonOnColourId, accent.darker(0.25f));
     solo.setColour(juce::TextButton::buttonOnColourId, accent.darker(0.25f));
@@ -193,8 +192,6 @@ void TrackHeaderView::setState(const juce::String& trackName, double gainDb, dou
 
 void TrackHeaderView::setMeterPeak(TrackLevelSnapshot peak, bool audible)
 {
-    if (currentType != TrackType::audio)
-        return;
     const auto ignored = meterBallistics.update(peak, audible);
     juce::ignoreUnused(ignored);
     repaint(meterBounds.expanded(1));
@@ -210,9 +207,6 @@ void TrackHeaderView::paint(juce::Graphics& g)
     g.fillRect(0, 0, 4, getHeight());
     g.setColour(juce::Colour::fromRGB(75, 80, 85));
     g.drawHorizontalLine(getHeight() - 1, 0.0f, static_cast<float>(getWidth()));
-
-    if (currentType != TrackType::audio)
-        return;
 
     g.setColour(juce::Colour::fromRGB(31, 33, 35));
     g.fillRoundedRectangle(meterBounds.toFloat(), 2.0f);
@@ -237,42 +231,18 @@ void TrackHeaderView::paint(juce::Graphics& g)
 void TrackHeaderView::resized()
 {
     auto area = getLocalBounds().reduced(7, 5);
-    if (currentType == TrackType::audio)
-    {
-        meterBounds = area.removeFromRight(11).reduced(1, 2);
-        area.removeFromRight(4);
-    }
-    else
-    {
-        meterBounds = {};
-    }
+    meterBounds = area.removeFromRight(11).reduced(1, 2);
+    area.removeFromRight(4);
     auto top = area.removeFromTop(25);
     number.setBounds(top.removeFromLeft(24));
     typeBadge.setBounds(top.removeFromLeft(currentType == TrackType::midi ? 36 : 0).reduced(2, 3));
     deleteTrack.setBounds(top.removeFromRight(24).reduced(1));
-    if (currentType == TrackType::audio)
-    {
-        solo.setBounds(top.removeFromRight(27).reduced(1));
-        mute.setBounds(top.removeFromRight(27).reduced(1));
-        pluginMenu.setBounds(top.removeFromRight(58).reduced(1));
-    }
-    else
-    {
-        solo.setBounds({});
-        mute.setBounds({});
-        pluginMenu.setBounds({});
-    }
+    solo.setBounds(top.removeFromRight(27).reduced(1));
+    mute.setBounds(top.removeFromRight(27).reduced(1));
+    pluginMenu.setBounds(top.removeFromRight(currentType == TrackType::midi ? 78 : 58).reduced(1));
     nameEditor.setBounds(top.reduced(3, 0));
-    if (currentType == TrackType::audio)
-    {
-        auto gainRow = area.removeFromTop(22);
-        gain.setBounds(gainRow);
-        panControl.setBounds(area.removeFromTop(22));
-    }
-    else
-    {
-        gain.setBounds({});
-        panControl.setBounds({});
-    }
+    auto gainRow = area.removeFromTop(22);
+    gain.setBounds(gainRow);
+    panControl.setBounds(area.removeFromTop(22));
 }
 }

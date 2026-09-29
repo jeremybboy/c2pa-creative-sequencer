@@ -1210,6 +1210,7 @@ void ArrangementView::rebuildArrangement()
             endTrackMixGesture(index, "Changed track pan");
         };
         header->onScanPlugins = [this] { scanPlugins(); };
+        header->onLocatePlugin = [this] { locatePlugin(); };
         header->onLoadPlugin = [this](int index, const auto& identifier)
         {
             applyEditResult(audioEngine.loadTrackPlugin(index, identifier),
@@ -1286,6 +1287,31 @@ void ArrangementView::scanPlugins()
             + " plug-ins cached"
         : "VST3 scan error: " + result.getErrorMessage();
     rebuildArrangement();
+}
+
+void ArrangementView::locatePlugin()
+{
+    const auto initialFolder = juce::File("/Library/Audio/Plug-Ins/VST3");
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Locate a VST3 plug-in", initialFolder, "*.vst3");
+    fileChooser->launchAsync(
+        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [safe = juce::Component::SafePointer<ArrangementView>(this)](const juce::FileChooser& chooser)
+        {
+            if (safe == nullptr)
+                return;
+            const auto bundle = chooser.getResult();
+            if (bundle == juce::File{})
+                return;
+
+            safe->projectMessage = "Loading " + bundle.getFileName() + "...";
+            safe->refreshTransport();
+            const auto result = safe->audioEngine.scanVst3PluginBundle(bundle);
+            safe->projectMessage = result.wasOk()
+                ? "VST3 located: " + bundle.getFileNameWithoutExtension()
+                : "VST3 locate error: " + result.getErrorMessage();
+            safe->rebuildArrangement();
+        });
 }
 
 void ArrangementView::layoutArrangement()
@@ -1551,10 +1577,36 @@ void ArrangementView::pasteSelection()
 
 void ArrangementView::duplicateSelection()
 {
+    std::set<juce::String> existingIds;
+    for (const auto& track : snapshots)
+    {
+        for (const auto& clip : track.clips)
+            existingIds.insert(clip.id);
+        for (const auto& clip : track.midiClips)
+            existingIds.insert(clip.id);
+    }
     const auto result = timeSelection.isValid()
         ? audioEngine.duplicateTimeRange(timeSelection)
         : audioEngine.duplicateClips(selectedClipVector());
     applyEditResult(result, "Duplicated selection");
+    if (result.failed())
+        return;
+
+    selectedClipIds.clear();
+    for (const auto& track : snapshots)
+    {
+        for (const auto& clip : track.clips)
+            if (! existingIds.contains(clip.id))
+                selectedClipIds.insert(clip.id);
+        for (const auto& clip : track.midiClips)
+            if (! existingIds.contains(clip.id))
+                selectedClipIds.insert(clip.id);
+    }
+    clearTimeSelection();
+    for (auto& view : waveformViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
+    for (auto& view : midiClipViews)
+        view->setSelected(selectedClipIds.contains(view->id()));
 }
 
 void ArrangementView::loopFromSelection()

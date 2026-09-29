@@ -44,6 +44,18 @@ bool isMidiTrack(const Project& project, int index)
     return juce::isPositiveAndBelow(index, static_cast<int>(project.tracks.size()))
         && project.tracks[static_cast<std::size_t>(index)].type == TrackType::midi;
 }
+
+bool isMixableTrack(const Project& project, int index)
+{
+    if (! juce::isPositiveAndBelow(index, static_cast<int>(project.tracks.size())))
+        return false;
+    const auto& track = project.tracks[static_cast<std::size_t>(index)];
+    if (track.type == TrackType::audio)
+        return true;
+    const auto plugin = std::find_if(project.plugins.begin(), project.plugins.end(),
+        [&](const auto& candidate) { return candidate.ownerId == track.id; });
+    return plugin != project.plugins.end() && plugin->isInstrument && ! plugin->missing;
+}
 }
 
 ProjectEngine::ProjectEngine(TracktionAdapter& tracktionAdapter,
@@ -99,6 +111,19 @@ juce::Result ProjectEngine::saveProject()
     if (! project.has_value() || ! paths.has_value())
         return juce::Result::fail("No project is open");
 
+    captureLivePluginStates();
+
+    project->modifiedAt = juce::Time::getCurrentTime().toISO8601(true);
+    project->bpm = tracktion.transportSnapshot().bpm;
+    if (! tracktion.saveProjectEdit(paths->arrangementEdit()))
+        return juce::Result::fail("Could not save arrangement.tracktionedit");
+    return ProjectSerializer::save(*project, *paths);
+}
+
+void ProjectEngine::captureLivePluginStates()
+{
+    if (! project.has_value())
+        return;
     for (auto& plugin : project->plugins)
     {
         const auto track = std::find_if(project->tracks.begin(), project->tracks.end(),
@@ -116,12 +141,6 @@ juce::Result ProjectEngine::saveProject()
             plugin.missing = missing;
         }
     }
-
-    project->modifiedAt = juce::Time::getCurrentTime().toISO8601(true);
-    project->bpm = tracktion.transportSnapshot().bpm;
-    if (! tracktion.saveProjectEdit(paths->arrangementEdit()))
-        return juce::Result::fail("Could not save arrangement.tracktionedit");
-    return ProjectSerializer::save(*project, *paths);
 }
 
 juce::Result ProjectEngine::openProject(const juce::File& projectFolder)
@@ -213,6 +232,7 @@ juce::Result ProjectEngine::importAudio(const juce::File& source,
         return result;
     const auto sourceProvenance = provenance.inspect(source);
 
+    captureLivePluginStates();
     const auto previous = *project;
     MediaReference media;
     bool mediaWasAdded = false;
@@ -910,8 +930,9 @@ juce::Result ProjectEngine::setTrackName(int trackIndex, const juce::String& nam
 juce::Result ProjectEngine::setTrackMute(int trackIndex, bool muted)
 {
     if (! project.has_value()
-        || ! isAudioTrack(*project, trackIndex))
+        || ! isMixableTrack(*project, trackIndex))
         return juce::Result::fail("Mute is unavailable until the MIDI track has an instrument");
+    captureLivePluginStates();
     auto previous = *project;
     project->tracks[static_cast<std::size_t>(trackIndex)].muted = muted;
     return commitLiveTrackAudibility(std::move(previous), trackIndex, false);
@@ -920,8 +941,9 @@ juce::Result ProjectEngine::setTrackMute(int trackIndex, bool muted)
 juce::Result ProjectEngine::setTrackSolo(int trackIndex, bool soloed)
 {
     if (! project.has_value()
-        || ! isAudioTrack(*project, trackIndex))
+        || ! isMixableTrack(*project, trackIndex))
         return juce::Result::fail("Solo is unavailable until the MIDI track has an instrument");
+    captureLivePluginStates();
     auto previous = *project;
     project->tracks[static_cast<std::size_t>(trackIndex)].soloed = soloed;
     return commitLiveTrackAudibility(std::move(previous), trackIndex, true);
@@ -954,12 +976,13 @@ juce::Result ProjectEngine::setTrackPan(int trackIndex, double pan)
 juce::Result ProjectEngine::beginTrackMixGesture(int trackIndex)
 {
     if (! project.has_value()
-        || ! isAudioTrack(*project, trackIndex))
+        || ! isMixableTrack(*project, trackIndex))
         return juce::Result::fail("Mixer controls are unavailable until the MIDI track has an instrument");
     if (trackMixGestureBefore.has_value())
         return trackMixGestureTrack == trackIndex
             ? juce::Result::ok()
             : juce::Result::fail("Another mixer gesture is active");
+    captureLivePluginStates();
     trackMixGestureBefore = *project;
     trackMixGestureTrack = trackIndex;
     return juce::Result::ok();
@@ -1022,10 +1045,16 @@ juce::Result ProjectEngine::setTrackPlugin(int trackIndex,
 {
     if (! project.has_value()
         || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size()))
-        || project->tracks[static_cast<std::size_t>(trackIndex)].type != TrackType::audio
-        || descriptor.format != "VST3" || descriptor.isInstrument)
-        return juce::Result::fail("Invalid track VST3 audio effect");
+        || descriptor.format != "VST3")
+        return juce::Result::fail("Invalid track VST3 plug-in");
+    const auto trackType = project->tracks[static_cast<std::size_t>(trackIndex)].type;
+    if ((trackType == TrackType::audio && descriptor.isInstrument)
+        || (trackType == TrackType::midi && ! descriptor.isInstrument))
+        return juce::Result::fail(trackType == TrackType::midi
+            ? "MIDI tracks require a VST3 instrument"
+            : "Audio tracks require a VST3 audio effect");
 
+    captureLivePluginStates();
     const auto previous = *project;
     if (auto result = tracktion.setTrackPlugin(trackIndex, descriptor.toJuce(), {}, false);
         result.failed())
@@ -1062,6 +1091,7 @@ juce::Result ProjectEngine::setTrackPlugin(int trackIndex,
 
 juce::Result ProjectEngine::setTrackPluginBypassed(int trackIndex, bool bypassed)
 {
+    captureLivePluginStates();
     auto* plugin = pluginForTrack(trackIndex);
     if (plugin == nullptr)
         return juce::Result::fail("Track has no VST3");
@@ -1091,6 +1121,7 @@ juce::Result ProjectEngine::removeTrackPlugin(int trackIndex)
     if (! project.has_value()
         || ! juce::isPositiveAndBelow(trackIndex, static_cast<int>(project->tracks.size())))
         return juce::Result::fail("Invalid track");
+    captureLivePluginStates();
     const auto owner = project->tracks[static_cast<std::size_t>(trackIndex)].id;
     const auto found = std::find_if(project->plugins.begin(), project->plugins.end(),
         [&](const auto& plugin) { return plugin.ownerId == owner; });
@@ -1117,6 +1148,7 @@ bool ProjectEngine::undo()
 {
     if (! project.has_value() || undoHistory.empty())
         return false;
+    captureLivePluginStates();
     auto current = *project;
     *project = undoHistory.back();
     undoHistory.pop_back();
@@ -1134,6 +1166,7 @@ bool ProjectEngine::redo()
 {
     if (! project.has_value() || redoHistory.empty())
         return false;
+    captureLivePluginStates();
     auto current = *project;
     *project = redoHistory.back();
     redoHistory.pop_back();
@@ -1248,20 +1281,36 @@ juce::Result ProjectEngine::rebuildEditFromProject()
         if (auto result = tracktion.setTrackProperties(static_cast<int>(trackIndex), track.name,
                 track.gainDb, track.pan, track.muted, track.soloed); result.failed())
             return result;
-        if (track.type != TrackType::audio)
-            continue;
-        for (const auto& segment : buildPlaybackClipSegments(track.clips))
+        if (track.type == TrackType::audio)
         {
-            const auto& clip = track.clips[segment.clipIndex];
-            const auto media = std::find_if(project->media.begin(), project->media.end(),
-                [&](const auto& item) { return item.id == clip.mediaId; });
-            if (media == project->media.end())
-                return juce::Result::fail("Clip media is missing");
-            const auto file = paths->root().getChildFile(media->relativePath);
-            if (auto result = tracktion.insertAudioClip(file, media->originalFileName,
-                    static_cast<int>(trackIndex), segment.startSeconds,
-                    segment.sourceOffsetSeconds, segment.lengthSeconds); result.failed())
-                return result;
+            for (const auto& segment : buildPlaybackClipSegments(track.clips))
+            {
+                const auto& clip = track.clips[segment.clipIndex];
+                const auto media = std::find_if(project->media.begin(), project->media.end(),
+                    [&](const auto& item) { return item.id == clip.mediaId; });
+                if (media == project->media.end())
+                    return juce::Result::fail("Clip media is missing");
+                const auto file = paths->root().getChildFile(media->relativePath);
+                if (auto result = tracktion.insertAudioClip(file, media->originalFileName,
+                        static_cast<int>(trackIndex), segment.startSeconds,
+                        segment.sourceOffsetSeconds, segment.lengthSeconds); result.failed())
+                    return result;
+            }
+        }
+        else
+        {
+            for (const auto& clip : track.midiClips)
+            {
+                std::vector<MidiPlaybackNote> notes;
+                notes.reserve(clip.notes.size());
+                for (const auto& note : clip.notes)
+                    notes.push_back({ note.noteNumber, note.start.beats,
+                                      note.duration.beats, note.velocity });
+                if (auto result = tracktion.insertMidiClip("MIDI Clip",
+                        static_cast<int>(trackIndex), clip.start.beats,
+                        clip.length.beats, notes); result.failed())
+                    return result;
+            }
         }
 
         if (auto* plugin = pluginForTrack(static_cast<int>(trackIndex)))
@@ -1318,6 +1367,7 @@ juce::Result ProjectEngine::mutateProject(
 {
     if (! project.has_value())
         return juce::Result::fail("No project is open");
+    captureLivePluginStates();
     auto previous = *project;
     if (auto result = mutation(*project); result.failed())
     {

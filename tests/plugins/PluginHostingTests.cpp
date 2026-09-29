@@ -1,5 +1,10 @@
 #include "engine/AudioEngine.h"
+#include "engine/ProjectEngine.h"
+#include "engine/TracktionAdapter.h"
+#include "export/RenderService.h"
+#include "plugins/PluginHost.h"
 #include "plugins/PluginScanner.h"
+#include "provenance/ProvenanceService.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -141,13 +146,15 @@ int main()
     struct Cleanup { juce::File file; ~Cleanup() { file.deleteRecursively(); } } cleanup { root };
 
     const juce::File fixture(C2PASEQ_TEST_VST3_BUNDLE);
-    if (! fixture.isDirectory())
-        return fail(2, "deterministic VST3 fixture was not built");
+    const juce::File synthFixture(C2PASEQ_TEST_SYNTH_VST3_BUNDLE);
+    if (! fixture.isDirectory() || ! synthFixture.isDirectory())
+        return fail(2, "deterministic VST3 fixtures were not built");
 
     const auto cache = root.getChildFile("vst3-cache.xml");
     c2paseq::PluginScanner scanner(cache);
     juce::FileSearchPath paths;
     paths.add(fixture.getParentDirectory());
+    paths.add(synthFixture.getParentDirectory());
     if (auto result = scanner.scanVst3(paths); result.failed())
         return fail(3, result.getErrorMessage());
     const auto& scanned = scanner.cachedPlugins();
@@ -158,6 +165,33 @@ int main()
     });
     if (found == scanned.end() || found->vendor != "C2PA Test")
         return fail(4, "VST3 discovery did not preserve fixture metadata");
+    const auto synth = std::find_if(scanned.begin(), scanned.end(), [](const auto& plugin)
+    {
+        return plugin.name == "C2PA Test Synth" && plugin.format == "VST3"
+            && plugin.isInstrument;
+    });
+    if (synth == scanned.end() || synth->vendor != "C2PA Test")
+        return fail(4, "VST3 instrument discovery did not preserve fixture metadata");
+
+    const auto locatedCache = root.getChildFile("located-vst3-cache.xml");
+    c2paseq::PluginScanner locatedScanner(locatedCache);
+    if (auto result = locatedScanner.scanVst3Bundle(fixture); result.failed())
+        return fail(4, "targeted VST3 effect discovery failed: " + result.getErrorMessage());
+    if (auto result = locatedScanner.scanVst3Bundle(synthFixture); result.failed())
+        return fail(4, "targeted VST3 instrument discovery failed: " + result.getErrorMessage());
+    const auto& located = locatedScanner.cachedPlugins();
+    const auto locatedEffect = std::find_if(located.begin(), located.end(), [](const auto& plugin)
+    {
+        return plugin.name == "C2PA Test Gain" && ! plugin.isInstrument;
+    });
+    const auto locatedSynth = std::find_if(located.begin(), located.end(), [](const auto& plugin)
+    {
+        return plugin.name == "C2PA Test Synth" && plugin.isInstrument;
+    });
+    if (locatedEffect == located.end() || locatedSynth == located.end())
+        return fail(4, "targeted VST3 discovery did not preserve the existing cache");
+    if (locatedScanner.scanVst3Bundle(root.getChildFile("not-a-plugin.txt")).wasOk())
+        return fail(4, "targeted VST3 discovery accepted an invalid bundle");
 
     juce::VST3PluginFormat format;
     juce::String error;
@@ -240,6 +274,42 @@ int main()
         || tracks[0].plugin->missing || tracks[0].plugin->bypassed)
         return fail(14, "VST3 identity/state was not restored after reopen");
 
+    c2paseq::TracktionAdapter stateAdapter;
+    c2paseq::ProvenanceService stateProvenance;
+    c2paseq::ProjectEngine stateProject(stateAdapter, stateProvenance);
+    c2paseq::PluginHost stateHost(stateAdapter, stateProject,
+                                  root.getChildFile("state-cache.xml"), false);
+    const auto stateProjectFolder = root.getChildFile("State Persistence.c2paseq");
+    if (stateHost.scanVst3(paths).failed()
+        || stateProject.createProject(stateProjectFolder, "State Persistence").failed()
+        || stateProject.importAudio(source, 0, 0.0).failed()
+        || stateHost.loadTrackPlugin(0, found->identifier).failed())
+        return fail(14, "could not create VST3 state persistence fixture");
+    const auto initialHostedState = savedPluginState(stateProjectFolder);
+    auto* stateInstance = stateAdapter.trackPluginInstance(0);
+    if (stateInstance == nullptr || stateInstance->getParameters().isEmpty())
+        return fail(14, "hosted VST3 parameter was unavailable");
+    stateInstance->getParameters().getUnchecked(0)->setValueNotifyingHost(0.8f);
+    if (std::abs(stateInstance->getParameters().getUnchecked(0)->getValue() - 0.8f) > 0.001f)
+        return fail(14, "hosted VST3 parameter did not accept a live edit");
+    if (stateProject.importAudio(source, 1, 0.0).failed())
+        return fail(14, "arrangement rebuild failed after VST3 parameter change");
+    const auto changedHostedState = savedPluginState(stateProjectFolder);
+    stateInstance = stateAdapter.trackPluginInstance(0);
+    const auto rebuiltValue = stateInstance != nullptr && ! stateInstance->getParameters().isEmpty()
+        ? stateInstance->getParameters().getUnchecked(0)->getValue() : -1.0f;
+    if (changedHostedState.isEmpty() || changedHostedState == initialHostedState)
+        return fail(14, "live VST3 parameter state was not captured before rebuild; value="
+            + juce::String(rebuiltValue, 3) + ", before="
+            + juce::String(initialHostedState.length()) + ", after="
+            + juce::String(changedHostedState.length()));
+    if (stateProject.openProject(stateProjectFolder).failed())
+        return fail(14, "saved VST3 parameter fixture could not reopen");
+    stateInstance = stateAdapter.trackPluginInstance(0);
+    if (stateInstance == nullptr || stateInstance->getParameters().isEmpty()
+        || std::abs(stateInstance->getParameters().getUnchecked(0)->getValue() - 0.8f) > 0.001f)
+        return fail(14, "saved VST3 parameter state was not restored after reopen");
+
     const auto missingProject = root.getChildFile("Missing Plugin.c2paseq");
     if (! project.copyDirectoryTo(missingProject)
         || ! pointSavedPluginAtMissingBundle(missingProject))
@@ -290,15 +360,115 @@ int main()
         || engine.arrangementSnapshot().size() != originalTrackCount)
         return fail(19, "VST3-bearing track add/delete did not persist cleanly");
 
+    c2paseq::AudioEngine midiEngine({}, cache, false);
+    if (auto result = midiEngine.scanVst3Plugins(paths); result.failed())
+        return fail(20, result.getErrorMessage());
+    const auto midiProject = root.getChildFile("MIDI Instrument Test.c2paseq");
+    if (midiEngine.createProject(midiProject, "MIDI Instrument Test").failed()
+        || midiEngine.addMidiTrack().failed())
+        return fail(21, "could not create MIDI instrument fixture");
+    const auto midiTrackIndex = static_cast<int>(midiEngine.arrangementSnapshot().size()) - 1;
+    if (midiEngine.loadTrackPlugin(midiTrackIndex, found->identifier).wasOk()
+        || midiEngine.loadTrackPlugin(0, synth->identifier).wasOk())
+        return fail(22, "track type did not reject the wrong VST3 role");
+    if (midiEngine.createMidiClip(midiTrackIndex, 0.0, 4.0).failed())
+        return fail(23, "could not create MIDI playback clip");
+    auto midiTracks = midiEngine.arrangementSnapshot();
+    const auto midiClipId = midiTracks[static_cast<std::size_t>(midiTrackIndex)]
+                                .midiClips.front().id;
+    if (midiEngine.addMidiNote(midiClipId, 60, 0.0, 1.0, 100).failed()
+        || midiEngine.addMidiNote(midiClipId, 64, 1.0, 1.0, 100).failed()
+        || midiEngine.addMidiNote(midiClipId, 67, 2.0, 1.0, 100).failed())
+        return fail(23, "could not add MIDI playback notes");
+
+    midiEngine.seek(0.5);
+    if (midiEngine.loadTrackPlugin(midiTrackIndex, synth->identifier).failed()
+        || std::abs(midiEngine.transportSnapshot().positionSeconds - 0.5) > 0.02
+        || midiEngine.loadTrackPlugin(midiTrackIndex, synth->identifier).failed()
+        || std::abs(midiEngine.transportSnapshot().positionSeconds - 0.5) > 0.02)
+        return fail(24, "loading or replacing an instrument changed transport state");
+    midiTracks = midiEngine.arrangementSnapshot();
+    const auto& midiTrack = midiTracks[static_cast<std::size_t>(midiTrackIndex)];
+    if (! midiTrack.plugin.has_value() || midiTrack.plugin->identifier != synth->identifier
+        || midiTrack.plugin->missing || midiTrack.plugin->bypassed)
+        return fail(24, "MIDI track did not expose exactly one loaded instrument");
+    if (midiEngine.setTrackGain(midiTrackIndex, -6.0).failed()
+        || midiEngine.setTrackPan(midiTrackIndex, -0.25).failed()
+        || midiEngine.setTrackMute(midiTrackIndex, true).failed()
+        || midiEngine.setTrackMute(midiTrackIndex, false).failed()
+        || midiEngine.setTrackSolo(midiTrackIndex, true).failed()
+        || midiEngine.setTrackSolo(midiTrackIndex, false).failed()
+        || std::abs(midiEngine.transportSnapshot().positionSeconds - 0.5) > 0.02)
+        return fail(24, "MIDI instrument mixer controls failed or changed transport state");
+    midiTracks = midiEngine.arrangementSnapshot();
+    if (std::abs(midiTracks[static_cast<std::size_t>(midiTrackIndex)].gainDb + 6.0) > 0.001
+        || std::abs(midiTracks[static_cast<std::size_t>(midiTrackIndex)].pan + 0.25) > 0.001)
+        return fail(24, "MIDI instrument mixer values were not retained");
+    if (midiEngine.setTrackPluginBypassed(midiTrackIndex, true).failed()
+        || std::abs(midiEngine.transportSnapshot().positionSeconds - 0.5) > 0.02
+        || midiEngine.setTrackPluginBypassed(midiTrackIndex, false).failed()
+        || std::abs(midiEngine.transportSnapshot().positionSeconds - 0.5) > 0.02)
+        return fail(24, "bypassing a MIDI instrument changed transport state");
+    if (midiEngine.saveProject().failed() || savedPluginState(midiProject).isEmpty()
+        || midiEngine.openProject(midiProject).failed())
+        return fail(25, "MIDI instrument state did not save and reopen");
+    midiTracks = midiEngine.arrangementSnapshot();
+    if (! midiTracks[static_cast<std::size_t>(midiTrackIndex)].plugin.has_value()
+        || midiTracks[static_cast<std::size_t>(midiTrackIndex)].plugin->missing)
+        return fail(25, "MIDI instrument identity was not restored after reopen");
+
+    c2paseq::TracktionAdapter midiRenderAdapter;
+    const auto midiRender = root.getChildFile("midi-instrument-render.wav");
+    const std::vector<c2paseq::MidiPlaybackNote> midiNotes {
+        { 60, 0.0, 1.0, 100 }, { 64, 1.0, 1.0, 100 }, { 67, 2.0, 1.0, 100 }
+    };
+    if (! midiRenderAdapter.createProjectEdit(root.getChildFile("midi-render.tracktionedit"))
+        || midiRenderAdapter.setTrackProperties(0, "MIDI 1", 0.0, 0.0,
+                                                false, false).failed()
+        || midiRenderAdapter.insertMidiClip("MIDI Clip", 0, 0.0, 4.0,
+                                            midiNotes).failed()
+        || midiRenderAdapter.setTrackPlugin(0, synth->toJuce(), {}, false).failed())
+        return fail(26, "could not build the arranged MIDI instrument graph");
+
+    c2paseq::Project renderProject = c2paseq::Project::create("MIDI Render");
+    renderProject.tracks.clear();
+    c2paseq::TrackModel renderTrack;
+    renderTrack.id = juce::Uuid().toString();
+    renderTrack.name = "MIDI 1";
+    renderTrack.type = c2paseq::TrackType::midi;
+    c2paseq::MidiClipModel renderClip;
+    renderClip.id = juce::Uuid().toString();
+    renderClip.start.beats = 0.0;
+    renderClip.length.beats = 4.0;
+    for (const auto& note : midiNotes)
+        renderClip.notes.push_back({ juce::Uuid().toString(), note.noteNumber,
+            { note.startBeats }, { note.durationBeats }, note.velocity });
+    renderTrack.midiClips.push_back(std::move(renderClip));
+    renderProject.tracks.push_back(std::move(renderTrack));
+    c2paseq::PluginState renderPlugin;
+    renderPlugin.ownerId = renderProject.tracks.front().id;
+    renderPlugin.pluginIdentifier = synth->identifier;
+    renderPlugin.name = synth->name;
+    renderPlugin.format = "VST3";
+    renderPlugin.isInstrument = true;
+    renderProject.plugins.push_back(std::move(renderPlugin));
+    c2paseq::RenderPlan renderPlan;
+    const c2paseq::ProjectPaths renderPaths(root.getChildFile("render-plan.c2paseq"));
+    if (c2paseq::RenderService::createPlan(renderProject, renderPaths, renderPlan).failed()
+        || ! renderPlan.ingredients.empty() || std::abs(renderPlan.endSeconds - 2.0) > 0.01
+        || c2paseq::RenderService::render(midiRenderAdapter, renderPlan, midiRender).failed()
+        || readRms(midiRender) <= 0.01)
+        return fail(27, "offline export did not contain instrument-rendered MIDI audio");
+
     const auto externalPath = juce::SystemStats::getEnvironmentVariable(
         "C2PASEQ_EXTERNAL_VST3", {});
     if (externalPath.isNotEmpty())
         if (auto result = exerciseExternalVst3(juce::File(externalPath), source, root);
             result.failed())
-            return fail(20, result.getErrorMessage());
+            return fail(28, result.getErrorMessage());
 
     std::cout << "VST3 scan, instantiate, realtime DSP, attach, bypass, persistence, "
-                 "editor lifecycle, offline DSP, dynamic track hosting, remove, and transport "
-                 "invariants passed\n";
+                 "editor lifecycle, offline DSP, dynamic track hosting, MIDI instrument routing, "
+                 "replacement, rendered audio, remove, and transport invariants passed\n";
     return 0;
 }

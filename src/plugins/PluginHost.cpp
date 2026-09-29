@@ -13,13 +13,16 @@ PluginHost::PluginHost(TracktionAdapter& adapter, ProjectEngine& project,
       showEditorWindows(shouldShowEditorWindows)
 {
     registerCachedPlugins();
-    tracktion.setBeforeEditReplacement([this] { closeAllEditors(); });
+    tracktion.setBeforeEditReplacement([this]
+    {
+        closeAllEditors(false);
+    });
 }
 
 PluginHost::~PluginHost()
 {
     tracktion.setBeforeEditReplacement({});
-    closeAllEditors();
+    closeAllEditors(true);
 }
 
 const std::vector<PluginDescriptor>& PluginHost::availablePlugins() const noexcept
@@ -37,6 +40,14 @@ juce::Result PluginHost::scanVst3(const juce::FileSearchPath& paths)
     return juce::Result::ok();
 }
 
+juce::Result PluginHost::scanVst3Bundle(const juce::File& bundle)
+{
+    if (auto result = scanner.scanVst3Bundle(bundle); result.failed())
+        return result;
+    registerCachedPlugins();
+    return juce::Result::ok();
+}
+
 juce::Result PluginHost::loadTrackPlugin(int trackIndex, const juce::String& identifier)
 {
     const auto& plugins = scanner.cachedPlugins();
@@ -46,8 +57,6 @@ juce::Result PluginHost::loadTrackPlugin(int trackIndex, const juce::String& ide
     });
     if (found == plugins.end())
         return juce::Result::fail("VST3 is not in the scanned plug-in cache");
-    if (found->isInstrument)
-        return juce::Result::fail("Instrument hosting is deferred; choose a VST3 audio effect");
     closeEditor(trackIndex);
     return projectEngine.setTrackPlugin(trackIndex, *found);
 }
@@ -86,11 +95,14 @@ void PluginHost::registerCachedPlugins()
 
 void PluginHost::closeEditor(int trackIndex)
 {
-    windows.erase(trackIndex);
+    if (windows.erase(trackIndex) > 0)
+        (void) projectEngine.saveProject();
 }
 
-void PluginHost::closeAllEditors()
+void PluginHost::closeAllEditors(bool persistState)
 {
+    if (persistState && ! windows.empty())
+        (void) projectEngine.saveProject();
     windows.clear();
 }
 }

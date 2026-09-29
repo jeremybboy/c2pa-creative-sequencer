@@ -241,6 +241,47 @@ juce::Result TracktionAdapter::insertAudioClip(const juce::File& file,
     return juce::Result::ok();
 }
 
+juce::Result TracktionAdapter::insertMidiClip(
+    const juce::String& name,
+    int trackIndex,
+    double startBeats,
+    double lengthBeats,
+    const std::vector<MidiPlaybackNote>& notes)
+{
+    if (edit == nullptr || trackIndex < 0 || startBeats < 0.0 || lengthBeats <= 0.0)
+        return juce::Result::fail("Invalid MIDI clip placement");
+
+    edit->ensureNumberOfAudioTracks(trackIndex + 1);
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("Could not create a MIDI playback track");
+
+    const auto start = tracktion::BeatPosition::fromBeats(startBeats);
+    const auto end = tracktion::BeatPosition::fromBeats(startBeats + lengthBeats);
+    auto clip = tracks[trackIndex]->insertMIDIClip(
+        name, edit->tempoSequence.toTime({ start, end }), nullptr);
+    if (clip == nullptr)
+        return juce::Result::fail("Tracktion could not create the MIDI clip");
+
+    auto& sequence = clip->getSequence();
+    for (const auto& note : notes)
+    {
+        if (! juce::isPositiveAndBelow(note.noteNumber, 128)
+            || note.startBeats < 0.0 || note.durationBeats <= 0.0
+            || note.startBeats >= lengthBeats)
+            return juce::Result::fail("MIDI clip contains an invalid note");
+        const auto duration = std::min(note.durationBeats,
+                                       lengthBeats - note.startBeats);
+        sequence.addNote(note.noteNumber,
+                         tracktion::BeatPosition::fromBeats(note.startBeats),
+                         tracktion::BeatDuration::fromBeats(duration),
+                         juce::jlimit(1, 127, note.velocity), 0, nullptr);
+    }
+
+    edit->getTransport().ensureContextAllocated(true);
+    return juce::Result::ok();
+}
+
 juce::Result TracktionAdapter::setTrackProperties(int trackIndex,
                                                    const juce::String& name,
                                                    double gainDb,
@@ -339,9 +380,8 @@ juce::Result TracktionAdapter::setTrackPlugin(int trackIndex,
                                                const juce::String& stateBase64,
                                                bool bypassed)
 {
-    if (edit == nullptr || trackIndex < 0 || description.pluginFormatName != "VST3"
-        || description.isInstrument)
-        return juce::Result::fail("Invalid VST3 audio effect");
+    if (edit == nullptr || trackIndex < 0 || description.pluginFormatName != "VST3")
+        return juce::Result::fail("Invalid VST3 plug-in");
 
     edit->ensureNumberOfAudioTracks(trackIndex + 1);
     const auto tracks = tracktion::engine::getAudioTracks(*edit);
@@ -368,6 +408,19 @@ juce::Result TracktionAdapter::setTrackPlugin(int trackIndex,
     {
         external->deleteFromParent();
         return juce::Result::fail("VST3 load failed: " + error);
+    }
+
+    if (stateBase64.isNotEmpty())
+    {
+        juce::MemoryBlock restoredState;
+        if (! restoredState.fromBase64Encoding(stateBase64))
+        {
+            external->deleteFromParent();
+            return juce::Result::fail("Saved VST3 state is invalid");
+        }
+        if (auto* instance = external->getAudioPluginInstance())
+            instance->setStateInformation(restoredState.getData(),
+                                          static_cast<int>(restoredState.getSize()));
     }
 
     external->setEnabled(! bypassed);
@@ -416,7 +469,16 @@ juce::Result TracktionAdapter::captureTrackPluginState(int trackIndex,
         return juce::Result::fail("Track has no loaded VST3");
 
     plugin->flushPluginStateToValueTree();
-    stateBase64 = plugin->state.getProperty("state").toString();
+    if (auto* instance = plugin->getAudioPluginInstance())
+    {
+        juce::MemoryBlock state;
+        instance->getStateInformation(state);
+        stateBase64 = state.toBase64Encoding();
+    }
+    else
+    {
+        stateBase64 = plugin->state.getProperty("state").toString();
+    }
     bypassed = ! plugin->isEnabled();
     missing = plugin->isMissing();
     return juce::Result::ok();

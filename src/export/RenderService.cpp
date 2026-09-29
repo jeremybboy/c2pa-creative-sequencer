@@ -41,9 +41,25 @@ juce::Result RenderService::createPlan(const Project& project,
             candidate.ingredients.push_back({ media->id, media->originalFileName,
                                                media->sha256, file, media->provenance });
         }
+
+        if (track.type == TrackType::midi)
+        {
+            const auto plugin = std::find_if(project.plugins.begin(), project.plugins.end(),
+                [&](const auto& item) { return item.ownerId == track.id; });
+            if (plugin == project.plugins.end() || ! plugin->isInstrument
+                || plugin->bypassed || plugin->missing)
+                continue;
+            for (const auto& clip : track.midiClips)
+            {
+                if (clip.notes.empty())
+                    continue;
+                candidate.endSeconds = std::max(candidate.endSeconds,
+                    (clip.start.beats + clip.length.beats) * 60.0 / project.bpm);
+            }
+        }
     }
 
-    if (candidate.endSeconds <= 0.0 || candidate.ingredients.empty())
+    if (candidate.endSeconds <= 0.0)
         return juce::Result::fail("The project has no audible clips to export");
     plan = std::move(candidate);
     return juce::Result::ok();

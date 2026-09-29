@@ -12,7 +12,20 @@ PianoRollView::PianoRollView()
 
 void PianoRollView::setClip(ArrangementMidiClipSnapshot clip)
 {
+    std::set<juce::String> previousNoteIds;
+    for (const auto& note : midiClip.notes)
+        previousNoteIds.insert(note.id);
     midiClip = std::move(clip);
+    if (selectInsertedNotesOnNextUpdate)
+    {
+        std::set<juce::String> inserted;
+        for (const auto& note : midiClip.notes)
+            if (! previousNoteIds.contains(note.id))
+                inserted.insert(note.id);
+        if (! inserted.empty())
+            selectedNotes = std::move(inserted);
+        selectInsertedNotesOnNextUpdate = false;
+    }
     std::erase_if(selectedNotes, [this](const auto& id)
     {
         return std::none_of(midiClip.notes.begin(), midiClip.notes.end(),
@@ -503,6 +516,7 @@ void PianoRollView::insertClipboard(bool duplicate)
     }
     pasteCursorBeats = std::min(midiClip.lengthBeats - clipboardSpanBeats,
                                 target + std::max(1.0, clipboardSpanBeats));
+    selectInsertedNotesOnNextUpdate = true;
     onInsertNotes(notes);
 }
 

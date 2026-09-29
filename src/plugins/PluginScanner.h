@@ -15,6 +15,7 @@ public:
 
     [[nodiscard]] const std::vector<PluginDescriptor>& cachedPlugins() const noexcept;
     [[nodiscard]] juce::Result scanVst3(const juce::FileSearchPath& paths = standardSearchPaths());
+    [[nodiscard]] juce::Result scanVst3Bundle(const juce::File& bundle);
     [[nodiscard]] static juce::FileSearchPath standardSearchPaths();
     [[nodiscard]] static juce::File defaultCacheFile();
 
