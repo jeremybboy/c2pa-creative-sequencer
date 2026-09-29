@@ -2,6 +2,7 @@
 
 - **Base:** `main` after merged PR 018
 - **Branch:** `pr/019-vst3-instrument-playback`
+- **Pull request:** [#19](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/19)
 - **Merge rule:** human acceptance required; do not merge automatically
 
 ## Goal
