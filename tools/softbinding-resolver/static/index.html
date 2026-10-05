@@ -1,1 +1,37 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Audio Soft-Binding Recovery Demo</title><link rel="stylesheet" href="style.css"></head><body><main><header><p class="eyebrow">LOCAL / OFFLINE POC</p><h1>Audio Soft-Binding Recovery Demo</h1><p>One resolver and manifest repository; two different recovery mechanisms.</p></header><section class="method-grid"><a class="method" href="/watermark"><b>WATERMARK</b><h2>Watermark Recovery</h2><p>Decode a deliberately embedded 128-bit value, then perform exact repository lookup.</p></a><a class="method" href="/fingerprint"><b>FINGERPRINT</b><h2>Fingerprint Recovery</h2><p>Derive audio landmarks and match them against registered reference fingerprints.</p></a></section><p class="warning">Experimental C2PA soft-binding demonstration; not a claim of C2PA SBR conformance.</p></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Audio Soft-Binding Recovery Demo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">LOCAL / OFFLINE POC</p>
+    <h1>Audio Soft-Binding Recovery Demo</h1>
+    <p>One resolver and manifest repository; two different recovery mechanisms.</p>
+  </header>
+  <section class="method-grid">
+    <a class="method" href="/watermark"><b>WATERMARK</b><h2>Watermark Recovery</h2><p>Decode a deliberately embedded 128-bit value, then perform exact repository lookup.</p></a>
+    <a class="method" href="/fingerprint"><b>FINGERPRINT</b><h2>Fingerprint Recovery</h2><p>Derive audio landmarks and match them against registered reference fingerprints.</p></a>
+  </section>
+  <section class="converter" aria-labelledby="converter-title">
+    <p class="eyebrow">TEST PREPARATION</p>
+    <h2 id="converter-title">Create Test Derivative</h2>
+    <p>Create a new MP3 from the original publication, then test that same derivative in Watermark Recovery and Fingerprint Recovery.</p>
+    <p class="warning">A preset describes the transformation only. The recovery pages report whether the registered watermark identifier is actually recoverable.</p>
+    <div class="converter-controls">
+      <label>Source audio<input id="derivative-file" type="file" accept="audio/*,.wav,.mp3"></label>
+      <label>Transformation<select id="derivative-preset" disabled><option>Loading presets…</option></select></label>
+      <button id="create-derivative" disabled>Create and Download MP3</button>
+    </div>
+    <p id="derivative-status">Checking local FFmpeg availability…</p>
+    <a id="derivative-download" class="download" hidden>Download derivative again</a>
+  </section>
+  <p class="warning">Experimental C2PA soft-binding demonstration; not a claim of C2PA SBR conformance.</p>
+</main>
+<script src="converter.js"></script>
+</body>
+</html>

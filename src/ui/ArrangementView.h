@@ -40,8 +40,11 @@ class ArrangementView final : public juce::Component,
                               private juce::Timer
 {
 public:
-    explicit ArrangementView(AudioEngine& audioEngine);
+    explicit ArrangementView(AudioEngine& audioEngine,
+                             std::function<void()> audioWMarkSetupRequest = {});
     ~ArrangementView() override;
+
+    void audioWMarkSetupFinished(bool installed, const juce::String& message);
 
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -129,6 +132,7 @@ private:
     [[nodiscard]] juce::Colour colourForTrack(int index) const;
 
     AudioEngine& audioEngine;
+    std::function<void()> requestAudioWMarkSetup;
     SequencerLookAndFeel lookAndFeel;
     SampleAuditionPlayer sampleAudition;
     PlacesStore placesStore;

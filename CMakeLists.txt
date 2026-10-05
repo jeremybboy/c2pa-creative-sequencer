@@ -52,6 +52,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/app/Application.h
     src/app/Commands.cpp
     src/app/Commands.h
+    src/app/DemoRuntimeController.cpp
+    src/app/DemoRuntimeController.h
     src/app/MainWindow.cpp
     src/app/MainWindow.h
     src/engine/AudioEngine.cpp
@@ -145,6 +147,30 @@ target_link_libraries(C2PACreativeSequencer PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
 
+add_custom_command(TARGET C2PACreativeSequencer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:C2PACreativeSequencer>/../Resources/RuntimeSetup"
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:C2PACreativeSequencer>/../Resources/RecoveryDemo"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_audiowmark.sh"
+        "$<TARGET_FILE_DIR:C2PACreativeSequencer>/../Resources/RuntimeSetup/setup_audiowmark.sh"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/server.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/audiowmark_decoder.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/audfprint_matcher.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/constants.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/derivative_creator.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/repository.py"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/service.py"
+        "$<TARGET_FILE_DIR:C2PACreativeSequencer>/../Resources/RecoveryDemo"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/softbinding-resolver/static"
+        "$<TARGET_FILE_DIR:C2PACreativeSequencer>/../Resources/RecoveryDemo/static"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory
+        "$<TARGET_FILE_DIR:C2PACreativeSequencer>/../Resources/RecoveryDemo/__pycache__"
+    VERBATIM)
+
 c2paseq_enable_c2pa(C2PACreativeSequencer)
 
 set_target_properties(C2PACreativeSequencer PROPERTIES
@@ -193,6 +219,21 @@ if(BUILD_TESTING)
     target_include_directories(C2PACreativeSequencerTests PRIVATE src)
     target_compile_features(C2PACreativeSequencerTests PRIVATE cxx_std_20)
     add_test(NAME application_skeleton COMMAND C2PACreativeSequencerTests)
+
+    add_executable(C2PADemoRuntimeTests
+        tests/app/DemoRuntimeTests.cpp
+        src/app/DemoRuntimeController.cpp
+        src/app/DemoRuntimeController.h)
+    target_include_directories(C2PADemoRuntimeTests PRIVATE src)
+    target_compile_features(C2PADemoRuntimeTests PRIVATE cxx_std_20)
+    target_compile_definitions(C2PADemoRuntimeTests PRIVATE
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0)
+    target_link_libraries(C2PADemoRuntimeTests PRIVATE
+        juce::juce_gui_basics
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+    add_test(NAME demo_runtime COMMAND C2PADemoRuntimeTests)
 
     add_executable(C2PATransportTests
         tests/engine/TransportFoundationTests.cpp

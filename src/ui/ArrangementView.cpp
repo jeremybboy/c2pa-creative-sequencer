@@ -223,8 +223,10 @@ private:
     bool clickedInsideSelection = false;
 };
 
-ArrangementView::ArrangementView(AudioEngine& engine)
+ArrangementView::ArrangementView(AudioEngine& engine,
+                                 std::function<void()> audioWMarkSetupRequest)
     : audioEngine(engine),
+      requestAudioWMarkSetup(std::move(audioWMarkSetupRequest)),
       sampleAudition(engine.audioDeviceManager(), engine.audioFormatManager()),
       browser(placesStore), timelineSurface(std::make_unique<TimelineSurface>()),
       pianoRoll(std::make_unique<PianoRollView>())
@@ -339,6 +341,16 @@ ArrangementView::ArrangementView(AudioEngine& engine)
     audioSoftBindingButton.setClickingTogglesState(true);
     audioSoftBindingButton.onClick = [this]
     {
+        if (audioSoftBindingButton.getToggleState() && ! audioEngine.watermarkAvailable())
+        {
+            audioSoftBindingButton.setToggleState(false, juce::dontSendNotification);
+            audioEngine.setSoftBindingEnabled(false);
+            projectMessage = "AudioWMark setup required";
+            refreshTransport();
+            if (requestAudioWMarkSetup)
+                requestAudioWMarkSetup();
+            return;
+        }
         audioEngine.setSoftBindingEnabled(audioSoftBindingButton.getToggleState());
         projectMessage = "Audio soft binding "
             + juce::String(audioEngine.softBindingEnabled() ? "enabled" : "disabled")
@@ -462,6 +474,14 @@ ArrangementView::~ArrangementView()
     horizontalScroll.removeListener(this);
     verticalScroll.removeListener(this);
     setLookAndFeel(nullptr);
+}
+
+void ArrangementView::audioWMarkSetupFinished(bool installed, const juce::String& message)
+{
+    audioEngine.setSoftBindingEnabled(installed);
+    audioSoftBindingButton.setToggleState(installed, juce::dontSendNotification);
+    projectMessage = message;
+    refreshTransport();
 }
 
 void ArrangementView::paint(juce::Graphics& g)

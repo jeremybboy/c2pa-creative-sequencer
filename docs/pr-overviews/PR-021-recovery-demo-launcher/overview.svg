@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="header" x1="0" x2="1"><stop stop-color="#102237"/><stop offset="1" stop-color="#173c55"/></linearGradient>
+    <style>
+      .title{font:700 52px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#fff}
+      .sub{font:400 23px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#dbe9f4}
+      .h{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#13273c}
+      .b{font:400 19px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#22384b}
+      .small{font:600 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#385064}
+      .step{font:700 23px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#fff}
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="#f4f7fa"/>
+  <rect width="1600" height="170" fill="url(#header)"/>
+  <text x="55" y="77" class="title">PR 021  Recovery Demo Launcher</text>
+  <text x="57" y="122" class="sub">One app action launches recovery; local presets prepare reproducible derivatives</text>
+  <rect x="1175" y="35" width="365" height="100" rx="16" fill="#e7f5ff"/>
+  <text x="1205" y="70" class="h">Goal</text>
+  <text x="1205" y="99" class="b">A smoother local demo without</text>
+  <text x="1205" y="124" class="b">hiding consent or tool boundaries.</text>
+
+  <rect x="50" y="210" width="390" height="240" rx="18" fill="#fff" stroke="#cbd8e3" stroke-width="2"/>
+  <rect x="50" y="210" width="390" height="55" rx="18" fill="#e2e8ff"/>
+  <text x="75" y="247" class="h">Before</text>
+  <text x="78" y="304" class="b">• Open Terminal</text>
+  <text x="78" y="341" class="b">• Run setup_audiowmark.sh</text>
+  <text x="78" y="378" class="b">• Start Python server manually</text>
+  <text x="78" y="415" class="b">• Open localhost URL manually</text>
+
+  <path d="M460 330 H540" stroke="#4b6b83" stroke-width="8"/><path d="M540 330 l-25 -18 v36z" fill="#4b6b83"/>
+
+  <rect x="565" y="210" width="470" height="240" rx="18" fill="#fff" stroke="#cbd8e3" stroke-width="2"/>
+  <rect x="565" y="210" width="470" height="55" rx="18" fill="#dff5ea"/>
+  <text x="590" y="247" class="h">PR 021</text>
+  <text x="592" y="304" class="b">• Native Tools menu</text>
+  <text x="592" y="341" class="b">• Explicit one-time install consent</text>
+  <text x="592" y="378" class="b">• Launch / stop recovery demo</text>
+  <text x="592" y="415" class="b">• Bundled, signed resolver assets</text>
+
+  <path d="M1055 330 H1135" stroke="#4b6b83" stroke-width="8"/><path d="M1135 330 l-25 -18 v36z" fill="#4b6b83"/>
+
+  <rect x="1160" y="210" width="390" height="240" rx="18" fill="#fff" stroke="#cbd8e3" stroke-width="2"/>
+  <rect x="1160" y="210" width="390" height="55" rx="18" fill="#fff0c9"/>
+  <text x="1185" y="247" class="h">Result</text>
+  <text x="1188" y="304" class="b">• Enable Audio SB in-app</text>
+  <text x="1188" y="341" class="b">• Launch demo in one action</text>
+  <text x="1188" y="378" class="b">• Create local test derivatives</text>
+  <text x="1188" y="415" class="b">• Server stops with the app</text>
+
+  <text x="55" y="515" class="h">Runtime flow</text>
+  <rect x="50" y="550" width="220" height="90" rx="15" fill="#2c78bd"/><text x="82" y="605" class="step">Tools menu</text>
+  <path d="M285 595 H350" stroke="#658197" stroke-width="6"/><path d="M350 595 l-20 -14 v28z" fill="#658197"/>
+  <rect x="370" y="550" width="250" height="90" rx="15" fill="#5976c9"/><text x="396" y="590" class="step">Install if absent</text><text x="416" y="618" class="sub">with consent</text>
+  <path d="M635 595 H700" stroke="#658197" stroke-width="6"/><path d="M700 595 l-20 -14 v28z" fill="#658197"/>
+  <rect x="720" y="550" width="270" height="90" rx="15" fill="#178d76"/><text x="756" y="590" class="step">Start local server</text><text x="756" y="618" class="sub">ports 8787–8797</text>
+  <path d="M1005 595 H1070" stroke="#658197" stroke-width="6"/><path d="M1070 595 l-20 -14 v28z" fill="#658197"/>
+  <rect x="1090" y="550" width="270" height="90" rx="15" fill="#d7872f"/><text x="1123" y="605" class="step">Open browser</text>
+  <path d="M1375 595 H1440" stroke="#658197" stroke-width="6"/><path d="M1440 595 l-20 -14 v28z" fill="#658197"/>
+  <rect x="1460" y="550" width="90" height="90" rx="15" fill="#bd5151"/><text x="1478" y="603" class="step">Stop</text>
+
+  <rect x="50" y="690" width="710" height="150" rx="18" fill="#e8f7ef"/>
+  <text x="75" y="730" class="h">Preserved boundaries</text>
+  <text x="78" y="770" class="b">External AudioWMark executable • local Application Support runtime</text>
+  <text x="78" y="804" class="b">No realtime DSP change • no cloud service • scripts remain available</text>
+  <rect x="790" y="690" width="760" height="150" rx="18" fill="#fff1ee"/>
+  <text x="815" y="730" class="h">Still out of scope</text>
+  <text x="818" y="770" class="b">Audfprint installation • general Settings redesign • background daemon</text>
+  <text x="818" y="804" class="b">Watermark tuning • threshold changes • production resolver claims</text>
+  <text x="50" y="876" class="small">Verification: Release build, tests, bundled resources, code signature, then human menu/browser/lifecycle acceptance.</text>
+</svg>

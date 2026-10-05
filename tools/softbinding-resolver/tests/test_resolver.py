@@ -13,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from constants import ALGORITHM, FINGERPRINT_ALGORITHM
+from derivative_creator import DerivativeCreator
 from repository import Repository
 from server import make_server
 from service import ResolverService
@@ -47,6 +48,18 @@ class FakeFingerprintMatcher:
     def match_file(self, _path, _repository):
         return {"queryHashCount": 100, "queryDurationSeconds": 2.0,
                 "matches": list(self.matches)}
+
+
+class FakeDerivativeCreator:
+    def status(self):
+        return {"available": True, "message": "ready", "presets": [
+            {"id": "mp3-64k", "label": "MP3 64 kbps", "description": "test"}
+        ]}
+
+    def create_bytes(self, source, suffix, preset):
+        if preset != "mp3-64k":
+            raise ValueError("unknown derivative preset")
+        return b"ID3" + source, {"description": "test"}
 
 
 class ResolverTests(unittest.TestCase):
@@ -139,7 +152,8 @@ class ResolverTests(unittest.TestCase):
         self.repository.import_outbox(self.outbox)
         server = make_server("127.0.0.1", 0, self.repository,
                              FakeDecoder([PAYLOAD]), self.outbox,
-                             fingerprint_matcher=FakeFingerprintMatcher())
+                             fingerprint_matcher=FakeFingerprintMatcher(),
+                             derivative_creator=FakeDerivativeCreator())
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         try:
@@ -151,12 +165,25 @@ class ResolverTests(unittest.TestCase):
             landing = connection.getresponse().read().decode()
             self.assertIn("Watermark Recovery", landing)
             self.assertIn("Fingerprint Recovery", landing)
+            self.assertIn("Create Test Derivative", landing)
             connection.request("GET", "/watermark")
             self.assertIn("EXACT LOOKUP", connection.getresponse().read().decode())
             connection.request("GET", "/fingerprint")
             fingerprint_page = connection.getresponse().read().decode()
             self.assertIn("SIMILARITY MATCH", fingerprint_page)
             self.assertIn("Similarity evidence", fingerprint_page)
+            connection.request("GET", "/derivatives/presets")
+            presets = json.loads(connection.getresponse().read())
+            self.assertTrue(presets["available"])
+            self.assertEqual(presets["presets"][0]["id"], "mp3-64k")
+            connection.request("POST", "/derivatives", b"wave", {
+                "Content-Type": "audio/wav", "X-Filename": "source.wav",
+                "X-Derivative-Preset": "mp3-64k",
+            })
+            derivative_response = connection.getresponse()
+            self.assertEqual(derivative_response.status, 200)
+            self.assertEqual(derivative_response.getheader("Content-Type"), "audio/mpeg")
+            self.assertEqual(derivative_response.read(), b"ID3wave")
             connection.request(
                 "GET", "/matches/byBinding?algorithm=" + ALGORITHM + "&value=" + PAYLOAD
             )
@@ -180,6 +207,28 @@ class ResolverTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join(timeout=5)
+
+    def test_derivative_presets_build_bounded_ffmpeg_commands(self):
+        commands = []
+
+        def runner(command, check):
+            self.assertTrue(check)
+            commands.append(command)
+            pathlib.Path(command[-1]).write_bytes(b"ID3-test")
+
+        creator = DerivativeCreator(sys.executable, runner)
+        light, _ = creator.create_bytes(b"wave", ".wav", "mp3-320k")
+        fallback, _ = creator.create_bytes(
+            b"wave", ".wav", "mp3-64k-lowpass-12k")
+        self.assertEqual(light, b"ID3-test")
+        self.assertEqual(fallback, b"ID3-test")
+        self.assertNotIn("-af", commands[0])
+        self.assertEqual(commands[0][commands[0].index("-b:a") + 1], "320k")
+        self.assertEqual(commands[1][commands[1].index("-af") + 1],
+                         "lowpass=f=12000")
+        self.assertEqual(commands[1][commands[1].index("-b:a") + 1], "64k")
+        for command in commands:
+            self.assertEqual(command[command.index("-map_metadata") + 1], "-1")
 
 
 if __name__ == "__main__":

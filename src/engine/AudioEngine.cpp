@@ -297,6 +297,11 @@ bool AudioEngine::softBindingEnabled() const noexcept
     return useSoftBinding;
 }
 
+bool AudioEngine::watermarkAvailable() const
+{
+    return watermark->isAvailable();
+}
+
 juce::String AudioEngine::watermarkStatus() const
 {
     return watermark->statusDescription();

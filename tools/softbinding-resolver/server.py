@@ -14,12 +14,14 @@ sys.path.insert(0, str(ROOT))
 from audiowmark_decoder import AudioWMarkDecoder
 from audfprint_matcher import AudfprintMatcher
 from constants import ALGORITHM, FINGERPRINT_ALGORITHM
+from derivative_creator import DerivativeCreator, DerivativeRuntimeUnavailable
 from repository import Repository, default_outbox_root
 from service import ResolverService
 
 
-def handler_factory(repository, service, outbox, static_root=None):
+def handler_factory(repository, service, outbox, static_root=None, derivative_creator=None):
     static_root = pathlib.Path(static_root or ROOT / "static")
+    derivative_creator = derivative_creator or DerivativeCreator()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "C2PASoftBindingDemo/0.1"
@@ -56,6 +58,8 @@ def handler_factory(repository, service, outbox, static_root=None):
                     "algorithm": algorithm,
                     "value": value,
                 })
+            if parsed.path == "/derivatives/presets":
+                return self.send_json(200, derivative_creator.status())
             if parsed.path.startswith("/manifests/"):
                 manifest_id = urllib.parse.unquote(parsed.path[len("/manifests/"):])
                 data = repository.get_manifest(manifest_id)
@@ -114,7 +118,26 @@ def handler_factory(repository, service, outbox, static_root=None):
                         self.read_body(), suffix))
                 if parsed.path == "/imports/sequencer":
                     return self.send_json(200, repository.import_outbox(outbox))
+                if parsed.path == "/derivatives":
+                    preset = self.headers.get("X-Derivative-Preset", "")
+                    filename = self.headers.get("X-Filename", "audio.wav")
+                    suffix = pathlib.Path(filename).suffix or ".wav"
+                    derivative, metadata = derivative_creator.create_bytes(
+                        self.read_body(), suffix, preset)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "audio/mpeg")
+                    self.send_header("Content-Disposition",
+                                     'attachment; filename="test-derivative.mp3"')
+                    self.send_header("X-Derivative-Preset", preset)
+                    self.send_header("X-Derivative-Description", metadata["description"])
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.send_header("Content-Length", str(len(derivative)))
+                    self.end_headers()
+                    self.wfile.write(derivative)
+                    return
                 return self.send_json(404, {"error": "not found"})
+            except DerivativeRuntimeUnavailable as error:
+                return self.send_json(503, {"error": str(error)})
             except (ValueError, OSError, json.JSONDecodeError) as error:
                 return self.send_json(400, {"error": str(error)})
             except Exception as error:
@@ -124,13 +147,14 @@ def handler_factory(repository, service, outbox, static_root=None):
 
 
 def make_server(host, port, repository=None, decoder=None, outbox=None, static_root=None,
-                fingerprint_matcher=None):
+                fingerprint_matcher=None, derivative_creator=None):
     repository = repository or Repository()
     decoder = decoder or AudioWMarkDecoder()
     service = ResolverService(repository, decoder,
                               fingerprint_matcher or AudfprintMatcher())
     return ThreadingHTTPServer(
-        (host, port), handler_factory(repository, service, outbox or default_outbox_root(), static_root)
+        (host, port), handler_factory(repository, service, outbox or default_outbox_root(),
+                                      static_root, derivative_creator)
     )
 
 
@@ -142,6 +166,7 @@ def main():
     parser.add_argument("--outbox")
     parser.add_argument("--audiowmark")
     parser.add_argument("--audfprint")
+    parser.add_argument("--ffmpeg")
     args = parser.parse_args()
     repository = Repository(args.repository)
     outbox = pathlib.Path(args.outbox) if args.outbox else default_outbox_root()
@@ -149,7 +174,8 @@ def main():
     server = make_server(
         args.host, args.port, repository,
         AudioWMarkDecoder(args.audiowmark) if args.audiowmark else None, outbox,
-        fingerprint_matcher=AudfprintMatcher(args.audfprint) if args.audfprint else None
+        fingerprint_matcher=AudfprintMatcher(args.audfprint) if args.audfprint else None,
+        derivative_creator=DerivativeCreator(args.ffmpeg)
     )
     print(f"Imported {imported['imported']} Sequencer publication(s); repository ready")
     print(f"Audio Soft-Binding Recovery Demo: http://{args.host}:{server.server_port}")

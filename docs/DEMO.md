@@ -40,7 +40,7 @@ source selection disagrees with the final audible arrangement.
 
 ### Part A — authoring
 
-1. Run `scripts/setup_audiowmark.sh`, launch the Sequencer, and confirm **Audio SB** reports ready.
+1. Launch the Sequencer and enable **Audio SB**. If AudioWMark is absent, approve its one-time setup and wait for completion; `scripts/setup_audiowmark.sh` remains the command-line fallback.
 2. Export the same arrangement once with **Audio SB** off and once on. While enabled export runs,
    move the app window and confirm the UI stays responsive; cancellation must return cleanly.
 3. Confirm the enabled WAV is playable, stereo, 24-bit, has the expected sample rate/duration,
@@ -54,7 +54,7 @@ source selection disagrees with the final audible arrangement.
 
 ### Part B — external resolver
 
-7. Run `python3 tools/softbinding-resolver/server.py` and open `http://127.0.0.1:8787`.
+7. Choose **Tools → Launch Recovery Demo**; confirm the Sequencer remains responsive while the browser opens the selected local URL (normally `http://127.0.0.1:8787`, or the next responsive/free port through 8797). The command-line fallback is `python3 tools/softbinding-resolver/server.py`.
 8. Click **Import Sequencer Publications**; repeating the import must be idempotent.
 9. Create a manifestless derivative with
    `python3 scripts/make_softbinding_demo_derivative.py signed.wav derivative.wav`.
@@ -70,14 +70,20 @@ external decode, exact repository match, idempotent import, and byte-exact manif
 
 ## PR 012 fingerprint and MP3 acceptance
 
-1. Run `scripts/setup_audiowmark.sh` and `scripts/setup_audfprint.sh`.
+1. Install AudioWMark through **Tools → Install AudioWMark…** (or enable **Audio SB** and approve setup), then run `scripts/setup_audfprint.sh`.
 2. Launch the app, enable **Audio SB** and **FP SB**, then export a signed WAV. Confirm the app remains responsive through **Computing audio fingerprint**.
 3. Verify the WAV's C2PA, then inspect its outbox package: `manifest.c2pa`, `binding.json`, `fingerprint.json`, and `fingerprint-data.afpt` must exist; no WAV, project media, PEM, or key may exist there.
 4. Confirm the manifest has separate AudioWMark and audfprint `c2pa.soft-binding` assertions, one `c2pa.watermarked.bound` action, and no fingerprint action.
-5. Start `python3 tools/softbinding-resolver/server.py`, import once and again, and confirm the second import is idempotent. Check `/watermark` and `/fingerprint` from the same process.
-6. Run `python3 scripts/make_mp3_demo_derivative.py signed.wav derivative.mp3`. This creates the measured PR 013 transformation: a 64 kbps MP3 with a 12 kHz low-pass and stripped metadata. Submit that same MP3 to both pages.
+5. Choose **Tools → Launch Recovery Demo**, import once and again, and confirm the second import is idempotent. Check `/watermark` and `/fingerprint` from the same process; **Tools → Stop Recovery Demo** or quitting the app must stop the server.
+6. On the recovery-demo landing page, choose the signed WAV under **Create Test Derivative**, select **MP3 64 kbps + 12 kHz low-pass**, and download the result. This fixed preset reproduces the measured PR 013 transformation and strips metadata. Submit that same MP3 to both pages. The command-line fallback remains `python3 scripts/make_mp3_demo_derivative.py signed.wav derivative.mp3`.
 7. Fingerprint acceptance requires at least 10 aligned hashes and must show the actual evidence. The manually verified PR 013 fixture produced 49 aligned / 200 raw common hashes, 177 query hashes, 27.68% coverage, and 6.36 seconds of support; it recovered the correct manifest.
 8. On that same MP3, AudioWMark decoded eight candidates but none matched the registered 128-bit value. Report this as "the registered watermark identifier was not recoverable by the configured decoder," not as proof that the watermark was physically removed or destroyed.
 9. Submit unrelated audio to `/fingerprint`; the verified deterministic noise control produced 678 query hashes, zero matches, and no provenance recovery.
+
+The landing page also offers 320 kbps and plain 64 kbps MP3 presets for comparison. These labels
+describe only the FFmpeg operation; they do not claim that a watermark was removed, destroyed, or
+will be unavailable. The recovery pages must report the measured decoder and lookup results for
+each generated file. FFmpeg is discovered from the fingerprint runtime record, the process PATH,
+or standard Homebrew locations; if unavailable, the converter stays disabled with setup guidance.
 
 For automated opt-in acceptance, configure with both `C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST=ON` and `C2PASEQ_ENABLE_REAL_AUDFPRINT_TEST=ON`, then run the `real_mp3_soft_binding_pipeline` CTest. Normal CI remains independent of both runtimes and FFmpeg.
