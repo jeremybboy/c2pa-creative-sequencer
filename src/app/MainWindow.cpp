@@ -6,7 +6,8 @@
 
 namespace c2paseq
 {
-MainWindow::MainWindow(AudioEngine& audioEngine)
+MainWindow::MainWindow(AudioEngine& audioEngine,
+                       std::function<void()> audioWMarkSetupRequest)
     : DocumentWindow(appInfo::name.data(),
                      juce::Colour::fromRGB(25, 25, 24),
                      DocumentWindow::allButtons)
@@ -14,9 +15,16 @@ MainWindow::MainWindow(AudioEngine& audioEngine)
     setUsingNativeTitleBar(true);
     setResizable(true, true);
     setResizeLimits(1040, 600, 3840, 2160);
-    setContentOwned(new ArrangementView(audioEngine), true);
+    arrangementView = new ArrangementView(audioEngine, std::move(audioWMarkSetupRequest));
+    setContentOwned(arrangementView, true);
     centreWithSize(appInfo::defaultWindowWidth, appInfo::defaultWindowHeight);
     setVisible(true);
+}
+
+void MainWindow::audioWMarkSetupFinished(bool installed, const juce::String& message)
+{
+    if (arrangementView != nullptr)
+        arrangementView->audioWMarkSetupFinished(installed, message);
 }
 
 void MainWindow::closeButtonPressed()

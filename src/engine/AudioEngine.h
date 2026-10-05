@@ -120,6 +120,7 @@ public:
     [[nodiscard]] juce::Result removeSigningCredential();
     void setSoftBindingEnabled(bool enabled) noexcept;
     [[nodiscard]] bool softBindingEnabled() const noexcept;
+    [[nodiscard]] bool watermarkAvailable() const;
     [[nodiscard]] juce::String watermarkStatus() const;
     void setFingerprintEnabled(bool enabled) noexcept;
     [[nodiscard]] bool fingerprintEnabled() const noexcept;
