@@ -146,6 +146,39 @@ No intermediate WAVs are added to the project. Manual bounce remains useful when
 keep a separate signed stem. Releases/reverb beyond MIDI clip ends are not automatically added;
 extend the clip beforehand. Automated tests use the test synth, not proof of your Surge XT preset.
 
+## PR 026 arrangement editing and UI refinement acceptance
+
+Use the Release app from `build-pr021` (the folder name is historical), built from
+`codex/arrangement-editing-ui-refinement`. Quit the previous app instance before launching it.
+
+1. Open a project with Audio/VST3 and MIDI/instrument tracks. Check the taller track-header
+   controls, readable proportions, long-name ellipsis/full-name tooltip, gain/pan, M/S, arm and input.
+2. Open a MIDI clip; check C, C#, D, F#, A#, B row/note labels at normal zoom. MIDI 60 is still C4.
+   At dense pitch zoom, only C anchors remain; hover still identifies the exact musical pitch.
+3. Create, hover, select and drag notes: check musical names in the header/note body and creation
+   status. Move/resize, velocity, clipboard and repeated Command-D must remain functional.
+4. Pinch the arrangement or Command-scroll farther in. Watch **Grid** in the status line: bars,
+   beats, 1/2, 1/4, then 1/8 beat. At high zoom, trim a short section and check the visible grid
+   predicts the result. Option still bypasses snap; BPM changes alter musical step duration.
+5. Drag across the waveform body in the middle of a sample or recorded take (not its move header),
+   then press **Delete** or **Backspace**. Dragging empty lanes also selects time across tracks.
+6. Confirm two fragments and a hole remain: later audio does not move. Play across the gap,
+   undo/redo, then save/reopen and check identical timing and unchanged source credentials.
+7. Select ranges overlapping the beginning, end, and whole clip: confirm left trim, right trim,
+   and removal. An outside/empty selection changes no project audio; MIDI time ranges are untouched.
+8. Open **Input**: smaller device groups appear first; devices with >8 channels are under
+   **Advanced inputs**, not discarded. Select a channel, reopen the menu and check its selected
+   entry/tooltip. This is session state; no physical/virtual certification or hardware persistence.
+9. Repeat mono recording/Stop/sign/import, manual MIDI bounce, and normal signed Export with
+   imported audio + live MIDI + recorded fragments. Inspect credentials: fragments refer to the
+   same original signed media, automatic MIDI provenance still appears, and the mix validates.
+
+Range delete is non-destructive: no new audio, import or C2PA claim is created by trim/split/delete.
+Only clip placement/source offsets/duration/fragment IDs change. Recording still signs after
+stop/finalize, and final Export creates final media credentials. No ripple, destructive editing,
+new action templates, monitoring, comping, crossfades, pitch editing, or cloud scope.
+Offscreen renders and synthetic/regression tests are not live hardware or listening acceptance.
+
 ## PR 025 minimal credentialed audio recording acceptance
 
 1. Connect an input (microphone or audio interface), create/open a project, and configure the

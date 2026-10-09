@@ -8,6 +8,7 @@
 #include "provenance/ProvenanceService.h"
 #include "transport/ArrangementLoop.h"
 #include "transport/TransportFormatting.h"
+#include "timeline/TimelineGeometry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -908,6 +909,27 @@ juce::Result ProjectEngine::cutTimeRange(const ArrangementTimeSelection& selecti
     if (auto result = fillClipboardFromTimeRange(selection); result.failed())
         return result;
 
+    return deleteAudioTimeRange(selection);
+}
+
+juce::Result ProjectEngine::deleteAudioTimeRange(const ArrangementTimeSelection& selection)
+{
+    if (! project.has_value() || ! selection.isValid()
+        || selection.firstTrack >= static_cast<int>(project->tracks.size()))
+        return juce::Result::fail("No valid audio time selection");
+
+    // Empty-space deletion must not create an undo entry, dirty the project,
+    // rebuild playback, or disturb the clipboard. MIDI clips are not affected.
+    const auto lastTrack = std::min(selection.lastTrack,
+        static_cast<int>(project->tracks.size()) - 1);
+    auto overlapsAudio = false;
+    for (auto trackIndex = selection.firstTrack; trackIndex <= lastTrack; ++trackIndex)
+        for (const auto& clip : project->tracks[static_cast<std::size_t>(trackIndex)].clips)
+            overlapsAudio |= std::min(selection.endSeconds, clip.startSeconds + clip.lengthSeconds)
+                > std::max(selection.startSeconds, clip.startSeconds) + 0.001;
+    if (! overlapsAudio)
+        return juce::Result::ok();
+
     return mutateProject([&](Project& value)
     {
         const auto lastTrack = std::min(selection.lastTrack,
@@ -1351,7 +1373,8 @@ void ProjectEngine::setTimelineView(double pixelsPerSecond, double scrollSeconds
 {
     if (! project.has_value())
         return;
-    project->timelinePixelsPerSecond = juce::jlimit(24.0, 640.0, pixelsPerSecond);
+    project->timelinePixelsPerSecond = juce::jlimit(TimelineGeometry::minimumZoom,
+        TimelineGeometry::maximumZoom, pixelsPerSecond);
     project->timelineScrollSeconds = std::max(0.0, scrollSeconds);
 }
 

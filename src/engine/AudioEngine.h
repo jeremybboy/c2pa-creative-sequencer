@@ -27,6 +27,8 @@ public:
     ~AudioEngine();
 
     [[nodiscard]] std::vector<AudioInputChoice> recordingInputs();
+    [[nodiscard]] const AudioInputChoice& selectedRecordingInput() const noexcept
+    { return recordingInput; }
     [[nodiscard]] juce::Result setTrackRecordingInput(int trackIndex, const AudioInputChoice&);
     [[nodiscard]] juce::Result setTrackRecordArmed(int trackIndex, bool);
     [[nodiscard]] juce::Result startAudioRecording();
@@ -101,6 +103,7 @@ public:
     [[nodiscard]] juce::Result duplicateClips(const std::vector<juce::String>&);
     [[nodiscard]] juce::Result copyTimeRange(const ArrangementTimeSelection&);
     [[nodiscard]] juce::Result cutTimeRange(const ArrangementTimeSelection&);
+    [[nodiscard]] juce::Result deleteAudioTimeRange(const ArrangementTimeSelection&);
     [[nodiscard]] juce::Result duplicateTimeRange(const ArrangementTimeSelection&);
     [[nodiscard]] juce::Result pasteClipboard(double destinationSeconds,
                                               int destinationTrack = -1);

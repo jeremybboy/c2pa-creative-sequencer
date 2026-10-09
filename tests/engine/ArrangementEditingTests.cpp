@@ -1,9 +1,11 @@
 #include "engine/AudioEngine.h"
+#include <juce_cryptography/juce_cryptography.h>
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <memory>
+#include <limits>
 
 namespace
 {
@@ -47,6 +49,109 @@ int fail(int code, const juce::String& message)
 {
     std::cerr << message << '\n';
     return code;
+}
+
+int exerciseRangeDelete(c2paseq::AudioEngine& engine, const juce::File& root,
+                        const juce::File& source)
+{
+    using c2paseq::ArrangementTimeSelection;
+    struct Expected { double start, offset, length; };
+    struct Case { double start, end; std::vector<Expected> fragments; };
+    const std::vector<Case> cases {
+        { 4.5, 5.0, { { 4.0, 0.25, 0.5 }, { 5.0, 1.25, 0.5 } } },
+        { 3.0, 4.5, { { 4.5, 0.75, 1.0 } } },
+        { 5.0, 6.0, { { 4.0, 0.25, 1.0 } } },
+        { 3.0, 6.0, {} },
+        { 1.0, 2.0, { { 4.0, 0.25, 1.5 } } },
+        { 4.0005, 5.4995, {} }, // Sub-millisecond survivors are discarded.
+        { 4.25, 5.4995, { { 4.0, 0.25, 0.25 } } },
+        { 4.0005, 5.25, { { 5.25, 1.5, 0.25 } } }
+    };
+    int caseIndex = 0;
+    for (const auto& test : cases)
+    {
+        const auto folder = root.getChildFile("Range" + juce::String(caseIndex++) + ".c2paseq");
+        if (engine.createProject(folder, "Range delete").failed()
+            || engine.importAudio(source, 0, 4.0).failed()) return fail(100, "range fixture failed");
+        const auto imported = engine.arrangementSnapshot()[0].clips.front();
+        if (engine.trimClip(imported.id, 4.0, 0.25, 1.5).failed()
+            || engine.copyClips({ imported.id }).failed()) return fail(101, "range fixture trim/copy failed");
+        const auto before = folder.getChildFile("project.json").loadFileAsString();
+        const auto bytesBefore = juce::SHA256(imported.mediaFile).toHexString();
+        const auto mediaCount = folder.getChildFile("Media").getNumberOfChildFiles(juce::File::findFiles);
+        const auto selection = ArrangementTimeSelection::between(test.start, test.end, 0, 0);
+        if (engine.deleteAudioTimeRange(selection).failed() || ! engine.hasClipboard())
+            return fail(102, "range deletion failed or cleared clipboard");
+        auto clips = engine.arrangementSnapshot()[0].clips;
+        if (clips.size() != test.fragments.size()) return fail(103, "wrong range survivor count");
+        for (std::size_t index = 0; index < clips.size(); ++index)
+        {
+            const auto& expected = test.fragments[index];
+            const auto& actual = clips[index];
+            if (actual.mediaId != imported.mediaId || actual.mediaFile != imported.mediaFile
+                || ! close(actual.startSeconds, expected.start)
+                || ! close(actual.sourceOffsetSeconds, expected.offset)
+                || ! close(actual.lengthSeconds, expected.length)
+                || actual.lengthSeconds <= 0.001 || actual.sourceOffsetSeconds < 0.0
+                || actual.sourceOffsetSeconds + actual.lengthSeconds > 2.0)
+                return fail(104, "range fragment changed source identity or timing");
+        }
+        if (juce::SHA256(imported.mediaFile).toHexString() != bytesBefore
+            || folder.getChildFile("Media").getNumberOfChildFiles(juce::File::findFiles) != mediaCount)
+            return fail(105, "range deletion changed media bytes or created media");
+        if (test.start == 1.0)
+        {
+            if (folder.getChildFile("project.json").loadFileAsString() != before || ! engine.undo())
+                return fail(106, "outside range mutated project");
+            // Undo must reach the preceding trim, not a spurious empty delete.
+            const auto restored = engine.arrangementSnapshot()[0].clips.front();
+            if (! close(restored.lengthSeconds, 2.0) || ! close(restored.sourceOffsetSeconds, 0.0)
+                || ! engine.redo()) return fail(107, "outside range created an undo entry");
+        }
+        else
+        {
+            if (! engine.undo() || engine.arrangementSnapshot()[0].clips.size() != 1
+                || ! close(engine.arrangementSnapshot()[0].clips.front().lengthSeconds, 1.5)
+                || ! engine.redo()) return fail(108, "range delete undo/redo failed");
+        }
+        engine.setTimelineView(4096.0, 4.0);
+        if (engine.saveProject().failed() || engine.openProject(folder).failed()
+            || ! close(engine.timelinePixelsPerSecond(), 4096.0)) return fail(109, "range/deep zoom reopen failed");
+        const auto reopened = engine.arrangementSnapshot()[0].clips;
+        if (reopened.size() != clips.size()) return fail(110, "reopen lost fragments");
+        for (std::size_t index = 0; index < clips.size(); ++index)
+            if (reopened[index].id != clips[index].id || reopened[index].mediaId != clips[index].mediaId
+                || ! close(reopened[index].startSeconds, clips[index].startSeconds)
+                || ! close(reopened[index].sourceOffsetSeconds, clips[index].sourceOffsetSeconds)
+                || ! close(reopened[index].lengthSeconds, clips[index].lengthSeconds))
+                return fail(111, "reopen changed exact range fragment layout");
+        const auto saved = folder.getChildFile("project.json").loadFileAsString();
+        for (const auto& invalid : {
+            ArrangementTimeSelection::between(4.0, 4.0005, 0, 0),
+            ArrangementTimeSelection::between(-1.0, 5.0, 0, 0),
+            ArrangementTimeSelection::between(4.0, std::numeric_limits<double>::infinity(), 0, 0),
+            ArrangementTimeSelection::between(4.0, 5.0, 999, 999) })
+            if (engine.deleteAudioTimeRange(invalid).wasOk()
+                || folder.getChildFile("project.json").loadFileAsString() != saved || engine.canUndo())
+                return fail(112, "invalid range was accepted or mutated state");
+    }
+    const auto folder = root.getChildFile("MultiRange.c2paseq");
+    if (engine.createProject(folder, "Multi range").failed()
+        || engine.importAudio(source, 0, 4.0).failed()
+        || engine.importAudio(source, 0, 10.0).failed()
+        || engine.importAudio(source, 1, 4.0).failed()
+        || engine.addMidiTrack().failed() || engine.createMidiClip(4, 8.0, 4.0).failed())
+        return fail(113, "multi-track range fixture failed");
+    const auto later = engine.arrangementSnapshot()[0].clips.back();
+    const auto midi = engine.arrangementSnapshot()[4].midiClips.front();
+    if (engine.deleteAudioTimeRange(ArrangementTimeSelection::between(4.5, 5.0, 0, 4)).failed())
+        return fail(114, "multi-track range delete failed");
+    const auto result = engine.arrangementSnapshot();
+    if (result[0].clips.size() != 3 || result[1].clips.size() != 2
+        || result[0].clips.back().id != later.id || ! close(result[0].clips.back().startSeconds, 10.0)
+        || result[4].midiClips.front().id != midi.id || ! close(result[4].midiClips.front().lengthBeats, 4.0))
+        return fail(115, "range deletion rippled later material or changed MIDI");
+    return 0;
 }
 }
 
@@ -505,7 +610,10 @@ int main()
         || tracks[4].midiClips[0].notes[0].noteNumber != 64)
         return fail(59, "MIDI arrangement state changed after save/reopen");
 
-    std::cout << "arrangement editing: import, move, trim, split, duplicate, delete, "
+    if (const auto result = exerciseRangeDelete(engine, temporary.root, source); result != 0)
+        return result;
+
+    std::cout << "arrangement editing: non-ripple range delete identity/math/guards/reopen, import, move, trim, split, duplicate, delete, "
                  "live loop range, mute/solo transport preservation, track controls, undo/redo, "
                  "dynamic Audio/MIDI track add/delete, partial clipboard editing, MIDI clip/note "
                  "editing, velocity, MIDI clipboard, and reopen passed\n";

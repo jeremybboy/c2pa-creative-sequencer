@@ -344,6 +344,12 @@ juce::Result AudioEngine::cutClips(const std::vector<juce::String>& ids) { retur
 juce::Result AudioEngine::duplicateClips(const std::vector<juce::String>& ids) { return projectEngine.duplicateClips(ids); }
 juce::Result AudioEngine::copyTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.copyTimeRange(selection); }
 juce::Result AudioEngine::cutTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.cutTimeRange(selection); }
+juce::Result AudioEngine::deleteAudioTimeRange(const ArrangementTimeSelection& selection)
+{
+    if (isAudioRecording() || recordingFinalizing())
+        return juce::Result::fail("Stop recording before deleting an audio range");
+    return projectEngine.deleteAudioTimeRange(selection);
+}
 juce::Result AudioEngine::duplicateTimeRange(const ArrangementTimeSelection& selection) { return projectEngine.duplicateTimeRange(selection); }
 juce::Result AudioEngine::pasteClipboard(double destination, int track) { return projectEngine.pasteClipboard(destination, track); }
 bool AudioEngine::hasClipboard() const noexcept { return projectEngine.hasClipboard(); }

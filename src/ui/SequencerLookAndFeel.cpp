@@ -49,8 +49,9 @@ void SequencerLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b
     g.setColour(button.findColour(button.getToggleState()
         ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId)
             .withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.42f));
-    g.drawFittedText(button.getButtonText(), button.getLocalBounds().reduced(4, 1),
-                     juce::Justification::centred, 1, 0.9f);
+    // Ellipsis preserves proportions; never squeeze a long plug-in name.
+    g.drawText(button.getButtonText(), button.getLocalBounds().reduced(6, 2),
+               juce::Justification::centred, true);
 }
 
 juce::Font SequencerLookAndFeel::getTextButtonFont(juce::TextButton&, int height)

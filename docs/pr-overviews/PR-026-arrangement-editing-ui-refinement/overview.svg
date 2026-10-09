@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">PR 026: Arrangement editing and UI refinement</title>
+  <desc id="desc">Five implemented usability changes, with unchanged provenance boundaries and live acceptance pending. Diagrams are schematic, not application screenshots.</desc>
+  <style>
+    text { font-family: Arial, sans-serif; fill: #e7edf2; }
+    .title { font-size: 36px; font-weight: 700; }
+    .head { font-size: 23px; font-weight: 700; }
+    .body { font-size: 19px; }
+    .small { font-size: 17px; }
+    .muted { fill: #b8c4ce; }
+    .dark { fill: #14222c; }
+    .panel { fill: #202b35; stroke: #4d5d6b; }
+    .rule { stroke: #667c8e; stroke-width: 1.5; }
+  </style>
+  <rect width="1600" height="1000" fill="#111a23"/>
+  <text x="28" y="42" class="head" fill="#7fc6df">PR 026 · IMPLEMENTED / HUMAN ACCEPTANCE PENDING</text>
+  <text x="28" y="88" class="title">Arrangement editing + UI refinement</text>
+  <text x="28" y="123" class="body muted">Small musical edits, readable controls, unchanged source credentials.</text>
+  <rect x="1138" y="24" width="434" height="118" fill="#2a3b4a"/>
+  <text x="1158" y="53" class="head">GOAL</text>
+  <text x="1158" y="83" class="body">Improve the existing creative workflow.</text>
+  <text x="1158" y="112" class="body">Not a new provenance architecture.</text>
+
+  <g id="track-header">
+    <rect x="28" y="164" width="496" height="220" class="panel"/>
+    <rect x="28" y="164" width="496" height="42" fill="#6e91b3"/>
+    <text x="48" y="193" class="head dark">1. Readable track modules</text>
+    <text x="48" y="235" class="body">Separate rows; padding; no squashed type.</text>
+    <rect x="48" y="253" width="456" height="105" fill="#34414d"/>
+    <text x="64" y="279" class="body">8  MIDI · Keys</text>
+    <rect x="62" y="291" width="291" height="29" fill="#536577"/>
+    <text x="75" y="312" class="small">Instrument / long plug-in name…</text>
+    <text x="375" y="312" class="small">M  S  ×</text>
+    <line x1="76" y1="340" x2="351" y2="340" stroke="#7fc6df" stroke-width="5"/>
+    <circle cx="259" cy="340" r="7" fill="#7fc6df"/>
+    <text x="380" y="346" class="small">−6.0 dB</text>
+  </g>
+  <g id="midi-pitch">
+    <rect x="552" y="164" width="496" height="220" class="panel"/>
+    <rect x="552" y="164" width="496" height="42" fill="#a58ac3"/>
+    <text x="572" y="193" class="head dark">2. Actual MIDI note names</text>
+    <text x="572" y="235" class="body">Chromatic labels; MIDI 60 stays C4.</text>
+    <rect x="572" y="252" width="456" height="106" fill="#17232e"/>
+    <g class="small"><text x="584" y="279">F#4</text><text x="584" y="310">D4</text><text x="584" y="341">C4</text></g>
+    <path d="M641 252V358 M741 252V358 M841 252V358 M941 252V358 M572 286H1028 M572 317H1028" class="rule" fill="none"/>
+    <rect x="844" y="260" width="120" height="24" fill="#dec46e"/>
+    <text x="855" y="278" class="small dark">F#4</text>
+    <rect x="704" y="291" width="120" height="24" fill="#75cba1"/>
+    <text x="715" y="310" class="small dark">D4</text>
+    <text x="663" y="346" class="small muted">Hover / select / drag / create</text>
+  </g>
+  <g id="adaptive-zoom">
+    <rect x="1076" y="164" width="496" height="220" class="panel"/>
+    <rect x="1076" y="164" width="496" height="42" fill="#7fc6df"/>
+    <text x="1096" y="193" class="head dark">3. Deep zoom + musical snap</text>
+    <text x="1096" y="235" class="body">Maximum 640 → 4096 pixels/second.</text>
+    <text x="1096" y="272" class="body">Bar → beat → 1/2 → 1/4 → 1/8 beat</text>
+    <path d="M1100 294V330 M1155 294V330 M1210 294V330 M1265 294V330 M1320 294V330 M1375 294V330 M1430 294V330 M1485 294V330 M1540 294V330 M1100 323H1540" class="rule" fill="none"/>
+    <text x="1096" y="356" class="small muted">BPM-aware grid · Option bypass still works</text>
+  </g>
+  <g id="audio-range-delete">
+    <rect x="28" y="410" width="758" height="216" class="panel"/>
+    <rect x="28" y="410" width="758" height="42" fill="#dec46e"/>
+    <text x="48" y="439" class="head dark">4. Delete audio time range — no ripple</text>
+    <text x="48" y="482" class="body">Select waveform body → Delete / Backspace → two fragments + hole.</text>
+    <rect x="48" y="502" width="260" height="49" fill="#567f94"/>
+    <rect x="435" y="502" width="251" height="49" fill="#567f94"/>
+    <rect x="308" y="502" width="127" height="49" fill="#111a23" stroke="#dec46e" stroke-dasharray="5 4"/>
+    <text x="68" y="533" class="body">Original mediaId</text>
+    <text x="455" y="533" class="body">Same mediaId</text>
+    <text x="325" y="533" class="small">Silent gap</text>
+    <text x="48" y="585" class="body">Undo / redo / reopen · source bytes + manifest remain unchanged</text>
+    <text x="48" y="611" class="small muted">Also trims beginnings/ends; full coverage removes; MIDI unaffected.</text>
+  </g>
+  <g id="input-groups">
+    <rect x="814" y="410" width="758" height="216" class="panel"/>
+    <rect x="814" y="410" width="758" height="42" fill="#75cba1"/>
+    <text x="834" y="439" class="head dark">5. Device groups, not a giant channel list</text>
+    <text x="834" y="482" class="body">Small groups first; every detected input still accessible.</text>
+    <text x="850" y="519" class="body">Microphone (1) → channel</text>
+    <text x="850" y="550" class="body">Interface (2) → channels</text>
+    <text x="850" y="581" class="body">Advanced inputs → device with &gt;8 channels → all channels</text>
+    <text x="834" y="611" class="small muted">Session-local selection · count heuristic, not physical/virtual detection</text>
+  </g>
+
+  <g id="transparency">
+    <rect x="28" y="656" width="370" height="218" class="panel"/>
+    <text x="48" y="690" class="head">BEFORE THIS PR</text>
+    <text x="48" y="729" class="body muted">Crowded track strip</text>
+    <text x="48" y="758" class="body muted">C-only pitch anchors</text>
+    <text x="48" y="787" class="body muted">Fixed beat snap / 640 px/s</text>
+    <text x="48" y="816" class="body muted">Cut works; range Delete absent</text>
+    <text x="48" y="845" class="body muted">Flat per-channel input menu</text>
+    <rect x="420" y="656" width="370" height="218" class="panel"/>
+    <text x="440" y="690" class="head">CHANGES IN THIS PR</text>
+    <text x="440" y="729" class="body">Header / pitch presentation</text>
+    <text x="440" y="758" class="body">Shared adaptive grid + limits</text>
+    <text x="440" y="787" class="body">Reuse Cut logic for Delete</text>
+    <text x="440" y="816" class="body">Group inputs without blacklist</text>
+    <text x="440" y="845" class="body">No project schema change</text>
+    <rect x="812" y="656" width="370" height="218" class="panel"/>
+    <text x="832" y="690" class="head">UNCHANGED / OUT OF SCOPE</text>
+    <text x="832" y="729" class="body muted">Signing + ingredient semantics</text>
+    <text x="832" y="758" class="body muted">Manual / automatic MIDI stems</text>
+    <text x="832" y="787" class="body muted">Credentialed mono recording</text>
+    <text x="832" y="816" class="body muted">No ripple / comping / crossfades</text>
+    <text x="832" y="845" class="body muted">No MIDI range delete / cloud</text>
+    <rect x="1204" y="656" width="368" height="218" class="panel"/>
+    <text x="1224" y="690" class="head">RESULT / ACCEPTANCE</text>
+    <text x="1224" y="729" class="body">Finer, readable musical edits</text>
+    <text x="1224" y="758" class="body">Same media + credentials</text>
+    <text x="1224" y="787" class="body">Automated checks recorded</text>
+    <text x="1224" y="816" class="body">Live gestures / listening pending</text>
+    <text x="1224" y="845" class="body">Human review before merge</text>
+  </g>
+  <text x="28" y="915" class="body">UI changed | Project placement changed | Source audio unchanged | C2PA semantics unchanged</text>
+  <text x="28" y="949" class="small muted">Trim / split / delete do not sign. Recording signs after Stop; final Export credentials the mix.</text>
+  <text x="28" y="979" class="small muted">Schematic overview, not a screenshot. See implementation brief for tests and the nine-step manual checklist.</text>
+</svg>
