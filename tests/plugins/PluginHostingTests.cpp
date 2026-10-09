@@ -2,6 +2,7 @@
 #include "engine/ProjectEngine.h"
 #include "engine/TracktionAdapter.h"
 #include "export/RenderService.h"
+#include "export/ExportController.h"
 #include "plugins/PluginHost.h"
 #include "plugins/PluginScanner.h"
 #include "provenance/ProvenanceService.h"
@@ -99,6 +100,213 @@ juce::var stemActions(const c2paseq::IngredientInfo& info)
     return {};
 }
 
+double maxAudioDifference(const juce::File& first, const juce::File& second)
+{
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    auto a = std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(first));
+    auto b = std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(second));
+    if (! a || ! b || a->lengthInSamples != b->lengthInSamples
+        || a->sampleRate != b->sampleRate || a->numChannels != b->numChannels) return 1.0;
+    juce::AudioBuffer<float> left(static_cast<int>(a->numChannels), static_cast<int>(a->lengthInSamples));
+    juce::AudioBuffer<float> right(left.getNumChannels(), left.getNumSamples());
+    if (! a->read(&left, 0, left.getNumSamples(), 0, true, true)
+        || ! b->read(&right, 0, right.getNumSamples(), 0, true, true)) return 1.0;
+    double difference = 0.0;
+    for (int channel = 0; channel < left.getNumChannels(); ++channel)
+        for (int sample = 0; sample < left.getNumSamples(); ++sample)
+            difference = std::max(difference,
+                std::abs(static_cast<double>(left.getSample(channel, sample) - right.getSample(channel, sample))));
+    return difference;
+}
+
+bool sameStereoLevelAndTiming(const juce::File& first, const juce::File& second)
+{
+    // Direct MIDI and WAV replay are not bit-identical: the engine's native WaveNode
+    // uses a Lagrange reader even at unity rate (a short interpolation phase delay).
+    // Check musical timing and each channel's level independently, not only mono RMS.
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    auto a = std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(first));
+    auto b = std::unique_ptr<juce::AudioFormatReader>(formats.createReaderFor(second));
+    if (! a || ! b || a->lengthInSamples != b->lengthInSamples || a->sampleRate != b->sampleRate
+        || a->numChannels != 2 || b->numChannels != 2) return false;
+    juce::AudioBuffer<float> left(2, static_cast<int>(a->lengthInSamples));
+    juce::AudioBuffer<float> right(2, left.getNumSamples());
+    if (! a->read(&left, 0, left.getNumSamples(), 0, true, true)
+        || ! b->read(&right, 0, right.getNumSamples(), 0, true, true)) return false;
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        const auto window = static_cast<int>(a->sampleRate * 0.25);
+        for (int start = 0; start < left.getNumSamples(); start += window)
+        {
+            const auto length = std::min(window, left.getNumSamples() - start);
+            const auto referenceLevel = left.getRMSLevel(channel, start, length);
+            const auto replayLevel = right.getRMSLevel(channel, start, length);
+            // A 0.1% amplitude allowance (about 0.009 dB) accounts for phase at
+            // arbitrary window boundaries, not a changed mixer level. Keep a
+            // small absolute floor for silent windows and verify timing below.
+            if (std::abs(referenceLevel - replayLevel)
+                > std::max(0.000001f, referenceLevel * 0.001f)) return false;
+        }
+        // The final active sample must not gain a tail or lose audible content.
+        const auto lastActive = [&](const auto& buffer)
+        {
+            for (int sample = buffer.getNumSamples() - 1; sample >= 0; --sample)
+                if (std::abs(buffer.getSample(channel, sample)) > 0.0001f) return sample;
+            return -1;
+        };
+        if (std::abs(lastActive(left) - lastActive(right)) > a->sampleRate * 0.001) return false;
+    }
+    return true;
+}
+
+juce::Result exerciseAutomaticMidiExport(const c2paseq::PluginDescriptor& synth,
+                                         const juce::File& source, const juce::File& root)
+{
+    const auto folder = root.getChildFile("automatic-midi.c2paseq");
+    const auto bundle = root.getChildFile("automatic-signing.pem");
+    if (! bundle.replaceWithText(juce::File(C2PA_TEST_CERTIFICATE_PEM).loadFileAsString()
+            + "\n" + juce::File(C2PA_TEST_PRIVATE_KEY_PEM).loadFileAsString()))
+        return juce::Result::fail("could not assemble automatic signing fixture");
+    auto provider = std::make_unique<c2paseq::ConformanceTestSigningProvider>(
+        root.getChildFile("automatic-signing-config"), false);
+    auto* credential = provider.get();
+    c2paseq::TracktionAdapter adapter;
+    c2paseq::ProvenanceService provenance(std::move(provider));
+    c2paseq::ProjectEngine project(adapter, provenance);
+    c2paseq::PluginHost host(adapter, project, root.getChildFile("automatic-cache.xml"), false);
+    if (host.scanVst3Bundle(juce::File(synth.fileOrIdentifier)).failed()
+        || project.createProject(folder, "Automatic MIDI").failed()
+        || credential->installCredential(bundle).failed()
+        || project.importAudio(source, 0, 0.0).failed())
+        return juce::Result::fail("could not prepare automatic-export project");
+    for (int index = 4; index <= 5; ++index)
+    {
+        if (project.addMidiTrack().failed()
+            || project.createMidiClip(index, index == 4 ? 2.0 : 0.0, 4.0).failed())
+            return juce::Result::fail("could not create automatic MIDI tracks");
+        const auto clip = project.currentProject()->tracks[static_cast<std::size_t>(index)].midiClips.front().id;
+        if (project.addMidiNote(clip, index == 4 ? 60 : 69, index == 4 ? 0.0 : 1.0,
+                index == 4 ? 2.0 : 1.5, 100).failed()
+            || host.loadTrackPlugin(index, synth.identifier).failed()
+            || project.setTrackGain(index, index == 4 ? -9.0 : -3.0).failed()
+            || project.setTrackPan(index, index == 4 ? -0.65 : 0.5).failed())
+            return juce::Result::fail("could not prepare MIDI export mixer");
+    }
+    if (project.saveProject().failed()) return juce::Result::fail("could not save automatic fixture");
+    const auto before = *project.currentProject();
+    const auto jsonHash = juce::SHA256(folder.getChildFile("project.json")).toHexString();
+    const auto editHash = juce::SHA256(folder.getChildFile("arrangement.tracktionedit")).toHexString();
+    // A parameter edit after Save must be captured for export without changing canonical state.
+    auto* instance = adapter.trackPluginInstance(4);
+    if (! instance || instance->getParameters().isEmpty()) return juce::Result::fail("no live synth parameter");
+    instance->getParameters().getUnchecked(0)->setValueNotifyingHost(0.8f);
+    juce::MemoryBlock liveState;
+    instance->getStateInformation(liveState);
+    const auto reference = root.getChildFile("automatic-reference.wav");
+    if (adapter.renderWav(reference, 3.0).failed()) return juce::Result::fail("could not render reference mix");
+    adapter.seek(0.75);
+
+    const auto run = [&](const juce::File& file, c2paseq::ExportProgressCallback progress = {},
+                         c2paseq::ExportCancellationCheck cancel = {})
+    {
+        c2paseq::Project snapshot;
+        c2paseq::ExportResult failed;
+        failed.result = project.createExportSnapshot(snapshot);
+        if (failed.result.failed()) return failed;
+        c2paseq::ExportController controller(adapter, provenance, nullptr, nullptr, false,
+                                              nullptr, false, std::move(progress), std::move(cancel));
+        auto pending = std::async(std::launch::async,
+            [&] { return controller.exportMix(snapshot, *project.currentPaths(), file); });
+        while (pending.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(10);
+        return pending.get();
+    };
+    const auto invalidDestination = run(root.getChildFile("automatic-invalid.mp3"));
+    if (invalidDestination.result.wasOk() || invalidDestination.midiStemsSigned != 0
+        || invalidDestination.outputFile.exists())
+        return juce::Result::fail("invalid destination was accepted or MIDI rendered before preflight");
+    const auto exported = run(root.getChildFile("automatic-final.wav"));
+    if (exported.result.failed()) return exported.result;
+    if (exported.midiStemsSigned != 2 || exported.ingredients.size() != 3
+        || ! exported.outputProvenance.assetIntact
+        || ! sameStereoLevelAndTiming(reference, exported.outputFile))
+    {
+        return juce::Result::fail("automatic MIDI mix level/timing differs from reference: max sample difference="
+            + juce::String(maxAudioDifference(reference, exported.outputFile), 8)
+            + " reference RMS=" + juce::String(readRms(reference), 8)
+            + " exported RMS=" + juce::String(readRms(exported.outputFile), 8));
+    }
+    const auto document = juce::JSON::parse(exported.outputProvenance.rawManifestJson);
+    bool liveHashFound = false;
+    for (const auto& ingredient : exported.ingredients)
+    {
+        if (! ingredient.mediaId.startsWith("midi-export-")) continue;
+        const auto actions = stemActions(ingredient.provenance);
+        const auto metadata = actions[1]["parameters"]["c2paseq:midiRender"];
+        if (! ingredient.provenance.assetIntact || ingredient.file.exists()
+            || actions[0]["action"].toString() != "c2pa.created"
+            || actions[1]["action"].toString() != "c2pa.rendered"
+            || metadata["instrument"]["name"].toString() != synth.name
+            || document["manifests"][juce::Identifier(ingredient.provenance.activeManifest)].getDynamicObject() == nullptr)
+            return juce::Result::fail("automatic ingredient/history/temporary cleanup invalid");
+        liveHashFound = liveHashFound || metadata["instrument"]["stateSha256"].toString()
+            == juce::SHA256(liveState).toHexString();
+    }
+    if (! liveHashFound || project.currentProject()->tracks.size() != before.tracks.size()
+        || project.currentProject()->media.size() != before.media.size()
+        || project.currentProject()->plugins.front().stateBase64 != before.plugins.front().stateBase64
+        || juce::SHA256(folder.getChildFile("project.json")).toHexString() != jsonHash
+        || juce::SHA256(folder.getChildFile("arrangement.tracktionedit")).toHexString() != editHash
+        || std::abs(adapter.transportSnapshot().positionSeconds - 0.75) > 0.01)
+        return juce::Result::fail("automatic export mutated project/files/position or missed live state");
+    const auto restored = root.getChildFile("automatic-restored.wav");
+    if (adapter.renderWav(restored, 3.0).failed() || maxAudioDifference(reference, restored) > 0.00001)
+        return juce::Result::fail("automatic export left MIDI muted or instrument disabled");
+
+    // Cancel after export-only replacements are installed; preserve an existing destination.
+    const auto cancelledFile = root.getChildFile("automatic-cancelled.wav");
+    if (! cancelledFile.replaceWithText("existing destination")) return juce::Result::fail("control write failed");
+    const auto cancelledHash = juce::SHA256(cancelledFile).toHexString();
+    bool cancelRequested = false;
+    const auto cancelled = run(cancelledFile, [&](auto stage)
+        { if (stage == c2paseq::ExportStage::audioRender) cancelRequested = true; },
+        [&] { return cancelRequested; });
+    if (cancelled.stage != c2paseq::ExportStage::cancelled || cancelled.result.wasOk()
+        || juce::SHA256(cancelledFile).toHexString() != cancelledHash
+        || adapter.renderWav(restored, 3.0).failed() || maxAudioDifference(reference, restored) > 0.00001)
+        return juce::Result::fail("cancel did not preserve destination and restore MIDI graph");
+
+    // Fail at stem signing, and after substitutions at final signing, without partial output.
+    for (const auto failureStage : { c2paseq::ExportStage::midiStemSigning,
+                                     c2paseq::ExportStage::signingAndEmbedding })
+    {
+        const auto failedFile = root.getChildFile("automatic-failed.wav");
+        const auto failed = run(failedFile, [&](auto stage)
+        { if (stage == failureStage) (void) credential->removeCredential(); });
+        if (failed.result.wasOk() || failedFile.exists()
+            || adapter.renderWav(restored, 3.0).failed() || maxAudioDifference(reference, restored) > 0.00001
+            || credential->installCredential(bundle).failed())
+            return juce::Result::fail("signing failure left output or changed MIDI execution");
+    }
+
+    if (project.setTrackSolo(4, true).failed()) return juce::Result::fail("solo control failed");
+    const auto solo = run(root.getChildFile("automatic-solo.wav"));
+    if (solo.result.failed() || solo.midiStemsSigned != 1 || solo.ingredients.size() != 1
+        || ! project.currentProject()->tracks[4].soloed || project.currentProject()->tracks[4].muted)
+        return juce::Result::fail("solo MIDI selection or restored audibility incorrect");
+    if (project.setTrackSolo(4, false).failed() || project.setTrackMute(4, true).failed()
+        || project.setTrackPluginBypassed(5, true).failed())
+        return juce::Result::fail("muted/bypassed control setup failed");
+    const auto audioOnly = run(root.getChildFile("automatic-audio-only.wav"));
+    if (audioOnly.result.failed() || audioOnly.midiStemsSigned != 0 || audioOnly.ingredients.size() != 1)
+        return juce::Result::fail("muted/bypassed MIDI was claimed as an audible ingredient");
+    std::cout << "Automatic export: two actual signed inputs, stereo level/timing, live state, "
+                 "unchanged project/files, graph restoration, solo/mute, cancel and signing failures passed\n";
+    return juce::Result::ok();
+}
+
 juce::Result exerciseMidiStemBounce(const c2paseq::PluginDescriptor& synth,
                                      const juce::File& source, const juce::File& root,
                                      const juce::File& cache)
@@ -193,8 +401,12 @@ juce::Result exerciseMidiStemBounce(const c2paseq::PluginDescriptor& synth,
         || engine.setTrackMute(4, false).failed() || engine.setTrackSolo(4, true).failed())
         return juce::Result::fail("could not prepare mixer equivalence control");
     const auto beforeBounce = engine.exportMix(root.getChildFile("before-bounce.wav"));
-    if (beforeBounce.result.failed() || ! beforeBounce.ingredients.empty())
-        return juce::Result::fail("direct MIDI export failed or fabricated an ingredient");
+    if (beforeBounce.result.failed() || beforeBounce.ingredients.size() != 1
+        || beforeBounce.midiStemsSigned != 1
+        || ! beforeBounce.ingredients.front().provenance.assetIntact)
+        return juce::Result::fail("direct MIDI export did not create a real signed ingredient: "
+            + beforeBounce.result.getErrorMessage() + " stems=" + juce::String(beforeBounce.midiStemsSigned)
+            + " ingredients=" + juce::String(beforeBounce.ingredients.size()));
     if (auto result = engine.importMidiStem(plan, signedWav, newClip); result.failed()) return result;
     tracks = engine.arrangementSnapshot();
     if (tracks.size() != 6 || tracks.back().name != "Actual Instrument Track Rendered Stem"
@@ -641,11 +853,16 @@ int main()
     renderPlugin.name = synth->name;
     renderPlugin.format = "VST3";
     renderPlugin.isInstrument = true;
+    bool renderBypassed = false, renderMissing = false;
+    if (midiRenderAdapter.captureTrackPluginState(0, renderPlugin.stateBase64,
+            renderBypassed, renderMissing).failed())
+        return fail(27, "could not capture the real instrument state for the export plan");
     renderProject.plugins.push_back(std::move(renderPlugin));
     c2paseq::RenderPlan renderPlan;
     const c2paseq::ProjectPaths renderPaths(root.getChildFile("render-plan.c2paseq"));
     if (c2paseq::RenderService::createPlan(renderProject, renderPaths, renderPlan).failed()
-        || ! renderPlan.ingredients.empty() || std::abs(renderPlan.endSeconds - 2.0) > 0.01
+        || ! renderPlan.ingredients.empty() || renderPlan.midiStems.size() != 1
+        || std::abs(renderPlan.endSeconds - 2.0) > 0.01
         || c2paseq::RenderService::render(midiRenderAdapter, renderPlan, midiRender).failed()
         || readRms(midiRender) <= 0.01)
         return fail(27, "offline export did not contain instrument-rendered MIDI audio");
@@ -677,6 +894,8 @@ int main()
 
     if (auto result = exerciseMidiStemBounce(*synth, source, root, cache); result.failed())
         return fail(29, result.getErrorMessage());
+    if (auto result = exerciseAutomaticMidiExport(*synth, source, root); result.failed())
+        return fail(30, result.getErrorMessage());
 
     std::cout << "VST3 scan, instantiate, realtime DSP, attach, bypass, persistence, "
                  "editor lifecycle, offline DSP, dynamic track hosting, MIDI instrument routing, "

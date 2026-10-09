@@ -120,6 +120,28 @@ juce::Result ProjectEngine::saveProject()
     return ProjectSerializer::save(*project, *paths);
 }
 
+juce::Result ProjectEngine::createExportSnapshot(Project& snapshot)
+{
+    if (! project || ! paths)
+        return juce::Result::fail("Create or open a project before exporting");
+    snapshot = *project;
+    const auto anySolo = std::any_of(snapshot.tracks.begin(), snapshot.tracks.end(),
+        [](const auto& track) { return track.soloed; });
+    for (auto& plugin : snapshot.plugins)
+    {
+        const auto found = std::find_if(snapshot.tracks.begin(), snapshot.tracks.end(),
+            [&](const auto& track) { return track.id == plugin.ownerId; });
+        if (found == snapshot.tracks.end() || found->type != TrackType::midi
+            || found->muted || (anySolo && ! found->soloed) || plugin.bypassed || plugin.missing
+            || std::none_of(found->midiClips.begin(), found->midiClips.end(),
+                [](const auto& clip) { return ! clip.notes.empty(); })) continue;
+        const auto index = static_cast<int>(std::distance(snapshot.tracks.begin(), found));
+        if (auto result = tracktion.captureTrackPluginState(index, plugin.stateBase64,
+                plugin.bypassed, plugin.missing); result.failed()) return result;
+    }
+    return juce::Result::ok();
+}
+
 void ProjectEngine::captureLivePluginStates()
 {
     if (! project.has_value())

@@ -8,12 +8,6 @@ namespace c2paseq
 {
 class TracktionAdapter;
 
-struct RenderPlan
-{
-    double endSeconds = 0.0;
-    std::vector<ContributingIngredient> ingredients;
-};
-
 struct MidiStemPlan
 {
     int trackIndex = -1;
@@ -24,6 +18,13 @@ struct MidiStemPlan
     double startSeconds = 0.0;
     double endSeconds = 0.0;
     StemProvenanceDescriptor descriptor;
+};
+
+struct RenderPlan
+{
+    double endSeconds = 0.0;
+    std::vector<ContributingIngredient> ingredients;
+    std::vector<MidiStemPlan> midiStems;
 };
 
 class RenderService final

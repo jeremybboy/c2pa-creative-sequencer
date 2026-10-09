@@ -112,8 +112,9 @@ juce::Result RenderService::createPlan(const Project& project,
                                      [](const auto& track) { return track.soloed; });
     std::vector<juce::String> includedMedia;
 
-    for (const auto& track : project.tracks)
+    for (std::size_t trackIndex = 0; trackIndex < project.tracks.size(); ++trackIndex)
     {
+        const auto& track = project.tracks[trackIndex];
         if (track.muted || (anySolo && ! track.soloed))
             continue;
 
@@ -145,6 +146,13 @@ juce::Result RenderService::createPlan(const Project& project,
             if (plugin == project.plugins.end() || ! plugin->isInstrument
                 || plugin->bypassed || plugin->missing)
                 continue;
+            if (std::none_of(track.midiClips.begin(), track.midiClips.end(),
+                [](const auto& clip) { return ! clip.notes.empty(); }))
+                continue;
+            MidiStemPlan stem;
+            if (auto result = createMidiStemPlan(project, static_cast<int>(trackIndex), stem);
+                result.failed()) return result;
+            candidate.midiStems.push_back(std::move(stem));
             for (const auto& clip : track.midiClips)
             {
                 if (clip.notes.empty())

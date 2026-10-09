@@ -2,11 +2,13 @@
 
 #include "app/AppInfo.h"
 #include "fingerprint/FingerprintService.h"
+#include "engine/TracktionAdapter.h"
 #include "provenance/ProvenanceService.h"
 #include "watermark/SoftBindingOutbox.h"
 #include "watermark/WatermarkService.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_cryptography/juce_cryptography.h>
 
 #include <cmath>
 
@@ -33,6 +35,27 @@ struct AudioProperties
     int channels = 0;
     int bitsPerSample = 0;
     juce::int64 frames = 0;
+};
+
+struct ExportWorkspace
+{
+    explicit ExportWorkspace(TracktionAdapter& adapter) : tracktion(adapter) {}
+    ~ExportWorkspace()
+    {
+        if (active) tracktion::engine::callBlocking([this] { tracktion.finishOfflineExport(); });
+        directory.deleteRecursively();
+    }
+    TracktionAdapter& tracktion;
+    bool active = false;
+    juce::File directory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("c2paseq-midi-export-" + juce::Uuid().toString());
+};
+
+struct IsolatedRenderScope
+{
+    TracktionAdapter& tracktion;
+    ~IsolatedRenderScope()
+    { tracktion::engine::callBlocking([this] { tracktion.finishExclusiveTrackRender(); }); }
 };
 
 juce::Result readAudioProperties(const juce::File& file, AudioProperties& properties)
@@ -91,12 +114,76 @@ ExportResult ExportController::exportMix(const Project& project,
     output.result = RenderService::createPlan(project, paths, plan);
     if (output.result.failed() || cancelled()) return output;
     output.ingredients = plan.ingredients;
+    if (! destination.hasFileExtension("wav") || destination.isDirectory())
+    {
+        output.result = juce::Result::fail("Export destination must be a WAV file");
+        return output;
+    }
 
     if (! provenance.signingConfigured())
     {
         setStage(ExportStage::signingConfiguration);
         output.result = juce::Result::fail(provenance.signingConfigurationError());
         return output;
+    }
+
+    // These signed WAVs are actual inputs to the mix, not decorative credentials
+    // attached to a separately rerendered instrument performance.
+    ExportWorkspace midiWorkspace(tracktion);
+    // Audio-only worker exports need the same owner-thread graph protection.
+    tracktion::engine::callBlocking([&]
+    {
+        output.result = tracktion.beginOfflineExport();
+        midiWorkspace.active = output.result.wasOk();
+    });
+    if (output.result.failed()) return output;
+    if (! plan.midiStems.empty())
+    {
+        output.result = midiWorkspace.directory.createDirectory();
+        if (output.result.failed()) return output;
+        for (const auto& stem : plan.midiStems)
+        {
+            if (cancelled()) return output;
+            const auto unsignedStem = midiWorkspace.directory.getChildFile(
+                juce::String(stem.trackIndex) + "-unsigned.wav");
+            const auto signedStem = midiWorkspace.directory.getChildFile(
+                juce::String(stem.trackIndex) + "-signed.wav");
+            setStage(ExportStage::midiStemRender);
+            tracktion::engine::callBlocking([&]
+            { output.result = tracktion.beginExclusiveTrackRender(stem.trackIndex, false); });
+            if (output.result.failed()) return output;
+            {
+                IsolatedRenderScope renderScope { tracktion };
+                output.result = tracktion.renderTrackWav(unsignedStem, stem.trackIndex,
+                    stem.endSeconds, stem.startSeconds, false);
+            }
+            if (output.result.failed() || cancelled()) return output;
+            setStage(ExportStage::midiStemSigning);
+            IngredientInfo validation;
+            output.result = provenance.signStemWav(unsignedStem, signedStem,
+                                                    stem.descriptor, validation);
+            if (output.result.failed() || cancelled()) return output;
+            if (! validation.c2paPresent || ! validation.assetIntact)
+            {
+                output.result = juce::Result::fail("The MIDI export stem failed C2PA integrity validation");
+                return output;
+            }
+            plan.ingredients.push_back({ "midi-export-" + stem.trackId, stem.descriptor.title,
+                juce::SHA256(signedStem).toHexString(), signedStem, validation });
+            ++output.midiStemsSigned;
+        }
+        // All stems derive independently from the original instrument graph.
+        const auto firstStem = plan.ingredients.size() - plan.midiStems.size();
+        for (std::size_t index = 0; index < plan.midiStems.size(); ++index)
+        {
+            const auto& stem = plan.midiStems[index];
+            tracktion::engine::callBlocking([&]
+            { output.result = tracktion.substituteMidiExportStem(stem.trackIndex,
+                plan.ingredients[firstStem + index].file, stem.startSeconds,
+                stem.endSeconds - stem.startSeconds); });
+            if (output.result.failed() || cancelled()) return output;
+        }
+        output.ingredients = plan.ingredients;
     }
 
     juce::TemporaryFile unsignedRender(destination);

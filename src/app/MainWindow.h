@@ -15,7 +15,7 @@ public:
     explicit MainWindow(AudioEngine& audioEngine,
                         std::function<void()> audioWMarkSetupRequest = {});
     void closeButtonPressed() override;
-    [[nodiscard]] bool canQuitDuringStemBounce();
+    [[nodiscard]] bool canQuitDuringOfflineExport();
     void audioWMarkSetupFinished(bool installed, const juce::String& message);
 
 private:

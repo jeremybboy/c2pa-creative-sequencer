@@ -119,3 +119,29 @@ track, but later edits or BPM changes do not regenerate or stretch an existing b
 No recording, MIDI-file import, soft binding on stems, or automatic instrument-tail detection
 is part of this PR. Automated acceptance uses the repository test synth; your instrument/preset
 and listening acceptance still need this manual check.
+
+## Automatic MIDI provenance export acceptance
+
+1. Open or create a project with imported audio and an **unmuted MIDI track** containing notes
+   and a loaded VST3 instrument. Do not use the bounce command. Put the MIDI clip away from
+   bar one to check alignment, and choose an easily recognizable sound in Surge XT or your synth.
+2. Change MIDI track gain/pan and a synth parameter/preset. Confirm playback; configure signing.
+3. Press **Export** normally. Expect progress for MIDI stem rendering/signing, followed by the
+   normal final-mix export. There is no extra checkbox. Instrument editors close for offline work.
+4. Confirm no new tracks or audio clips appeared, no source MIDI mute/solo changed, and no new
+   undo action appeared. Playback is paused at its previous position; press Play to confirm the
+   original MIDI/instrument remains playable with its chosen sound.
+5. Listen to the exported WAV: check MIDI timing, stereo pan, level, and imported audio against
+   playback. Choose **View Credentials** after export: expect an automatic MIDI-stem count and
+   an actual credentialed `<track name> Stem.wav` ingredient with MIDI and instrument metadata.
+   Its created/rendered history is embedded in the final manifest, not a fabricated source entry.
+6. Try two MIDI tracks: expect two stems. Mute one, or solo the other: expect only the eligible
+   audible track's stem. A manually bounced, muted MIDI source should not create a duplicate
+   automatic ingredient; its audible signed audio stem is still a normal ingredient.
+7. Try **Cancel** during a longer export; wait for the current stage, then confirm no new output
+   replaced an existing destination and MIDI still plays. Do not force-quit during rendering;
+   normal Quit asks you to wait. Save/reopen afterwards and confirm the original arrangement.
+
+No intermediate WAVs are added to the project. Manual bounce remains useful when you want to
+keep a separate signed stem. Releases/reverb beyond MIDI clip ends are not automatically added;
+extend the clip beforehand. Automated tests use the test synth, not proof of your Surge XT preset.
