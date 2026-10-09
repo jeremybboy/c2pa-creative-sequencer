@@ -104,6 +104,13 @@ public:
     [[nodiscard]] juce::AudioPluginInstance* trackPluginInstance(int trackIndex) const;
     [[nodiscard]] juce::Result renderWav(const juce::File& destination,
                                           double endSeconds);
+    [[nodiscard]] juce::Result renderTrackWav(const juce::File&, int trackIndex,
+                                              double endSeconds, double startSeconds = 0.0,
+                                              bool includeTrackMix = true);
+    // Owner-thread scope for a worker render. Do not persist render-only audibility.
+    [[nodiscard]] juce::Result beginExclusiveTrackRender(int trackIndex = -1,
+                                                         bool includeTrackMix = true);
+    void finishExclusiveTrackRender();
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
     [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
     void setBeforeEditReplacement(std::function<void()> callback);
@@ -113,6 +120,8 @@ public:
     void closeProjectEdit();
 
 private:
+    [[nodiscard]] juce::Result renderWavInternal(const juce::File&, double endSeconds,
+                                                 int onlyTrackIndex, double startSeconds = 0.0);
     void ensureTrackLevelMeter(tracktion::engine::AudioTrack&);
     void configurePreferredAudioSettings();
     void configureLoadedAudioClips();
@@ -122,5 +131,10 @@ private:
     std::unique_ptr<tracktion::engine::Edit> edit;
     std::function<void()> beforeEditReplacement;
     bool initialised = false;
+    std::vector<std::pair<bool, bool>> renderAudibility;
+    double renderOriginalPosition = 0.0;
+    bool exclusiveTrackRender = false;
+    tracktion::engine::VolumeAndPanPlugin::Ptr renderVolumePlugin;
+    bool renderVolumeWasEnabled = false;
 };
 }

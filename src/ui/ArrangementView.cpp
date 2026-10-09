@@ -24,6 +24,13 @@ constexpr int rulerHeight = 28;
 constexpr int trackHeight = 82;
 constexpr int scrollBarSize = 14;
 constexpr int minimumVisibleTracks = 4;
+
+struct MidiStemWorkspace
+{
+    juce::File directory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("c2paseq-midi-stem-" + juce::Uuid().toString());
+    ~MidiStemWorkspace() { directory.deleteRecursively(); }
+};
 }
 
 class TimelineSurface final : public juce::Component
@@ -471,6 +478,7 @@ ArrangementView::~ArrangementView()
     allComputerKeyboardNotesOff();
     exportCancellationRequested.store(true);
     if (exportThread.joinable()) exportThread.join();
+    audioEngine.finishMidiStemRender();
     horizontalScroll.removeListener(this);
     verticalScroll.removeListener(this);
     setLookAndFeel(nullptr);
@@ -800,6 +808,7 @@ void ArrangementView::scrollBarMoved(juce::ScrollBar* bar, double start)
 
 void ArrangementView::refreshTransport()
 {
+    if (exportInProgress) return;
     const auto snapshot = audioEngine.transportSnapshot();
     playPause.setIcon(snapshot.playing ? IconButton::Icon::pause : IconButton::Icon::play);
     playPause.setTooltip(snapshot.playing ? "Pause (Space)" : "Play (Space)");
@@ -823,6 +832,15 @@ void ArrangementView::refreshTransport()
             });
         });
     credentialsButton.setEnabled(oneAudioClipSelected);
+    for (std::size_t index = 0; index < std::min(trackHeaders.size(), snapshots.size()); ++index)
+    {
+        const auto& track = snapshots[index];
+        trackHeaders[index]->setBounceAvailable(track.type == TrackType::midi
+            && audioEngine.signingConfigured() && track.plugin.has_value()
+            && ! track.plugin->missing && ! track.plugin->bypassed
+            && std::any_of(track.midiClips.begin(), track.midiClips.end(),
+                [](const auto& clip) { return ! clip.notes.empty(); }));
+    }
     undoButton.setEnabled(audioEngine.canUndo());
     redoButton.setEnabled(audioEngine.canRedo());
     const auto prefix = projectMessage.isNotEmpty() ? projectMessage + "  |  " : juce::String();
@@ -956,6 +974,65 @@ void ArrangementView::startBackgroundExport(const juce::File& destination)
     });
 }
 
+void ArrangementView::bounceMidiStem(int trackIndex)
+{
+    if (exportInProgress) return;
+    allComputerKeyboardNotesOff();
+    stopSampleAudition();
+    closePianoRoll();
+    MidiStemPlan plan;
+    if (auto result = audioEngine.prepareMidiStem(trackIndex, plan); result.failed())
+    {
+        showProjectResult(result, {});
+        return;
+    }
+    const auto workspace = std::make_shared<MidiStemWorkspace>();
+    if (auto result = workspace->directory.createDirectory(); result.failed())
+    {
+        showProjectResult(result, {});
+        return;
+    }
+    if (auto result = audioEngine.beginMidiStemRender(plan); result.failed())
+    {
+        showProjectResult(result, {});
+        return;
+    }
+    if (exportThread.joinable()) exportThread.join();
+    exportCancellationRequested.store(false);
+    setExportInProgress(true);
+    projectMessage = "Bouncing MIDI instrument and signing stem...";
+    status.setText(projectMessage, juce::dontSendNotification);
+    const auto safe = juce::Component::SafePointer<ArrangementView>(this);
+    midiStemBounceInProgress = true;
+    exportThread = std::thread([this, safe, plan, workspace]
+    {
+        const auto unsignedWav = workspace->directory.getChildFile("unsigned.wav");
+        const auto signedWav = workspace->directory.getChildFile(plan.descriptor.title);
+        auto result = audioEngine.renderAndSignMidiStem(plan, unsignedWav, signedWav);
+        juce::MessageManager::callAsync([safe, result, plan, workspace, signedWav]
+        {
+            if (safe == nullptr) return;
+            if (safe->exportThread.joinable()) safe->exportThread.join();
+            safe->audioEngine.finishMidiStemRender();
+            safe->midiStemBounceInProgress = false;
+            const auto cancelled = safe->exportCancellationRequested.load();
+            safe->setExportInProgress(false);
+            if (cancelled)
+            {
+                safe->projectMessage = "MIDI bounce cancelled; project unchanged";
+                safe->refreshTransport();
+                return;
+            }
+            juce::String clipId;
+            const auto completed = result.wasOk()
+                ? safe->audioEngine.importMidiStem(plan, signedWav, clipId) : result;
+            safe->applyEditResult(completed,
+                "Credentialed stem added | Source MIDI muted | Playback paused");
+            if (completed.wasOk()) safe->selectClip(clipId);
+        });
+    });
+}
+
 void ArrangementView::updateExportProgress(ExportStage stage)
 {
     switch (stage)
@@ -1028,6 +1105,7 @@ void ArrangementView::setExportInProgress(bool active)
                              static_cast<juce::Component*>(&stop),
                              static_cast<juce::Component*>(&loop),
                              static_cast<juce::Component*>(&computerKeyboard),
+                             static_cast<juce::Component*>(&addTrackButton),
                              static_cast<juce::Component*>(&bpm) })
         component->setEnabled(! active);
     browser.setEnabled(! active);
@@ -1167,6 +1245,29 @@ void ArrangementView::showSelectedCredentials()
                     details += "\nSigner: " + info.signer;
                 if (info.validationSummary.isNotEmpty())
                     details += "\nValidation: " + info.validationSummary;
+                const auto document = juce::JSON::parse(info.rawManifestJson);
+                const auto manifest = document["manifests"][juce::Identifier(info.activeManifest)];
+                if (const auto* assertions = manifest["assertions"].getArray())
+                    for (const auto& assertion : *assertions)
+                        if (assertion["label"].toString().startsWith("c2pa.actions"))
+                            if (const auto* actions = assertion["data"]["actions"].getArray())
+                                for (const auto& action : *actions)
+                                {
+                                    details += "\nAction: " + action["action"].toString();
+                                    const auto source = action["parameters"]["c2paseq:midiRender"];
+                                    if (source.getDynamicObject() == nullptr) continue;
+                                    const auto plugin = source["instrument"];
+                                    details += "\nMIDI track: " + source["trackName"].toString()
+                                        + " | " + source["bpm"].toString() + " BPM"
+                                        + "\nClips: " + source["clipCount"].toString()
+                                        + " | Notes: " + source["noteCount"].toString()
+                                        + "\nInstrument: " + plugin["name"].toString()
+                                        + " | " + plugin["vendor"].toString()
+                                        + " | " + plugin["version"].toString()
+                                        + " | " + plugin["format"].toString()
+                                        + "\nMIDI SHA-256: " + source["midiContentSha256"].toString()
+                                        + "\nInstrument state SHA-256: " + plugin["stateSha256"].toString();
+                                }
                 juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
                     "Content Credentials", details);
                 return;
@@ -1436,6 +1537,19 @@ void ArrangementView::rebuildArrangement()
         {
             allComputerKeyboardNotesOff();
             applyEditResult(audioEngine.removeTrackPlugin(index), "Removed VST3");
+        };
+        const auto& stemSource = snapshots[trackIndex];
+        header->setBounceAvailable(stemSource.type == TrackType::midi
+            && audioEngine.signingConfigured() && stemSource.plugin.has_value()
+            && ! stemSource.plugin->missing && ! stemSource.plugin->bypassed
+            && std::any_of(stemSource.midiClips.begin(), stemSource.midiClips.end(),
+                [](const auto& clip) { return ! clip.notes.empty(); }));
+        header->onBounceMidiStem = [this](int index)
+        {
+            // Popup callbacks must return before rebuilding/deleting their track header.
+            juce::MessageManager::callAsync(
+                [safe = juce::Component::SafePointer<ArrangementView>(this), index]
+                { if (safe != nullptr) safe->bounceMidiStem(index); });
         };
         header->onDeleteTrack = [this](int index) { requestDeleteTrack(index); };
         headerContainer.addAndMakeVisible(*header);

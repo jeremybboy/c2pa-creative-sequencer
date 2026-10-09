@@ -19,6 +19,7 @@ public:
                         const std::vector<PluginDescriptor>&);
     void setMeterPeak(TrackLevelSnapshot, bool audible);
     void setSelectedForInput(bool selected);
+    void setBounceAvailable(bool available) { bounceAvailable = available; }
     void paint(juce::Graphics&) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -40,6 +41,7 @@ public:
     std::function<void(int)> onOpenPlugin;
     std::function<void(int, bool)> onBypassPlugin;
     std::function<void(int)> onRemovePlugin;
+    std::function<void(int)> onBounceMidiStem;
     std::function<void(int)> onDeleteTrack;
     std::function<void(int)> onSelected;
 
@@ -63,5 +65,6 @@ private:
     bool gainGestureActive = false;
     bool panGestureActive = false;
     bool selectedForInput = false;
+    bool bounceAvailable = false;
 };
 }

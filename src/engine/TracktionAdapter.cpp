@@ -524,7 +524,84 @@ juce::AudioPluginInstance* TracktionAdapter::trackPluginInstance(int trackIndex)
 juce::Result TracktionAdapter::renderWav(const juce::File& destination,
                                          double endSeconds)
 {
-    if (edit == nullptr || endSeconds <= 0.0)
+    return renderWavInternal(destination, endSeconds, -1);
+}
+
+juce::Result TracktionAdapter::renderTrackWav(const juce::File& destination,
+                                              int trackIndex, double endSeconds,
+                                              double startSeconds, bool includeTrackMix)
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("The stem source track was not found");
+    if (! destination.hasFileExtension("wav") || destination.isDirectory()
+        || ! std::isfinite(startSeconds) || ! std::isfinite(endSeconds)
+        || startSeconds < 0.0 || endSeconds <= startSeconds)
+        return juce::Result::fail("A stem requires a WAV destination and valid render range");
+    // Synchronous callers own their scope; the UI establishes it before its worker starts.
+    const auto ownsScope = ! exclusiveTrackRender;
+    if (ownsScope)
+        if (auto result = beginExclusiveTrackRender(trackIndex, includeTrackMix);
+            result.failed()) return result;
+    const auto result = renderWavInternal(destination, endSeconds, trackIndex, startSeconds);
+    if (ownsScope) finishExclusiveTrackRender();
+    return result;
+}
+
+juce::Result TracktionAdapter::beginExclusiveTrackRender(int trackIndex, bool includeTrackMix)
+{
+    if (edit == nullptr || exclusiveTrackRender)
+        return juce::Result::fail("An offline track render is already active or no edit is open");
+    renderOriginalPosition = transportSnapshot().positionSeconds;
+    tracktion::engine::TransportControl::stopAllTransports(engine, false, true);
+    renderAudibility.clear();
+    for (auto* track : tracktion::engine::getAudioTracks(*edit))
+    {
+        renderAudibility.emplace_back(track->isMuted(false), track->isSolo(false));
+        track->setMute(false);
+        track->setSolo(false);
+    }
+    edit->updateMuteSoloStatuses();
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    if (! includeTrackMix && juce::isPositiveAndBelow(trackIndex, tracks.size()))
+    {
+        renderVolumePlugin = tracks[trackIndex]->getVolumePlugin();
+        if (renderVolumePlugin != nullptr)
+        {
+            renderVolumeWasEnabled = renderVolumePlugin->isEnabled();
+            renderVolumePlugin->setEnabled(false);
+        }
+    }
+    exclusiveTrackRender = true;
+    return juce::Result::ok();
+}
+
+void TracktionAdapter::finishExclusiveTrackRender()
+{
+    if (! exclusiveTrackRender || edit == nullptr) return;
+    const auto tracks = tracktion::engine::getAudioTracks(*edit);
+    for (int index = 0; index < std::min(tracks.size(), static_cast<int>(renderAudibility.size())); ++index)
+    {
+        const auto& saved = renderAudibility[static_cast<std::size_t>(index)];
+        tracks[index]->setMute(saved.first);
+        tracks[index]->setSolo(saved.second);
+    }
+    edit->updateMuteSoloStatuses();
+    if (renderVolumePlugin != nullptr)
+        renderVolumePlugin->setEnabled(renderVolumeWasEnabled);
+    renderVolumePlugin = nullptr;
+    seek(renderOriginalPosition);
+    renderAudibility.clear();
+    exclusiveTrackRender = false;
+}
+
+juce::Result TracktionAdapter::renderWavInternal(const juce::File& destination,
+                                                 double endSeconds, int onlyTrackIndex,
+                                                 double startSeconds)
+{
+    if (edit == nullptr || ! std::isfinite(startSeconds) || ! std::isfinite(endSeconds)
+        || startSeconds < 0.0 || endSeconds <= startSeconds)
         return juce::Result::fail("Invalid render range");
 
     tracktion::engine::Renderer::Parameters parameters(*edit);
@@ -535,14 +612,21 @@ juce::Result TracktionAdapter::renderWav(const juce::File& destination,
     if (parameters.sampleRateForAudio <= 0.0)
         parameters.sampleRateForAudio = transport::preferredSampleRate;
     parameters.blockSizeForAudio = transport::preferredBlockSize;
-    parameters.time = { tracktion::TimePosition::fromSeconds(0.0),
+    parameters.time = { tracktion::TimePosition::fromSeconds(startSeconds),
                         tracktion::TimePosition::fromSeconds(endSeconds) };
     parameters.tracksToDo = tracktion::engine::toBitSet(
         tracktion::engine::getAllTracks(*edit));
+    if (onlyTrackIndex >= 0)
+    {
+        const auto audioTracks = tracktion::engine::getAudioTracks(*edit);
+        const auto allTracks = tracktion::engine::getAllTracks(*edit);
+        parameters.tracksToDo.clear();
+        parameters.tracksToDo.setBit(allTracks.indexOf(audioTracks[onlyTrackIndex]));
+    }
     parameters.canRenderInMono = false;
     parameters.mustRenderInMono = false;
     parameters.usePlugins = true;
-    parameters.useMasterPlugins = true;
+    parameters.useMasterPlugins = onlyTrackIndex < 0;
     parameters.trimSilenceAtEnds = false;
     parameters.shouldNormalise = false;
 

@@ -78,6 +78,8 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
         juce::PopupMenu menu;
         menu.addItem(1, "Scan VST3 Plug-ins...");
         menu.addItem(5, "Locate VST3 Plug-in...");
+        if (currentType == TrackType::midi)
+            menu.addItem(6, "Bounce to Credentialed Audio Stem", bounceAvailable);
         if (currentPlugin.has_value())
         {
             menu.addSeparator();
@@ -113,6 +115,8 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
                     return;
                 if (result == 1 && safe->onScanPlugins) safe->onScanPlugins();
                 else if (result == 5 && safe->onLocatePlugin) safe->onLocatePlugin();
+                else if (result == 6 && safe->onBounceMidiStem)
+                    safe->onBounceMidiStem(safe->trackIndex);
                 else if (result == 2 && safe->onOpenPlugin) safe->onOpenPlugin(safe->trackIndex);
                 else if (result == 3 && safe->onBypassPlugin && safe->currentPlugin)
                     safe->onBypassPlugin(safe->trackIndex, ! safe->currentPlugin->bypassed);
@@ -152,10 +156,21 @@ void TrackHeaderView::setSelectedForInput(bool selected)
     repaint();
 }
 
-void TrackHeaderView::mouseDown(const juce::MouseEvent&)
+void TrackHeaderView::mouseDown(const juce::MouseEvent& event)
 {
     if (onSelected)
         onSelected(trackIndex);
+    if (event.mods.isPopupMenu() && currentType == TrackType::midi)
+    {
+        juce::PopupMenu menu;
+        menu.addItem(1, "Bounce to Credentialed Audio Stem", bounceAvailable);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+            [safe = juce::Component::SafePointer<TrackHeaderView>(this)](int choice)
+            {
+                if (safe != nullptr && choice == 1 && safe->onBounceMidiStem)
+                    safe->onBounceMidiStem(safe->trackIndex);
+            });
+    }
 }
 
 void TrackHeaderView::setPluginState(const std::optional<TrackPluginSnapshot>& plugin,

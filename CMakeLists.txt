@@ -602,7 +602,10 @@ if(BUILD_TESTING)
         TRACKTION_ENABLE_CONTROL_SURFACES=0
         TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=0
         C2PASEQ_TEST_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestGainVST3_VST3>"
-        C2PASEQ_TEST_SYNTH_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestSynthVST3_VST3>")
+        C2PASEQ_TEST_SYNTH_VST3_BUNDLE="$<TARGET_BUNDLE_DIR:C2PATestSynthVST3_VST3>"
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        C2PA_TEST_CERTIFICATE_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_certs.pem"
+        C2PA_TEST_PRIVATE_KEY_PEM="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/es256_private.key")
     target_link_libraries(C2PAPluginHostingTests PRIVATE
         tracktion::tracktion_engine
         juce::juce_audio_utils

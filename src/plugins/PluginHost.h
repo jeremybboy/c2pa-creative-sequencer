@@ -18,6 +18,7 @@ public:
                juce::File cacheFile = PluginScanner::defaultCacheFile(),
                bool showEditorWindows = true);
     ~PluginHost();
+    void closeEditorsForOfflineRender();
 
     [[nodiscard]] const std::vector<PluginDescriptor>& availablePlugins() const noexcept;
     [[nodiscard]] juce::Result scanVst3(const juce::FileSearchPath& paths = {});
