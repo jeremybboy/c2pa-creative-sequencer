@@ -35,6 +35,29 @@ struct IngredientInfo
     std::vector<juce::String> validationIssues;
 };
 
+// An authored history, not an inference from audio or a project snapshot.
+struct ProvenanceActionDefinition
+{
+    juce::String action;
+    juce::String digitalSourceType;
+    juce::String description;
+    juce::String softwareAgent;
+    juce::var parameters; // Optional JSON object; omitted when void.
+};
+
+struct StemProvenanceDescriptor
+{
+    juce::String title;
+    juce::String format = "audio/wav";
+    std::vector<ProvenanceActionDefinition> actions;
+};
+
+// Callers must supply truthful execution metadata before using these templates.
+[[nodiscard]] std::vector<ProvenanceActionDefinition> makeMidiRenderedStemActions(
+    const juce::var& renderParameters = {});
+[[nodiscard]] std::vector<ProvenanceActionDefinition> makeHumanRecordedStemActions(
+    const juce::var& captureParameters = {});
+
 enum class SoftBindingType
 {
     watermark,
