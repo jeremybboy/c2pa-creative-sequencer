@@ -87,6 +87,9 @@ public:
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
                                            double startSeconds);
+    [[nodiscard]] juce::Result importRecordedTake(const juce::String& projectId,
+        const juce::String& trackId, const juce::File& signedWav, double startSeconds,
+        const juce::String& takeId);
     // Prepare/import run on the owner thread; render/sign may run on an exclusive worker.
     [[nodiscard]] juce::Result prepareMidiStem(int trackIndex, MidiStemPlan&);
     [[nodiscard]] juce::Result renderAndSignMidiStem(const MidiStemPlan&,

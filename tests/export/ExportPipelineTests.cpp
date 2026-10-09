@@ -305,12 +305,153 @@ public:
 };
 }
 
-int main()
+int exerciseAudioRecording(const juce::File& root)
+{
+    const auto project = root.getChildFile("Recording.c2paseq");
+    const auto bundle = root.getChildFile("capture-signing.pem");
+    c2paseq::AudioEngine engine(std::make_unique<c2paseq::ConformanceTestSigningProvider>(
+        root.getChildFile("capture-credentials"), false), root.getChildFile("capture-plugins.xml"),
+        false, {}, root.getChildFile("capture-outbox"), {}, false);
+    if (! writeTestSigningBundle(bundle) || engine.createProject(project, "Recording").failed()
+        || engine.addMidiTrack().failed()) return fail(80, "capture fixture setup failed");
+    const auto midiIndex = static_cast<int>(engine.arrangementSnapshot().size()) - 1;
+    if (engine.setTrackRecordArmed(midiIndex, true).wasOk()) return fail(81, "MIDI track accepted audio arm");
+    const auto inputs = engine.recordingInputs();
+    const auto beforeArm = project.getChildFile("project.json").loadFileAsString();
+    if (inputs.size() != 1 || engine.setTrackRecordingInput(0, inputs.front()).failed()
+        || engine.setTrackRecordArmed(0, true).failed()
+        || engine.setTrackRecordArmed(1, true).failed() || engine.armedAudioTrack() != 1
+        || engine.setTrackRecordArmed(0, true).failed()) return fail(82, "single-track arm/input selection failed");
+    std::array<float, 512> block;
+    for (std::size_t i = 0; i < block.size(); ++i)
+        block[i] = static_cast<float>(0.2 * std::sin(juce::MathConstants<double>::twoPi * 220.0 * static_cast<double>(i) / 48000.0));
+    engine.processSyntheticRecordingInput(block.data(), static_cast<int>(block.size()));
+    if (engine.consumeRecordingInputPeak() < 0.1f || engine.startAudioRecording().wasOk()
+        || project.getChildFile("project.json").loadFileAsString() != beforeArm
+        || ! engine.arrangementSnapshot()[0].clips.empty()) return fail(83, "arm/meter changed project or recording bypassed signer");
+    if (engine.configureSigningCredential(bundle).failed()) return fail(84, "capture signer configuration failed");
+    engine.setLooping(true);
+    if (engine.startAudioRecording().wasOk()) return fail(84, "loop recording was accepted");
+    engine.setLooping(false);
+    engine.seek(2.0);
+    if (engine.startAudioRecording().failed() || ! engine.transportSnapshot().playing)
+        return fail(85, "record did not start transport");
+    if (engine.createProject(root.getChildFile("Other.c2paseq"), "Other").wasOk()
+        || engine.deleteTrack(0).wasOk() || engine.setTrackRecordArmed(1, true).wasOk())
+        return fail(85, "recording target could be replaced during capture");
+    for (int offset = 0; offset < 48000; offset += 512)
+    {
+        engine.processSyntheticRecordingInput(block.data(), std::min(512, 48000 - offset));
+        juce::Thread::sleep(2); // Synthetic producer gives the same disk queue time to drain.
+    }
+    auto finalize = std::async(std::launch::async, [&] { return engine.stopAudioRecording(); });
+    if (! waitWhileDispatching(finalize, 30000)) return fail(86, "capture finalization timed out");
+    const auto finalized = finalize.get();
+    if (finalized.failed()) return fail(86, "capture finalization failed: " + finalized.getErrorMessage());
+    auto tracks = engine.arrangementSnapshot();
+    if (tracks[0].clips.size() != 1) return fail(87, "finalized take was not placed on armed track");
+    const auto clip = tracks[0].clips.front();
+    WavReadback take;
+    if (! readWav(clip.mediaFile, take) || take.reader->numChannels != 1
+        || take.reader->bitsPerSample != 24 || take.reader->lengthInSamples != 48000
+        || ! approximately(clip.startSeconds, 2.0, 0.001)
+        || ! approximately(clip.lengthSeconds, 1.0, 0.001)
+        || ! clip.provenance.c2paPresent || ! clip.provenance.assetIntact)
+        return fail(88, "captured signed WAV format, integrity or timing was wrong");
+    for (int sample = 0; sample < 48000; ++sample)
+        if (std::abs(take.audio.getSample(0, sample) - block[static_cast<std::size_t>(sample % 512)]) > 0.000001f)
+            return fail(88, "capture changed accepted input samples beyond 24-bit quantization");
+    const auto json = clip.provenance.rawManifestJson;
+    const auto document = juce::JSON::parse(json);
+    const auto manifest = document["manifests"][juce::Identifier(clip.provenance.activeManifest)];
+    bool captureAction = false;
+    if (const auto* assertions = manifest["assertions"].getArray())
+        for (const auto& assertion : *assertions)
+            if (assertion["label"].toString().startsWith("c2pa.actions"))
+                if (const auto* actions = assertion["data"]["actions"].getArray())
+                    for (const auto& action : *actions)
+                    {
+                        const auto capture = action["parameters"]["c2paseq:audioCapture"];
+                        captureAction = captureAction || (action["action"].toString() == "c2pa.created"
+                            && action["digitalSourceType"].toString().endsWith("/digitalCapture")
+                            && capture["takeId"].toString().isNotEmpty()
+                            && static_cast<int>(capture["frameCount"]) == 48000
+                            && static_cast<int>(capture["channelCount"]) == 1
+                            && static_cast<int>(capture["bitDepth"]) == 24
+                            && static_cast<int>(capture["inputIndex"]) == 0
+                            && capture["inputName"].toString() == inputs.front().label()
+                            && capture["recordingMode"].toString() == "external-audio-input"
+                            && approximately(static_cast<double>(capture["endSeconds"]), 3.0, 0.001));
+                    }
+    if (! captureAction || json.contains("c2pa.rendered") || json.contains("performerIdentity")
+        || json.contains("deviceSerialNumber") || json.contains("roomIdentity"))
+        return fail(89, "capture actions/metadata were not truthful digitalCapture");
+    const auto mixed = engine.exportMix(root.getChildFile("recorded-mix.wav"));
+    if (mixed.result.failed() || mixed.ingredients.size() != 1
+        || ! mixed.ingredients.front().provenance.assetIntact
+        || ! mixed.outputProvenance.rawManifestJson.contains(clip.provenance.activeManifest))
+        return fail(90, "final signed Export did not include the credentialed take ingredient: " + mixed.result.getErrorMessage());
+    if (! engine.undo() || ! engine.arrangementSnapshot()[0].clips.empty()
+        || ! engine.redo() || engine.arrangementSnapshot()[0].clips.size() != 1)
+        return fail(91, "take import was not one undoable edit");
+    if (engine.saveProject().failed() || engine.openProject(project).failed()
+        || engine.arrangementSnapshot()[0].clips.size() != 1
+        || ! engine.arrangementSnapshot()[0].clips.front().provenance.assetIntact)
+        return fail(91, "save/reopen lost credentialed take");
+    if (engine.setTrackRecordArmed(0, true).failed()) return fail(92, "rearm failed");
+    const auto saved = project.getChildFile("project.json").loadFileAsString();
+    const auto mediaCount = project.getChildFile("Media").getNumberOfChildFiles(juce::File::findFiles);
+    if (engine.startAudioRecording().failed()) return fail(92, "cancel fixture did not start");
+    engine.processSyntheticRecordingInput(block.data(), 512);
+    engine.cancelAudioRecording();
+    if (engine.isAudioRecording() || project.getChildFile("project.json").loadFileAsString() != saved
+        || project.getChildFile("Media").getNumberOfChildFiles(juce::File::findFiles) != mediaCount)
+        return fail(93, "cancel imported media or mutated project");
+    if (engine.startAudioRecording().failed()) return fail(94, "signer-failure fixture did not start");
+    engine.processSyntheticRecordingInput(block.data(), 512);
+    if (engine.removeSigningCredential().failed()) return fail(94, "could not inject signer failure");
+    auto rejected = std::async(std::launch::async, [&] { return engine.stopAudioRecording(); });
+    if (! waitWhileDispatching(rejected, 30000) || rejected.get().wasOk()
+        || project.getChildFile("project.json").loadFileAsString() != saved
+        || engine.arrangementSnapshot()[0].clips.size() != 1
+        || project.getChildFile("Media").getNumberOfChildFiles(juce::File::findFiles) != mediaCount)
+        return fail(95, "signing failure mutated project or imported unsigned media");
+
+    c2paseq::InputRecordingService capture;
+    capture.setArmed(true);
+    capture.prepareInput(48000.0, false);
+    if (capture.startRecording().wasOk()) return fail(96, "unavailable input was accepted");
+    capture.prepareInput(48000.0, true);
+    if (capture.startRecording().failed()) return fail(96, "callback fixture did not start");
+    std::array<float, 512> output;
+    output.fill(0.5f);
+    const float* inputPointers[] { block.data() };
+    float* outputPointers[] { output.data() };
+    capture.audioDeviceIOCallbackWithContext(inputPointers, 1, outputPointers, 1, 512, {});
+    if (std::any_of(output.begin(), output.end(), [](float v) { return v != 0.0f; }))
+        return fail(97, "recording callback monitored input to output");
+    capture.audioDeviceStopped();
+    c2paseq::RecordedAudioTake invalid;
+    if (capture.stopRecording(invalid).wasOk()) return fail(98, "device failure accepted incomplete take");
+    capture.cancelRecording();
+    capture.prepareInput(48000.0, true);
+    if (capture.startRecording().failed()) return fail(98, "failure cleanup prevented retry");
+    std::vector<float> oversized(131072, 0.1f);
+    capture.processInput(oversized.data(), static_cast<int>(oversized.size()));
+    if (capture.stopRecording(invalid).wasOk()) return fail(98, "queue overflow accepted incomplete take");
+    capture.cancelRecording();
+    std::cout << "Audio recording: synthetic callback, no monitoring, arm/signer guards, signed digitalCapture, ingredient export, undo/reopen, cancel/sign/device/overflow failure passed\n";
+    return 0;
+}
+
+int main(int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI initialiser;
     ScopedTestDirectory temporary;
     if (! temporary.ready)
         return fail(1, "could not create export test directory");
+    if (argc == 2 && juce::String(argv[1]) == "--recording-only")
+        return exerciseAudioRecording(temporary.root);
 
     const auto sourceA = temporary.root.getChildFile("A.wav");
     const auto sourceB = temporary.root.getChildFile("B.wav");

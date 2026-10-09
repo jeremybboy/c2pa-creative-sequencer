@@ -145,3 +145,38 @@ and listening acceptance still need this manual check.
 No intermediate WAVs are added to the project. Manual bounce remains useful when you want to
 keep a separate signed stem. Releases/reverb beyond MIDI clip ends are not automatically added;
 extend the clip beforehand. Automated tests use the test synth, not proof of your Surge XT preset.
+
+## PR 025 minimal credentialed audio recording acceptance
+
+1. Connect an input (microphone or audio interface), create/open a project, and configure the
+   existing signer through **Signing**; the supplied credential is a test identity only.
+2. On an **Audio** track, click **Input** and select a device/channel, then click its red-circle
+   **Arm** control. Allow macOS microphone access if asked. Arming a second Audio track disarms
+   the first; MIDI tracks have no audio-arm control. Inputs stay closed at normal startup.
+3. Speak/play into the selected input and confirm the armed track's meter moves even with
+   transport stopped. **Input\*** and its tooltip identify the input-meter mode. No input audio
+   is sent to the speakers; use interface direct monitoring if needed, not software monitoring.
+4. Turn **Loop** off and put the playhead away from zero. Press the global red-circle **Record**
+   beside Play/Stop. Transport starts or continues; status says **RECORDING**. Project editing
+   is locked for the take. No clip or provenance is created merely by arming or metering.
+5. Press **Stop**, **Record** again, or **Space** to finalize. Wait for signing/validation, then
+   confirm one new clip appears on the original armed track at the recording start position.
+   Playback is paused; press Play to listen and compare placement against existing material.
+6. Select that clip and click **Credentials**. Inspect `c2pa.created` with `digitalCapture` and
+   `c2paseq:audioCapture`: actual input label/index, track name, sample rate, mono channel count,
+   24-bit depth, frame count, start/end/duration, take ID, and application name/version.
+   These fields are capture evidence, **not proof of performer or microphone identity**.
+7. Export normally and view the mix credentials: the recorded signed WAV must be a normal
+   ingredient with its own embedded capture manifest. Include a MIDI instrument track and
+   confirm PR 024 automatic MIDI provenance still works without manual bounce.
+8. Undo/redo the take import, then save/reopen and confirm the clip, sound, and credentials remain.
+   Undo/redo, track deletion, and project switching disarm input; explicitly rearm for another take.
+9. Record another take and click **Cancel** or **Escape** before Stop: confirm no clip/media import.
+   With no signer, Record is disabled. Device interruption or signing failure must report rejection,
+   never import unsigned audio. Finalization cannot be cancelled mid-signature; wait before quitting.
+
+Automated acceptance uses synthetic samples through the same callback queue and real C2PA signing;
+live input enumeration, macOS permission, audible quality, and physical-device placement still require
+the steps above. Capture is raw mono input, before track effect/gain/pan; normal playback/export
+applies the track processing. Timing is not latency-compensated. No software monitoring, loop/punch
+recording, comping, MIDI recording, cloud work, persistent stem cache, or production credentialing.

@@ -24,7 +24,7 @@ std::vector<ProvenanceActionDefinition> makeHumanRecordedStemActions(
     return {
         { "c2pa.created",
           "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
-          "Human performance captured through audio input into C2PA Creative Sequencer",
+          "Audio captured through an input into C2PA Creative Sequencer",
           juce::String(appInfo::name.data()), captureParameters }
     };
 }

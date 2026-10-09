@@ -12,6 +12,7 @@ public:
         play,
         pause,
         stop,
+        record,
         loop,
         undo,
         redo,

@@ -1,11 +1,13 @@
 #include "AudioEngine.h"
 
 #include "export/ExportController.h"
+#include "app/AppInfo.h"
 
 namespace c2paseq
 {
 juce::Result AudioEngine::prepareMidiStem(int trackIndex, MidiStemPlan& plan)
 {
+    if (isAudioRecording() || recordingFinalizing()) return juce::Result::fail("Finish recording before bouncing MIDI");
     const auto result = projectEngine.prepareMidiStem(trackIndex, plan);
     if (result.wasOk()) pluginHost.closeEditorsForOfflineRender();
     return result;
@@ -40,7 +42,8 @@ AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider,
                          bool showPluginWindows,
                          std::unique_ptr<WatermarkService> watermarkService,
                          juce::File softBindingOutboxDirectory,
-                         std::unique_ptr<FingerprintService> fingerprintService)
+                         std::unique_ptr<FingerprintService> fingerprintService,
+                         bool useHardwareRecordingInput)
     : provenance(std::move(signingProvider)),
       watermark(watermarkService != nullptr
           ? std::move(watermarkService) : std::make_unique<AudioWMarkService>()),
@@ -52,8 +55,147 @@ AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider,
       pluginHost(tracktion, projectEngine,
                  pluginCacheFile == juce::File() ? PluginScanner::defaultCacheFile()
                                                   : std::move(pluginCacheFile),
-                 showPluginWindows)
+                 showPluginWindows), hardwareRecordingInput(useHardwareRecordingInput)
 {
+    if (hardwareRecordingInput) tracktion.audioDeviceManager().addAudioCallback(&inputRecording);
+}
+
+AudioEngine::~AudioEngine()
+{
+    if (hardwareRecordingInput) tracktion.audioDeviceManager().removeAudioCallback(&inputRecording);
+    inputRecording.cancelRecording();
+}
+
+std::vector<AudioInputChoice> AudioEngine::recordingInputs()
+{
+    if (! hardwareRecordingInput) return { { "Synthetic input", 0, "Input 1" } };
+    return tracktion.recordingInputs();
+}
+
+juce::Result AudioEngine::setTrackRecordingInput(int index, const AudioInputChoice& choice)
+{
+    if (isAudioRecording() || recordingFinalizing()) return juce::Result::fail("Stop or cancel the take before changing input");
+    const auto* project = projectEngine.currentProject();
+    if (! project || ! juce::isPositiveAndBelow(index, static_cast<int>(project->tracks.size()))
+        || project->tracks[static_cast<std::size_t>(index)].type != TrackType::audio)
+        return juce::Result::fail("Only Audio tracks accept audio recording input");
+    const auto available = recordingInputs();
+    const auto selected = std::find_if(available.begin(), available.end(), [&](const auto& input)
+        { return input.deviceName == choice.deviceName && input.channelIndex == choice.channelIndex; });
+    if (selected == available.end())
+        return juce::Result::fail("The selected audio input is unavailable");
+    const auto wasArmed = armedRecordingTrack >= 0;
+    if (wasArmed) (void) setTrackRecordArmed(armedRecordingTrack, false);
+    recordingInput = *selected; // metadata comes from enumeration, not caller-supplied labels
+    return wasArmed ? setTrackRecordArmed(index, true) : juce::Result::ok();
+}
+
+juce::Result AudioEngine::setTrackRecordArmed(int index, bool enabled)
+{
+    if (isAudioRecording() || recordingFinalizing()) return juce::Result::fail("Stop or cancel the take before changing arm");
+    const auto* project = projectEngine.currentProject();
+    if (! project || ! juce::isPositiveAndBelow(index, static_cast<int>(project->tracks.size()))
+        || project->tracks[static_cast<std::size_t>(index)].type != TrackType::audio)
+        return juce::Result::fail("Only Audio tracks can be armed for audio recording");
+    inputRecording.setArmed(false);
+    armedRecordingTrack = -1;
+    if (! enabled)
+    {
+        if (hardwareRecordingInput) tracktion.disableRecordingInput();
+        return juce::Result::ok();
+    }
+    if (recordingInput.deviceName.isEmpty())
+    {
+        const auto choices = recordingInputs();
+        if (choices.empty()) return juce::Result::fail("No audio input available; connect an input and check microphone permission");
+        recordingInput = choices.front();
+    }
+    if (hardwareRecordingInput)
+    {
+        if (auto result = tracktion.enableRecordingInput(recordingInput); result.failed())
+        { tracktion.disableRecordingInput(); return result; }
+    }
+    else inputRecording.prepareInput(48000.0, true);
+    armedRecordingTrack = index;
+    inputRecording.setArmed(true);
+    return juce::Result::ok();
+}
+
+void AudioEngine::processSyntheticRecordingInput(const float* mono, int count) noexcept
+{
+    if (! hardwareRecordingInput) inputRecording.processInput(mono, count);
+}
+
+juce::Result AudioEngine::startAudioRecording()
+{
+    if (isAudioRecording() || recordingFinalizing()) return juce::Result::fail("Only one take may record at a time");
+    if (! provenance.signingConfigured()) return juce::Result::fail(provenance.signingConfigurationError());
+    const auto* project = projectEngine.currentProject();
+    if (! project || ! juce::isPositiveAndBelow(armedRecordingTrack, static_cast<int>(project->tracks.size()))
+        || project->tracks[static_cast<std::size_t>(armedRecordingTrack)].type != TrackType::audio)
+        return juce::Result::fail("Arm an Audio track before recording");
+    if (transportSnapshot().looping) return juce::Result::fail("Turn Loop off before recording; loop recording is not supported");
+    const auto& track = project->tracks[static_cast<std::size_t>(armedRecordingTrack)];
+    recordingProjectId = project->id;
+    recordingTrackId = track.id;
+    recordingTrackName = track.name;
+    recordingTakeId = juce::Uuid().toString();
+    recordingStartSeconds = transportSnapshot().positionSeconds;
+    pluginHost.closeEditorsForOfflineRender();
+    if (auto result = inputRecording.startRecording(); result.failed()) return result;
+    if (! transportSnapshot().playing) play();
+    return juce::Result::ok();
+}
+
+juce::Result AudioEngine::stopAudioRecording()
+{
+    if (! isAudioRecording() || finalizingRecording.exchange(true)) return juce::Result::fail("No active take to finalize");
+    RecordedAudioTake take;
+    auto result = inputRecording.stopRecording(take);
+    tracktion::engine::callBlocking([&] { tracktion.pause(); });
+    if (result.wasOk())
+    {
+        auto* capture = new juce::DynamicObject();
+        capture->setProperty("takeId", recordingTakeId);
+        capture->setProperty("trackName", recordingTrackName);
+        capture->setProperty("inputName", recordingInput.label());
+        capture->setProperty("inputIndex", recordingInput.channelIndex);
+        capture->setProperty("sampleRate", take.sampleRate);
+        capture->setProperty("channelCount", 1);
+        capture->setProperty("bitDepth", 24);
+        capture->setProperty("startSeconds", recordingStartSeconds);
+        capture->setProperty("durationSeconds", take.durationSeconds());
+        capture->setProperty("endSeconds", recordingStartSeconds + take.durationSeconds());
+        capture->setProperty("frameCount", take.frames);
+        capture->setProperty("recordingMode", "external-audio-input");
+        capture->setProperty("captureEncoding", "wav-pcm");
+        capture->setProperty("applicationName", juce::String(appInfo::name.data()));
+        capture->setProperty("applicationVersion", juce::String(appInfo::version.data()));
+        auto* parameters = new juce::DynamicObject();
+        parameters->setProperty("c2paseq:audioCapture", juce::var(capture));
+        StemProvenanceDescriptor descriptor;
+        descriptor.title = juce::File::createLegalFileName(recordingTrackName + " Take") + ".wav";
+        descriptor.actions = makeHumanRecordedStemActions(juce::var(parameters));
+        const auto signedFile = take.file.getSiblingFile(descriptor.title);
+        IngredientInfo validation;
+        result = provenance.signStemWav(take.file, signedFile, descriptor, validation);
+        if (result.wasOk() && (! validation.c2paPresent || ! validation.assetIntact))
+            result = juce::Result::fail("Recorded take failed C2PA integrity validation");
+        if (result.wasOk()) tracktion::engine::callBlocking([&]
+        { result = projectEngine.importRecordedTake(recordingProjectId, recordingTrackId,
+            signedFile, recordingStartSeconds, recordingTakeId); });
+    }
+    inputRecording.cancelRecording();
+    finalizingRecording.store(false);
+    return result;
+}
+
+void AudioEngine::cancelAudioRecording()
+{
+    if (recordingFinalizing()) return; // finalization has exclusive ownership
+    const auto wasRecording = isAudioRecording();
+    inputRecording.cancelRecording();
+    if (wasRecording) tracktion.pause();
 }
 
 bool AudioEngine::isInitialised() const noexcept
@@ -211,8 +353,18 @@ juce::Result AudioEngine::splitClip(const juce::String& id, double position)
 }
 juce::Result AudioEngine::addAudioTrack() { return projectEngine.addAudioTrack(); }
 juce::Result AudioEngine::addMidiTrack() { return projectEngine.addMidiTrack(); }
-juce::Result AudioEngine::deleteTrack(int i) { return projectEngine.deleteTrack(i); }
-juce::Result AudioEngine::deleteAudioTrack(int i) { return projectEngine.deleteAudioTrack(i); }
+juce::Result AudioEngine::deleteTrack(int i)
+{
+    if (isAudioRecording() || recordingFinalizing()) return juce::Result::fail("Finish recording before deleting tracks");
+    if (armedRecordingTrack >= 0) (void) setTrackRecordArmed(armedRecordingTrack, false);
+    return projectEngine.deleteTrack(i);
+}
+juce::Result AudioEngine::deleteAudioTrack(int i)
+{
+    if (isAudioRecording() || recordingFinalizing()) return juce::Result::fail("Finish recording before deleting tracks");
+    if (armedRecordingTrack >= 0) (void) setTrackRecordArmed(armedRecordingTrack, false);
+    return projectEngine.deleteAudioTrack(i);
+}
 juce::Result AudioEngine::setTrackName(int i, const juce::String& n) { return projectEngine.setTrackName(i, n); }
 juce::Result AudioEngine::setTrackMute(int i, bool v) { return projectEngine.setTrackMute(i, v); }
 juce::Result AudioEngine::setTrackSolo(int i, bool v) { return projectEngine.setTrackSolo(i, v); }
@@ -254,8 +406,18 @@ juce::Result AudioEngine::openTrackPluginEditor(
 {
     return pluginHost.openTrackPluginEditor(i, std::move(keyHandler));
 }
-bool AudioEngine::undo() { return projectEngine.undo(); }
-bool AudioEngine::redo() { return projectEngine.redo(); }
+bool AudioEngine::undo()
+{
+    if (isAudioRecording() || recordingFinalizing() || ! projectEngine.canUndo()) return false;
+    if (armedRecordingTrack >= 0) (void) setTrackRecordArmed(armedRecordingTrack, false);
+    return projectEngine.undo();
+}
+bool AudioEngine::redo()
+{
+    if (isAudioRecording() || recordingFinalizing() || ! projectEngine.canRedo()) return false;
+    if (armedRecordingTrack >= 0) (void) setTrackRecordArmed(armedRecordingTrack, false);
+    return projectEngine.redo();
+}
 bool AudioEngine::canUndo() const noexcept { return projectEngine.canUndo(); }
 bool AudioEngine::canRedo() const noexcept { return projectEngine.canRedo(); }
 void AudioEngine::setTimelineView(double pixels, double scroll)
@@ -359,6 +521,8 @@ ExportResult AudioEngine::exportMix(const juce::File& destination,
 {
     ExportResult result;
     result.outputFile = destination;
+    if (isAudioRecording() || recordingFinalizing())
+    { result.result = juce::Result::fail("Finish recording before exporting"); return result; }
     result.result = juce::Result::fail("Create or open a project before exporting");
     std::optional<Project> snapshot;
     std::optional<ProjectPaths> paths;
@@ -386,6 +550,8 @@ ExportResult AudioEngine::exportMix(const juce::File& destination,
 juce::Result AudioEngine::createProject(const juce::File& projectFolder,
                                         const juce::String& projectName)
 {
+    if (isAudioRecording() || recordingFinalizing()) return juce::Result::fail("Finish recording before changing project");
+    if (armedRecordingTrack >= 0) (void) setTrackRecordArmed(armedRecordingTrack, false);
     return projectEngine.createProject(projectFolder, projectName);
 }
 
@@ -396,6 +562,8 @@ juce::Result AudioEngine::saveProject()
 
 juce::Result AudioEngine::openProject(const juce::File& projectFolder)
 {
+    if (isAudioRecording() || recordingFinalizing()) return juce::Result::fail("Finish recording before changing project");
+    if (armedRecordingTrack >= 0) (void) setTrackRecordArmed(armedRecordingTrack, false);
     return projectEngine.openProject(projectFolder);
 }
 

@@ -76,6 +76,52 @@ bool TracktionAdapter::isInitialised() const noexcept
     return initialised;
 }
 
+std::vector<AudioInputChoice> TracktionAdapter::recordingInputs()
+{
+    std::vector<AudioInputChoice> choices;
+    auto& manager = audioDeviceManager();
+    auto* type = manager.getCurrentDeviceTypeObject();
+    if (type == nullptr) return choices;
+    type->scanForDevices();
+    const auto setup = manager.getAudioDeviceSetup();
+    for (const auto& name : type->getDeviceNames(true))
+    {
+        auto device = std::unique_ptr<juce::AudioIODevice>(type->createDevice(setup.outputDeviceName, name));
+        if (! device) continue;
+        const auto channels = device->getInputChannelNames();
+        for (int index = 0; index < channels.size(); ++index)
+            choices.push_back({ name, index, channels[index] });
+    }
+    return choices;
+}
+
+juce::Result TracktionAdapter::enableRecordingInput(const AudioInputChoice& input)
+{
+    if (input.deviceName.isEmpty() || input.channelIndex < 0)
+        return juce::Result::fail("Select an available mono audio input");
+    auto setup = audioDeviceManager().getAudioDeviceSetup();
+    setup.inputDeviceName = input.deviceName;
+    setup.useDefaultInputChannels = false;
+    setup.inputChannels.clear();
+    setup.inputChannels.setBit(input.channelIndex);
+    const auto error = audioDeviceManager().setAudioDeviceSetup(setup, true);
+    engine.getDeviceManager().dispatchPendingUpdates();
+    if (error.isNotEmpty()) return juce::Result::fail(error);
+    auto* device = audioDeviceManager().getCurrentAudioDevice();
+    if (device == nullptr || ! device->getActiveInputChannels()[input.channelIndex])
+        return juce::Result::fail("The selected audio input did not open");
+    return juce::Result::ok();
+}
+
+void TracktionAdapter::disableRecordingInput()
+{
+    auto setup = audioDeviceManager().getAudioDeviceSetup();
+    setup.useDefaultInputChannels = false;
+    setup.inputChannels.clear();
+    (void) audioDeviceManager().setAudioDeviceSetup(setup, true);
+    engine.getDeviceManager().dispatchPendingUpdates();
+}
+
 juce::String TracktionAdapter::audioDeviceDescription() const
 {
     const auto snapshot = audioDeviceSnapshot();

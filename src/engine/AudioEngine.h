@@ -8,6 +8,7 @@
 #include "fingerprint/AudfprintService.h"
 #include "watermark/AudioWMarkService.h"
 #include "watermark/SoftBindingOutbox.h"
+#include "recording/InputRecordingService.h"
 
 #include <memory>
 
@@ -21,7 +22,26 @@ public:
                          bool showPluginWindows = true,
                          std::unique_ptr<WatermarkService> watermarkService = {},
                          juce::File softBindingOutboxDirectory = {},
-                         std::unique_ptr<FingerprintService> fingerprintService = {});
+                         std::unique_ptr<FingerprintService> fingerprintService = {},
+                         bool useHardwareRecordingInput = true);
+    ~AudioEngine();
+
+    [[nodiscard]] std::vector<AudioInputChoice> recordingInputs();
+    [[nodiscard]] juce::Result setTrackRecordingInput(int trackIndex, const AudioInputChoice&);
+    [[nodiscard]] juce::Result setTrackRecordArmed(int trackIndex, bool);
+    [[nodiscard]] juce::Result startAudioRecording();
+    // Non-realtime worker path; imports on the owner thread after signing.
+    [[nodiscard]] juce::Result stopAudioRecording();
+    void cancelAudioRecording();
+    [[nodiscard]] bool isAudioRecording() const noexcept { return inputRecording.isRecording(); }
+    [[nodiscard]] bool recordingFinalizing() const noexcept { return finalizingRecording.load(); }
+    [[nodiscard]] bool recordingInputFailed() const noexcept { return inputRecording.captureFailed(); }
+    [[nodiscard]] int armedAudioTrack() const noexcept { return armedRecordingTrack; }
+    [[nodiscard]] juce::String recordingInputLabel() const
+    { return recordingInput.deviceName.isEmpty() ? "Not selected" : recordingInput.label(); }
+    [[nodiscard]] float consumeRecordingInputPeak() noexcept { return inputRecording.consumePeak(); }
+    // Deterministic callback injection only when hardware input is disabled by the test constructor.
+    void processSyntheticRecordingInput(const float*, int count) noexcept;
 
     [[nodiscard]] bool isInitialised() const noexcept;
     [[nodiscard]] juce::String status() const;
@@ -153,6 +173,13 @@ private:
     SoftBindingOutbox softBindingOutbox;
     ProjectEngine projectEngine;
     PluginHost pluginHost;
+    InputRecordingService inputRecording;
+    bool hardwareRecordingInput = true;
+    int armedRecordingTrack = -1;
+    AudioInputChoice recordingInput;
+    juce::String recordingProjectId, recordingTrackId, recordingTrackName, recordingTakeId;
+    double recordingStartSeconds = 0.0;
+    std::atomic_bool finalizingRecording { false };
     bool useSoftBinding = false;
     bool useFingerprint = false;
 };

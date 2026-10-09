@@ -53,6 +53,10 @@ void IconButton::drawIcon(juce::Graphics& g, juce::Rectangle<float> area,
         case Icon::stop:
             g.fillRoundedRectangle(area.reduced(2.0f), 2.0f);
             break;
+        case Icon::record:
+            g.setColour(juce::Colour::fromRGB(229, 79, 88).withMultipliedAlpha(colour.getFloatAlpha()));
+            g.fillEllipse(area.reduced(2.0f));
+            break;
         case Icon::loop:
             path.startNewSubPath(area.getX() + 2.0f, cy - 3.0f);
             path.lineTo(area.getRight() - 4.0f, cy - 3.0f);
