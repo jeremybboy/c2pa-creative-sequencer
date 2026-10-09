@@ -2,6 +2,7 @@
 
 #include "project/Project.h"
 #include "project/ProjectPaths.h"
+#include "export/RenderService.h"
 #include "timeline/ArrangementSelection.h"
 
 #include <optional>
@@ -85,6 +86,13 @@ public:
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
                                            double startSeconds);
+    // Prepare/import run on the owner thread; render/sign may run on an exclusive worker.
+    [[nodiscard]] juce::Result prepareMidiStem(int trackIndex, MidiStemPlan&);
+    [[nodiscard]] juce::Result renderAndSignMidiStem(const MidiStemPlan&,
+                                                    const juce::File& unsignedWav,
+                                                    const juce::File& signedWav);
+    [[nodiscard]] juce::Result importMidiStem(const MidiStemPlan&, const juce::File&,
+                                             juce::String& createdClipId);
     [[nodiscard]] juce::Result createMidiClip(int trackIndex,
                                               double startBeats,
                                               double lengthBeats = 16.0);

@@ -87,3 +87,35 @@ each generated file. FFmpeg is discovered from the fingerprint runtime record, t
 or standard Homebrew locations; if unavailable, the converter stays disabled with setup guidance.
 
 For automated opt-in acceptance, configure with both `C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST=ON` and `C2PASEQ_ENABLE_REAL_AUDFPRINT_TEST=ON`, then run the `real_mp3_soft_binding_pipeline` CTest. Normal CI remains independent of both runtimes and FFmpeg.
+
+## PR 023 credentialed MIDI stem acceptance
+
+1. Open a project, add a MIDI track, create a clip away from bar 1, and draw several notes.
+2. Load a VST3 instrument (for example, your installed Surge XT), choose a recognizable sound,
+   and confirm playback. Set gain/pan so a change in level or position would be noticeable.
+3. Configure the normal C2PA signer through **Signing** if needed. No new credential is required.
+4. Right-click the MIDI track header, or open its instrument menu, and choose
+   **Bounce to Credentialed Audio Stem**. With no notes, instrument, or signer, the item is disabled.
+5. Confirm a new **<track name> Rendered Stem** audio track appears, its audio starts where the
+   MIDI clip starts, source MIDI is muted, and gain/pan are retained on the audio track.
+   Playback is paused; press Play to compare timing, level, pan, and the chosen instrument sound.
+6. Select the bounced waveform and click **Credentials**. Confirm embedded credentials, integrity
+   validation, `c2pa.created` / `c2pa.rendered`, the actual track/BPM/counts, and instrument identity.
+   External trust may still report an issue for the test certificate; it is not an integrity failure.
+7. Undo once: the stem track should disappear and source mute/solo should return. Redo once:
+   the stem and mute should return. Save, close, and reopen; verify both audio and credentials.
+8. Export the final mix and choose **View Credentials**. Confirm the signed bounced WAV is a
+   credentialed ingredient alongside any other audible source media. Detailed stem actions live
+   in the ingredient's own manifest, not a fabricated final-mix MIDI ingredient.
+9. Try an unrelated soloed audio track and a muted MIDI source: bounce must still render only
+   the selected instrument. If the MIDI source itself was soloed, solo should move to the stem.
+10. On a longer bounce, press **Cancel**; wait for the current stage to finish and confirm no new
+    track or source mute. Normal Quit should ask you to wait/cancel while the worker is active.
+
+The stem is rendered before track gain/pan and without master processing; its new audio track
+inherits the mixer settings so they are applied only once. Rendering stops at the last non-empty
+MIDI clip end; allow space in the clip for releases/reverb. Notes remain editable on the muted MIDI
+track, but later edits or BPM changes do not regenerate or stretch an existing bounced WAV.
+No recording, MIDI-file import, soft binding on stems, or automatic instrument-tail detection
+is part of this PR. Automated acceptance uses the repository test synth; your instrument/preset
+and listening acceptance still need this manual check.

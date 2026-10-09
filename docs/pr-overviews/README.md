@@ -9,6 +9,7 @@ snapshot retained to explain what was known when the overview was prepared.
 
 | PR | Overview | Status snapshot | Pull request |
 | --- | --- | --- | --- |
+| 023 | [Bounce MIDI track to credentialed stem](PR-023-midi-credentialed-stem/implementation-brief.md) · [Visual](PR-023-midi-credentialed-stem/overview.png) · [Editable SVG](PR-023-midi-credentialed-stem/overview.svg) | Release build, 17/17 tests, 4/4 focused checks, signature, and visual QA pass on 2026-10-09; human instrument/listening acceptance pending | Not opened |
 | 022 | [Stem provenance authoring foundation](PR-022-stem-provenance-foundation/implementation-brief.md) · [Visual](PR-022-stem-provenance-foundation/overview.png) · [Editable SVG](PR-022-stem-provenance-foundation/overview.svg) | Release build, 17/17 tests, focused checks, and signature pass on 2026-10-09; review pending; no bounce or recording UI | See GitHub for current status |
 | 021 | [Recovery demo launcher](PR-021-recovery-demo-launcher/implementation-brief.md) · [Editable visual](PR-021-recovery-demo-launcher/overview.svg) | Implementation, 17-test suite, signature, and local UI smoke pass; independent human acceptance pending | Not opened |
 | 020 | [Explicit computer-keyboard monitoring](PR-020-computer-keyboard-monitoring/implementation-brief.md) · [Visual](PR-020-computer-keyboard-monitoring/overview.png) | Implementation and automated verification complete; human acceptance passed on 2026-09-29 | [#20](https://github.com/jeremybboy/c2pa-creative-sequencer/pull/20) |

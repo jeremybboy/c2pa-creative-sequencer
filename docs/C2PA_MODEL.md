@@ -89,8 +89,52 @@ on failure; future orchestrators must stage output and import it only after succ
 existing final ExportController does. Credential trust recognition remains separate from
 asset integrity, with the existing inspection policy unchanged.
 
-Planned separately: PR 023 will render a real MIDI/VST3 track, supply real execution metadata,
-sign the intermediate WAV, and import it as normal credentialed media; PR 024 will do the
-equivalent for actual audio capture, subject to its separately approved recording scope.
-Neither MIDI bounce nor audio-recording UI is implemented here, and final mix ingredients
-are not fabricated to stand in for those future assets.
+PR 022 itself added no MIDI bounce or recording UI. Its schema fixtures do not constitute
+rendering or capture evidence. Actual recording remains planned separately as PR 024,
+subject to its separately approved recording scope.
+
+## MIDI/VST3 credentialed stems (PR 023)
+
+With a signer configured, right-click a MIDI track header or open its instrument menu and
+choose **Bounce to Credentialed Audio Stem**. The track must have notes and a loaded,
+non-bypassed VST3 instrument. Live instrument state is captured before hashing and the
+instrument editor closes during the exclusive offline operation. Rendering/signing runs on
+a worker; canonical import is committed on the UI/owner thread only after success.
+
+Tracktion's renderer filters to the selected track via an explicit track bit, not a whole-mix
+render. Temporary mute/solo overrides are never persisted and are restored on failure and
+success. The render excludes master processing and the track's mixer: the resulting audio
+track inherits source gain/pan, avoiding a second application of the engine's pan law.
+Playback pauses, but its position is retained. Cancellation discards the result before import;
+it waits for the current render/sign stage rather than interrupting plugin DSP or signing.
+Normal quitting is blocked while a bounce worker needs the message thread.
+
+The range begins at the earliest non-empty MIDI clip start and ends at the last non-empty
+clip end; the new clip is placed at that same arrangement start. No automatic instrument-tail
+allowance or new tempo-stretch behavior is added. Extend the MIDI clip before bouncing if its
+release/reverb needs more space. Existing audio, other instruments, loop selection, and soft
+bindings are not included in the standalone stem.
+
+The real unsigned WAV is signed through PR 022's `signStemWav`, with `c2pa.created` /
+`digitalCreation` followed by `c2pa.rendered`. The render parameters under
+`c2paseq:midiRender` record the source track name, BPM, clip/note counts, MIDI-content SHA-256,
+instrument name/vendor/version/format/identifier, and captured instrument-state SHA-256.
+They also record the render range and that gain/pan/master processing were not printed.
+The MIDI hash uses JUCE compact JSON in stored clip/note order, with clip start/length and
+note pitch/start/duration/velocity; IDs and object addresses are excluded. Instrument state
+is hashed as decoded binary, never embedded raw in the manifest. These are application
+parameters, not a plugin-specific standardized provenance schema or an authorship claim.
+
+After embedded integrity inspection, `MediaLibrary` copies the signed source unchanged into
+normal project media. A new **<MIDI track name> Rendered Stem** audio track, its clip/media
+reference, and source mute are one undoable mutation. If the original was soloed, solo moves
+to the stem. Original MIDI notes and instrument remain editable. Save/reopen retains the
+stem's credentials; undo removes project references but keeps media bytes, consistent with
+existing imports and redo. Failures do not add a track or mute the source; staged files are
+cleaned by the UI workspace.
+
+Final `ExportController` behavior is unchanged: the audible signed WAV becomes a real
+credentialed ingredient, and the SDK retains its manifest history. Direct, unbounced MIDI
+is still rendered into the mix but is not fabricated into a separately signed ingredient.
+The selected clip's **Credentials** dialog displays the actual stored actions and MIDI /
+instrument metadata. Test signing credentials still do not imply external trust or conformance.

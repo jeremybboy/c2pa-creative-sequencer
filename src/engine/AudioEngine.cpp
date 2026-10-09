@@ -4,6 +4,37 @@
 
 namespace c2paseq
 {
+juce::Result AudioEngine::prepareMidiStem(int trackIndex, MidiStemPlan& plan)
+{
+    const auto result = projectEngine.prepareMidiStem(trackIndex, plan);
+    if (result.wasOk()) pluginHost.closeEditorsForOfflineRender();
+    return result;
+}
+
+juce::Result AudioEngine::beginMidiStemRender(const MidiStemPlan& plan)
+{
+    return tracktion.beginExclusiveTrackRender(plan.trackIndex, false);
+}
+
+void AudioEngine::finishMidiStemRender()
+{
+    tracktion.finishExclusiveTrackRender();
+}
+
+juce::Result AudioEngine::renderAndSignMidiStem(const MidiStemPlan& plan,
+                                                const juce::File& unsignedWav,
+                                                const juce::File& signedWav)
+{
+    return projectEngine.renderAndSignMidiStem(plan, unsignedWav, signedWav);
+}
+
+juce::Result AudioEngine::importMidiStem(const MidiStemPlan& plan,
+                                        const juce::File& signedWav,
+                                        juce::String& createdClipId)
+{
+    return projectEngine.importMidiStem(plan, signedWav, createdClipId);
+}
+
 AudioEngine::AudioEngine(std::unique_ptr<SigningProvider> signingProvider,
                          juce::File pluginCacheFile,
                          bool showPluginWindows,

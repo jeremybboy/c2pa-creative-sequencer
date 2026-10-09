@@ -45,6 +45,7 @@ public:
     ~ArrangementView() override;
 
     void audioWMarkSetupFinished(bool installed, const juce::String& message);
+    [[nodiscard]] bool midiStemBounceActive() const noexcept { return midiStemBounceInProgress; }
 
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -69,6 +70,7 @@ private:
     void exportProject();
     void beginExportWithConfiguredSigner();
     void startBackgroundExport(const juce::File& destination);
+    void bounceMidiStem(int trackIndex);
     void updateExportProgress(ExportStage);
     void completeBackgroundExport(ExportResult);
     void setExportInProgress(bool);
@@ -194,6 +196,7 @@ private:
     juce::String openPianoRollClipId;
     std::atomic_bool exportCancellationRequested { false };
     bool exportInProgress = false;
+    bool midiStemBounceInProgress = false;
     std::thread exportThread;
 };
 }

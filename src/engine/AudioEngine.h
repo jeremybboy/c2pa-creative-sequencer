@@ -41,6 +41,14 @@ public:
     [[nodiscard]] juce::Result importAudio(const juce::File& source,
                                            int trackIndex,
                                            double startSeconds);
+    [[nodiscard]] juce::Result prepareMidiStem(int trackIndex, MidiStemPlan&);
+    [[nodiscard]] juce::Result beginMidiStemRender(const MidiStemPlan&);
+    void finishMidiStemRender();
+    [[nodiscard]] juce::Result renderAndSignMidiStem(const MidiStemPlan&,
+                                                    const juce::File& unsignedWav,
+                                                    const juce::File& signedWav);
+    [[nodiscard]] juce::Result importMidiStem(const MidiStemPlan&, const juce::File&,
+                                             juce::String& createdClipId);
     [[nodiscard]] juce::Result createMidiClip(int trackIndex, double startBeats,
                                               double lengthBeats = 16.0);
     [[nodiscard]] juce::Result moveMidiClip(const juce::String&, int trackIndex,

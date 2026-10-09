@@ -262,6 +262,108 @@ juce::Result ProjectEngine::importAudio(const juce::File& source,
     return result;
 }
 
+juce::Result ProjectEngine::prepareMidiStem(int trackIndex, MidiStemPlan& plan)
+{
+    if (! project || ! paths)
+        return juce::Result::fail("Create or open a project before bouncing MIDI");
+    if (! provenance.signingConfigured())
+        return juce::Result::fail(provenance.signingConfigurationError());
+    captureLivePluginStates();
+    if (auto result = RenderService::createMidiStemPlan(*project, trackIndex, plan);
+        result.failed())
+        return result;
+    if (tracktion.trackPluginInstance(trackIndex) == nullptr)
+        return juce::Result::fail("The MIDI instrument is not loaded");
+    return juce::Result::ok();
+}
+
+juce::Result ProjectEngine::renderAndSignMidiStem(const MidiStemPlan& plan,
+                                                  const juce::File& unsignedWav,
+                                                  const juce::File& signedWav)
+{
+    if (unsignedWav == signedWav || unsignedWav.exists() || signedWav.exists())
+        return juce::Result::fail("MIDI stem staging paths must be distinct and unused");
+    if (auto result = tracktion.renderTrackWav(unsignedWav, plan.trackIndex,
+                                               plan.endSeconds, plan.startSeconds, false);
+        result.failed())
+        return result;
+    IngredientInfo validation;
+    const auto result = provenance.signStemWav(unsignedWav, signedWav,
+                                                plan.descriptor, validation);
+    if (result.failed())
+        signedWav.deleteFile();
+    return result;
+}
+
+juce::Result ProjectEngine::importMidiStem(const MidiStemPlan& plan,
+                                           const juce::File& signedWav,
+                                           juce::String& createdClipId)
+{
+    createdClipId.clear();
+    MidiStemPlan current;
+    if (! project || ! paths || project->id != plan.projectId
+        || ! isMidiTrack(*project, plan.trackIndex)
+        || project->tracks[static_cast<std::size_t>(plan.trackIndex)].id != plan.trackId
+        || RenderService::createMidiStemPlan(*project, plan.trackIndex, current).failed()
+        || current.sourceSignature != plan.sourceSignature)
+        return juce::Result::fail("The MIDI source changed; bounce it again");
+
+    AudioFileMetadata metadata;
+    if (auto result = tracktion.inspectAudioFile(signedWav, metadata); result.failed())
+        return result;
+    const auto info = provenance.inspect(signedWav);
+    if (! info.c2paPresent || ! info.assetIntact || info.activeManifest.isEmpty())
+        return juce::Result::fail("The bounced stem did not pass C2PA integrity validation");
+    const auto document = juce::JSON::parse(info.rawManifestJson);
+    const auto manifest = document["manifests"][juce::Identifier(info.activeManifest)];
+    bool matchingRender = false;
+    if (const auto* assertions = manifest["assertions"].getArray())
+        for (const auto& assertion : *assertions)
+            if (assertion["label"].toString().startsWith("c2pa.actions"))
+                if (const auto* actions = assertion["data"]["actions"].getArray())
+                    for (const auto& action : *actions)
+                        matchingRender = matchingRender || (action["action"] == juce::var("c2pa.rendered")
+                            && action["parameters"]["c2paseq:sourceSignature"].toString()
+                                == plan.sourceSignature);
+    if (! matchingRender || std::abs(metadata.lengthSeconds
+            - (plan.endSeconds - plan.startSeconds)) > 0.05)
+        return juce::Result::fail("The signed stem does not match the prepared MIDI render");
+
+    const auto previous = *project;
+    MediaReference media;
+    bool mediaWasAdded = false;
+    if (auto result = MediaLibrary::copySourceIntoProject(
+            *project, *paths, signedWav, media, &mediaWasAdded); result.failed())
+        return result;
+    const auto copiedFile = paths->root().getChildFile(media.relativePath);
+    for (auto& item : project->media)
+        if (item.id == media.id) item.provenance = info;
+    ClipModel clip;
+    clip.id = juce::Uuid().toString();
+    clip.mediaId = media.id;
+    clip.startSeconds = plan.startSeconds;
+    clip.lengthSeconds = metadata.lengthSeconds;
+    const auto newClipId = clip.id;
+    TrackModel stem;
+    stem.id = juce::Uuid().toString();
+    stem.name = plan.trackName + " Rendered Stem";
+    stem.type = TrackType::audio;
+    // Render is pre-fader/pre-pan; transfer the mixer instead of printing the pan law twice.
+    auto& original = project->tracks[static_cast<std::size_t>(plan.trackIndex)];
+    stem.gainDb = original.gainDb;
+    stem.pan = original.pan;
+    stem.soloed = original.soloed;
+    original.soloed = false;
+    original.muted = true;
+    stem.clips.push_back(std::move(clip));
+    project->tracks.push_back(std::move(stem));
+    const auto result = commitMutation(previous);
+    if (result.failed() && mediaWasAdded)
+        copiedFile.deleteFile();
+    if (result.wasOk()) createdClipId = newClipId;
+    return result;
+}
+
 juce::Result ProjectEngine::createMidiClip(int trackIndex, double startBeats,
                                            double lengthBeats)
 {

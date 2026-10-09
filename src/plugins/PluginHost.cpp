@@ -30,6 +30,11 @@ const std::vector<PluginDescriptor>& PluginHost::availablePlugins() const noexce
     return scanner.cachedPlugins();
 }
 
+void PluginHost::closeEditorsForOfflineRender()
+{
+    closeAllEditors(false);
+}
+
 juce::Result PluginHost::scanVst3(const juce::FileSearchPath& paths)
 {
     const auto searchPaths = paths.getNumPaths() > 0 ? paths

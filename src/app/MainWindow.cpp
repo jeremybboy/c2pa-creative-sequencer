@@ -32,4 +32,14 @@ void MainWindow::closeButtonPressed()
     if (auto* application = juce::JUCEApplication::getInstance())
         application->systemRequestedQuit();
 }
+
+bool MainWindow::canQuitDuringStemBounce()
+{
+    if (arrangementView == nullptr || ! arrangementView->midiStemBounceActive())
+        return true;
+    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
+        "MIDI Stem Bounce", "Wait for the bounce to finish, or press Cancel before quitting.",
+        "OK", this);
+    return false;
+}
 }

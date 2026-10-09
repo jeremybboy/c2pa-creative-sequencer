@@ -47,6 +47,7 @@ void Application::shutdown()
 
 void Application::systemRequestedQuit()
 {
+    if (mainWindow != nullptr && ! mainWindow->canQuitDuringStemBounce()) return;
     quit();
 }
 
