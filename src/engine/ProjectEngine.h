@@ -140,6 +140,7 @@ public:
     [[nodiscard]] juce::Result duplicateClips(const std::vector<juce::String>& clipIds);
     [[nodiscard]] juce::Result copyTimeRange(const ArrangementTimeSelection& selection);
     [[nodiscard]] juce::Result cutTimeRange(const ArrangementTimeSelection& selection);
+    [[nodiscard]] juce::Result deleteAudioTimeRange(const ArrangementTimeSelection& selection);
     [[nodiscard]] juce::Result duplicateTimeRange(const ArrangementTimeSelection& selection);
     [[nodiscard]] juce::Result pasteClipboard(double destinationSeconds,
                                               int destinationTrack = -1);

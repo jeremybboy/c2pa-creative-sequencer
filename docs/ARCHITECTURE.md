@@ -90,7 +90,7 @@ that the hosted output has a non-zero peak.
 
 PR 005 keeps seconds as the canonical saved and playback coordinate. `TimelineGeometry`
 is the only conversion layer between seconds and pixels; it also derives beat/bar
-spacing from BPM, performs beat snapping, and preserves the time beneath the zoom
+spacing from BPM, performs musical grid snapping, and preserves the time beneath the zoom
 anchor. The ruler, grid, clips, playhead, seek gestures, and scroll range all consume
 that same geometry, so no independent fixed-card or decorative timeline coordinate
 exists.
@@ -150,10 +150,25 @@ changed.
 
 `ArrangementTimeSelection` is the explicit normalized selection model shared by the timeline
 surface and clip views. Waveform-body and empty-lane drags create time selections; the compact
-clip header remains the move handle and clip edges remain trim handles. Option bypasses beat
+clip header remains the move handle and clip edges remain trim handles. Option bypasses musical
 snapping for these gestures. Clipboard entries retain media identity, source offset, duration,
 relative track, and relative time, so partial copy/cut/paste and duplicate remain non-destructive.
 Each command mutates canonical project state once and therefore creates one undo snapshot.
+
+PR 026 reuses the non-ripple Cut fragment logic for `deleteAudioTimeRange`, without filling or
+clearing the clipboard. Delete/Backspace gives an active time selection priority over whole-clip
+selection and edits all overlapped Audio clips in its track span; MIDI is untouched. Empty-space
+deletion does not save, rebuild audio, dirty the project, or create undo history. Invalid/non-finite
+ranges are rejected; surviving fragments over 1 ms retain media identity and source reference.
+Only clip identity/placement changes, never source media bytes, source credentials, signing, or
+import. Normal Export still deduplicates ingredients by media identity. Recording continues to
+sign takes only after stop/finalize; final Export remains the final credentialing boundary.
+
+`TimelineGeometry` supplies both rendered grid and snapped positions, with 24–4096 pixels/second
+and BPM-aware 4, 1, 1/2, 1/4, or 1/8 beat steps. Zoom persistence uses the same limits. Input menu
+groups preserve every enumerated device/channel; lists above eight channels are nested under
+Advanced inputs. Channel count is not OS physical/virtual classification. Selection uses the
+existing session-local device/channel identity, never a persisted menu ordinal.
 
 Keyboard shortcuts call the same Arrangement command paths as visible controls. Paste resolves
 its destination from the active time selection, explicit insertion point, or playhead in that

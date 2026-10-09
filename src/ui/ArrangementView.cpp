@@ -4,6 +4,8 @@
 #include "transport/TransportFormatting.h"
 #include "ui/ArrangementShortcuts.h"
 #include "ui/TrackHeaderView.h"
+#include "ui/InputMenuGrouping.h"
+#include "ui/ToolbarButtonSizing.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
@@ -19,9 +21,9 @@ namespace
 constexpr int topBarHeight = 42;
 constexpr int statusHeight = 22;
 constexpr int browserWidth = 230;
-constexpr int trackHeaderWidth = 205;
+constexpr int trackHeaderWidth = 268;
 constexpr int rulerHeight = 28;
-constexpr int trackHeight = 82;
+constexpr int trackHeight = 116;
 constexpr int scrollBarSize = 14;
 constexpr int minimumVisibleTracks = 4;
 
@@ -110,15 +112,17 @@ public:
         const auto beatDuration = geometry.beatSeconds();
         const auto visibleStart = geometry.scrollSeconds;
         const auto visibleEnd = geometry.xToTime(static_cast<double>(getWidth()));
-        const auto firstBeat = static_cast<int>(std::floor(visibleStart / beatDuration));
-        const auto lastBeat = static_cast<int>(std::ceil(visibleEnd / beatDuration));
+        const auto stepBeats = geometry.snapStepBeats();
+        const auto stepSeconds = geometry.snapStepSeconds();
+        const auto firstLine = static_cast<int>(std::floor(visibleStart / stepSeconds));
+        const auto lastLine = static_cast<int>(std::ceil(visibleEnd / stepSeconds));
 
-        for (int beat = firstBeat; beat <= lastBeat; ++beat)
+        for (int line = firstLine; line <= lastLine; ++line)
         {
+            const auto beat = line * stepBeats;
             const auto x = static_cast<float>(geometry.timeToX(beat * beatDuration));
-            const auto isBar = beat % TimelineGeometry::beatsPerBar == 0;
-            if (! isBar && geometry.pixelsPerSecond * beatDuration < 22.0)
-                continue;
+            const auto isBar = std::abs(std::remainder(beat,
+                static_cast<double>(TimelineGeometry::beatsPerBar))) < 0.00001;
             g.setColour(isBar ? juce::Colour::fromRGB(48, 51, 54)
                               : juce::Colour::fromRGB(67, 70, 74));
             g.drawVerticalLine(static_cast<int>(std::round(x)),
@@ -128,7 +132,7 @@ public:
             {
                 g.setColour(juce::Colour::fromRGB(211, 214, 217));
                 g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
-                g.drawText(juce::String(beat / TimelineGeometry::beatsPerBar + 1),
+                g.drawText(juce::String(static_cast<int>(beat / TimelineGeometry::beatsPerBar) + 1),
                            static_cast<int>(x) + 5, 0, 48, rulerHeight,
                            juce::Justification::centredLeft);
             }
@@ -290,7 +294,7 @@ ArrangementView::ArrangementView(AudioEngine& engine,
 
     timelineSurface->onSeek = [this](double seconds)
     {
-        audioEngine.seek(geometry.snapToBeat(seconds));
+        audioEngine.seek(geometry.snapToGrid(seconds));
         refreshTransport();
     };
     timelineSurface->onBackgroundClick = [this]
@@ -304,15 +308,15 @@ ArrangementView::ArrangementView(AudioEngine& engine,
     {
         if (! bypass)
         {
-            start = geometry.snapToBeat(start);
-            end = geometry.snapToBeat(end);
+            start = geometry.snapToGrid(start);
+            end = geometry.snapToGrid(end);
         }
         setTimeSelection(ArrangementTimeSelection::between(
             start, end, firstTrack, lastTrack));
     };
     timelineSurface->onInsertionPoint = [this](double seconds, int track, bool bypass)
     {
-        insertionPointSeconds = bypass ? seconds : geometry.snapToBeat(seconds);
+        insertionPointSeconds = bypass ? seconds : geometry.snapToGrid(seconds);
         insertionPointTrack = track;
         audioEngine.seek(*insertionPointSeconds);
         clearTimeSelection();
@@ -324,7 +328,7 @@ ArrangementView::ArrangementView(AudioEngine& engine,
     };
     timelineSurface->onCreateMidiClip = [this](double seconds, int track, bool bypass)
     {
-        showMidiClipCreationMenu(bypass ? seconds : geometry.snapToBeat(seconds), track);
+        showMidiClipCreationMenu(bypass ? seconds : geometry.snapToGrid(seconds), track);
     };
 
     pianoRoll->onClose = [this] { closePianoRoll(); };
@@ -558,9 +562,17 @@ void ArrangementView::resized()
         top.removeFromLeft(6);
         toolbarDividers[index] = top.getX() - 3;
     };
+    for (auto* button : { &newProject, &openProjectButton, &saveProjectButton, &exportButton,
+                          &credentialsButton, &signingButton, &audioSoftBindingButton,
+                          &fingerprintButton, &addTrackButton })
+        button->getProperties().set("toolbarFontHeight", getWidth() < 1200 ? 11.0f : 12.6f);
+    const auto textWidth = [&top](juce::TextButton& button, const juce::String& alternate = {})
+    { return toolbarButtonSlotWidth(button, top.getHeight(), alternate); };
 
-    placeButton(newProject, 38); placeButton(openProjectButton, 40);
-    placeButton(saveProjectButton, 38); placeButton(exportButton, 48);
+    placeButton(newProject, textWidth(newProject));
+    placeButton(openProjectButton, textWidth(openProjectButton));
+    placeButton(saveProjectButton, textWidth(saveProjectButton));
+    placeButton(exportButton, textWidth(exportButton, "Cancel"));
     divider(0);
     placeButton(undoButton, 30); placeButton(redoButton, 30);
     divider(1);
@@ -568,14 +580,16 @@ void ArrangementView::resized()
     placeButton(position, 84);
     bpm.setBounds(top.removeFromLeft(110).reduced(2, 0));
     divider(2);
-    placeButton(credentialsButton, 78); placeButton(signingButton, 58);
-    placeButton(audioSoftBindingButton, 62); placeButton(fingerprintButton, 52);
+    placeButton(credentialsButton, textWidth(credentialsButton));
+    placeButton(signingButton, textWidth(signingButton));
+    placeButton(audioSoftBindingButton, textWidth(audioSoftBindingButton));
+    placeButton(fingerprintButton, textWidth(fingerprintButton));
 
     audioSettings.setBounds(top.removeFromRight(32).reduced(1));
     computerKeyboard.setBounds(top.removeFromRight(32).reduced(1));
     zoomIn.setBounds(top.removeFromRight(30).reduced(1));
     zoomOut.setBounds(top.removeFromRight(30).reduced(1));
-    addTrackButton.setBounds(top.removeFromRight(58).reduced(1));
+    addTrackButton.setBounds(top.removeFromRight(textWidth(addTrackButton)).reduced(1));
     toolbarDividers[3] = top.getRight() - 3;
     top.removeFromRight(6);
     projectName.setBounds(top.reduced(8, 0));
@@ -635,7 +649,14 @@ bool ArrangementView::keyPressed(const juce::KeyPress& key)
                     audioEngine.transportSnapshot().positionSeconds), "Split clip");
             return true;
         case ArrangementCommand::deleteClip:
-            if (! selectedClipIds.empty())
+            if (timeSelection.isValid())
+            {
+                const auto range = timeSelection;
+                clearTimeSelection();
+                applyEditResult(audioEngine.deleteAudioTimeRange(range),
+                    "Deleted audio time range | No ripple; MIDI unchanged");
+            }
+            else if (! selectedClipIds.empty())
             {
                 const auto ids = selectedClipVector();
                 selectedClipIds.clear();
@@ -1395,10 +1416,33 @@ void ArrangementView::chooseRecordingInput(int index)
 {
     if (exportInProgress) return;
     const auto inputs = audioEngine.recordingInputs();
+    const auto selectedInput = audioEngine.selectedRecordingInput();
     juce::PopupMenu menu;
     if (inputs.empty()) menu.addItem(1, "No input available", false);
-    for (std::size_t i = 0; i < inputs.size(); ++i)
-        menu.addItem(static_cast<int>(i) + 1, inputs[i].label());
+    else menu.addSectionHeader("Recording input | Mono; no monitoring");
+    juce::PopupMenu advanced;
+    for (const auto& group : groupRecordingInputs(inputs))
+    {
+        juce::PopupMenu channels;
+        bool containsSelected = false;
+        for (const auto i : group.inputIndices)
+        {
+            const auto selected = sameRecordingInput(inputs[i], selectedInput);
+            containsSelected |= selected;
+            channels.addItem(static_cast<int>(i) + 1, inputs[i].channelName, true, selected);
+            if (selected)
+                menu.addItem(static_cast<int>(i) + 1, "Selected: " + inputs[i].label(), true, true);
+        }
+        const auto title = group.deviceName + " ("
+            + juce::String(static_cast<int>(group.inputIndices.size())) + ")";
+        auto& destination = group.advanced() ? advanced : menu;
+        destination.addSubMenu(title, channels, true, nullptr, containsSelected);
+    }
+    if (advanced.getNumItems() > 0)
+    {
+        menu.addSeparator();
+        menu.addSubMenu("Advanced inputs (more than 8 channels)", advanced);
+    }
     menu.showMenuAsync(juce::PopupMenu::Options(),
         [safe = juce::Component::SafePointer<ArrangementView>(this), inputs, index](int result)
         {
@@ -1866,6 +1910,9 @@ void ArrangementView::zoomBy(double factor, double anchorX)
     audioEngine.setTimelineView(geometry.pixelsPerSecond, geometry.scrollSeconds);
     updateScrollRanges();
     layoutArrangement();
+    projectMessage = "Grid: " + juce::String(geometry.snapStepBeats(), 3)
+        + " beat(s) | Option-drag bypasses snap";
+    refreshTransport();
 }
 
 void ArrangementView::handleWheel(const juce::MouseEvent& event,
@@ -2207,6 +2254,7 @@ void ArrangementView::clearTimeSelection()
 void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMode mode,
                                         int deltaX, int deltaY, bool finished, bool bypassSnap)
 {
+    const auto minimumLength = std::min(0.002, view.length());
     if (! finished)
     {
         if (mode == WaveformView::DragMode::selectTime)
@@ -2215,8 +2263,8 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
             auto second = first + deltaX / geometry.pixelsPerSecond;
             if (! bypassSnap)
             {
-                first = geometry.snapToBeat(first);
-                second = geometry.snapToBeat(second);
+                first = geometry.snapToGrid(first);
+                second = geometry.snapToGrid(second);
             }
             setTimeSelection(ArrangementTimeSelection::betweenWithin(
                 first, second, view.start(), view.start() + view.length(), view.track()));
@@ -2231,7 +2279,7 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
         else if (mode == WaveformView::DragMode::trimStart)
         {
             const auto changeSeconds = juce::jlimit(
-                std::max(-view.offset(), -view.start()), view.length() - 0.05,
+                std::max(-view.offset(), -view.start()), view.length() - minimumLength,
                 deltaX / geometry.pixelsPerSecond);
             const auto changePixels = juce::roundToInt(
                 changeSeconds * geometry.pixelsPerSecond);
@@ -2243,8 +2291,8 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
         }
         else
         {
-            const auto maxLength = std::max(0.05, view.sourceLength() - view.offset());
-            const auto previewLength = juce::jlimit(0.05, maxLength,
+            const auto maxLength = std::max(minimumLength, view.sourceLength() - view.offset());
+            const auto previewLength = juce::jlimit(minimumLength, maxLength,
                 view.length() + deltaX / geometry.pixelsPerSecond);
             bounds.setWidth(std::max(6, juce::roundToInt(
                 previewLength * geometry.pixelsPerSecond)));
@@ -2263,8 +2311,8 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
         auto second = first + deltaSeconds;
         if (! bypassSnap)
         {
-            first = geometry.snapToBeat(first);
-            second = geometry.snapToBeat(second);
+            first = geometry.snapToGrid(first);
+            second = geometry.snapToGrid(second);
         }
         setTimeSelection(ArrangementTimeSelection::betweenWithin(
             first, second, view.start(), view.start() + view.length(), view.track()));
@@ -2277,7 +2325,7 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
     if (mode == WaveformView::DragMode::move)
     {
         auto start = std::max(0.0, view.start() + deltaSeconds);
-        if (! bypassSnap) start = geometry.snapToBeat(start);
+        if (! bypassSnap) start = geometry.snapToGrid(start);
         const auto targetTrack = std::max(0, view.track()
             + static_cast<int>(std::round(deltaY / static_cast<double>(trackHeight))));
         applyEditResult(audioEngine.moveClip(view.id(), targetTrack, start), "Moved clip");
@@ -2287,19 +2335,19 @@ void ArrangementView::handleClipGesture(WaveformView& view, WaveformView::DragMo
     if (mode == WaveformView::DragMode::trimStart)
     {
         auto newStart = std::max(0.0, view.start() + deltaSeconds);
-        if (! bypassSnap) newStart = geometry.snapToBeat(newStart);
+        if (! bypassSnap) newStart = geometry.snapToGrid(newStart);
         auto change = newStart - view.start();
         change = juce::jlimit(std::max(-view.offset(), -view.start()),
-                              view.length() - 0.05, change);
+                              view.length() - minimumLength, change);
         applyEditResult(audioEngine.trimClip(view.id(), view.start() + change,
             view.offset() + change, view.length() - change), "Trimmed clip start");
         return;
     }
 
     auto newEnd = view.start() + view.length() + deltaSeconds;
-    if (! bypassSnap) newEnd = geometry.snapToBeat(newEnd);
-    const auto maxLength = std::max(0.05, view.sourceLength() - view.offset());
-    const auto newLength = juce::jlimit(0.05, maxLength, newEnd - view.start());
+    if (! bypassSnap) newEnd = geometry.snapToGrid(newEnd);
+    const auto maxLength = std::max(minimumLength, view.sourceLength() - view.offset());
+    const auto newLength = juce::jlimit(minimumLength, maxLength, newEnd - view.start());
     applyEditResult(audioEngine.trimClip(view.id(), view.start(), view.offset(), newLength),
                     "Trimmed clip end");
 }
@@ -2350,9 +2398,10 @@ void ArrangementView::handleMidiClipGesture(MidiClipView& view,
     view.clearTrimPreview();
 
     const auto deltaBeats = deltaX / geometry.pixelsPerSecond / geometry.beatSeconds();
-    const auto snap = [bypassSnap](double beats)
+    const auto snap = [this, bypassSnap](double beats)
     {
-        return bypassSnap ? beats : std::round(beats * 4.0) / 4.0;
+        const auto step = geometry.snapStepBeats();
+        return bypassSnap ? beats : std::round(beats / step) * step;
     };
 
     if (mode == MidiClipView::DragMode::move)
@@ -2465,7 +2514,7 @@ int ArrangementView::trackAt(int parentY) const
 double ArrangementView::timeAt(int parentX, bool shouldSnap) const
 {
     const auto seconds = geometry.xToTime(parentX - timelineBounds.getX());
-    return shouldSnap ? geometry.snapToBeat(seconds) : seconds;
+    return shouldSnap ? geometry.snapToGrid(seconds) : seconds;
 }
 
 juce::Colour ArrangementView::colourForTrack(int index) const
