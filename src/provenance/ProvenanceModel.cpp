@@ -1,7 +1,34 @@
 #include "ProvenanceModel.h"
 
+#include "app/AppInfo.h"
+
 namespace c2paseq
 {
+std::vector<ProvenanceActionDefinition> makeMidiRenderedStemActions(
+    const juce::var& renderParameters)
+{
+    return {
+        { "c2pa.created",
+          "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation",
+          "MIDI performance data authored in C2PA Creative Sequencer",
+          juce::String(appInfo::name.data()), {} },
+        { "c2pa.rendered", {},
+          "MIDI/project data rendered to audio through a software instrument",
+          juce::String(appInfo::name.data()), renderParameters }
+    };
+}
+
+std::vector<ProvenanceActionDefinition> makeHumanRecordedStemActions(
+    const juce::var& captureParameters)
+{
+    return {
+        { "c2pa.created",
+          "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
+          "Human performance captured through audio input into C2PA Creative Sequencer",
+          juce::String(appInfo::name.data()), captureParameters }
+    };
+}
+
 SoftBindingClaim makeAudioWMarkClaim(const SoftBindingPayload& payload,
                                     std::uint64_t endMilliseconds)
 {

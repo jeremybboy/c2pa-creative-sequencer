@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">PR 022 — Stem provenance authoring foundation</title>
+  <desc id="desc">Internal signing capability only: existing mix export remains unchanged; explicit MIDI and capture action templates feed standalone signing and integrity checks. Real MIDI bounce and recording remain planned for separate PRs.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, sans-serif; fill:#182d3b; }
+    .h { font-size:28px; font-weight:700; }
+    .b { font-size:22px; }
+    .s { font-size:19px; }
+    .k { font-size:17px; font-weight:700; letter-spacing:1.2px; }
+    .line { stroke:#182d3b; stroke-width:3; fill:none; }
+  </style>
+  <rect width="1440" height="900" fill="#f5f7f8"/>
+  <rect width="1440" height="158" fill="#182d3b"/>
+  <text x="40" y="48" class="k" style="fill:#78d9c6">PR 022 / INTERNAL FOUNDATION</text>
+  <text x="40" y="96" style="fill:white;font-size:40px;font-weight:700">Stem provenance authoring</text>
+  <text x="40" y="132" class="b" style="fill:#dbe7ec">Explicit action histories for standalone WAVs — no bounce or recording UI yet</text>
+
+  <rect x="40" y="190" width="430" height="270" rx="8" fill="#e2edf5"/>
+  <text x="64" y="226" class="k">UNCHANGED / FINAL MIX</text>
+  <text x="64" y="270" class="h">Render → signWav</text>
+  <text x="64" y="312" class="b">Created + digitalCreation</text>
+  <text x="64" y="349" class="b">Existing source ingredients</text>
+  <text x="64" y="386" class="b">Optional bindings + outbox</text>
+  <text x="64" y="426" class="s">Same export and recovery workflow</text>
+
+  <rect x="500" y="190" width="900" height="270" rx="8" fill="#dcf3ed"/>
+  <text x="524" y="226" class="k">NEW / AUTHOR-DEFINED ACTIONS</text>
+  <text x="524" y="270" class="h">MIDI template</text>
+  <text x="524" y="309" class="b">created / digitalCreation</text>
+  <text x="524" y="346" class="b">then c2pa.rendered</text>
+  <text x="970" y="270" class="h">Capture template</text>
+  <text x="970" y="309" class="b">created / digitalCapture</text>
+  <text x="970" y="346" class="b">Caller-supplied metadata</text>
+  <path d="M938 249 V365" stroke="#a0c5ba" stroke-width="2"/>
+  <text x="524" y="393" class="s">Optional description, application agent, structured parameters</text>
+  <text x="524" y="426" class="s">Templates describe asserted history; they do not perform render or capture.</text>
+
+  <path d="M950 460 V490" class="line"/>
+  <path d="M940 480 L950 490 L960 480" class="line"/>
+  <rect x="40" y="490" width="1360" height="160" rx="8" fill="white" stroke="#a8bac5"/>
+  <text x="64" y="526" class="k">NEW / ONE SIGNING OWNER: PROVENANCE SERVICE</text>
+  <text x="64" y="577" class="h">WAV + descriptor → signStemWav → embed → inspect integrity</text>
+  <text x="64" y="621" class="b">No ingredients • No soft bindings • No publication • Fail on signing or validation error</text>
+
+  <rect x="40" y="680" width="690" height="158" rx="8" fill="#e2edf5"/>
+  <text x="64" y="717" class="k">EVIDENCE / NOT A USER WORKFLOW</text>
+  <text x="64" y="756" class="b">Real SDK signing of synthetic WAV fixtures</text>
+  <text x="64" y="790" class="s">Inspect fields, failures, and unchanged export behavior</text>
+  <text x="64" y="820" class="s">Build/test results: see paired implementation brief</text>
+
+  <rect x="760" y="680" width="640" height="158" rx="8" fill="#fff0d1"/>
+  <text x="784" y="717" class="k">PLANNED ONLY / SEPARATE APPROVAL</text>
+  <text x="784" y="756" class="b">PR 023: actual MIDI/VST3 stem bounce</text>
+  <text x="784" y="790" class="b">PR 024: actual audio capture</text>
+  <text x="784" y="820" class="s">Real execution metadata → signed intermediate assets</text>
+  <text x="40" y="876" class="s">Scope map, not an app screenshot. No invented plugin, device, performer, or demo provenance.</text>
+</svg>

@@ -28,6 +28,11 @@ public:
                                        IngredientInfo& validation,
                                        const std::vector<SoftBindingClaim>& softBindings = {},
                                        std::vector<std::uint8_t>* manifestStore = nullptr) const;
+    // Signs a standalone WAV only: no ingredients, soft bindings, or publication.
+    [[nodiscard]] juce::Result signStemWav(const juce::File& unsignedWav,
+                                           const juce::File& destination,
+                                           const StemProvenanceDescriptor& descriptor,
+                                           IngredientInfo& validation) const;
     [[nodiscard]] static bool hasMatchingSoftBinding(
         const IngredientInfo&, const SoftBindingPayload&);
     [[nodiscard]] static bool hasMatchingSoftBinding(
@@ -35,6 +40,12 @@ public:
         const std::vector<std::uint8_t>& value);
 
 private:
+    [[nodiscard]] juce::Result signWavWithActions(
+        const juce::File& unsignedWav, const juce::File& destination,
+        const StemProvenanceDescriptor& descriptor,
+        const std::vector<ContributingIngredient>& ingredients,
+        const std::vector<SoftBindingClaim>& softBindings,
+        IngredientInfo& validation, std::vector<std::uint8_t>* manifestStore) const;
     std::unique_ptr<SigningProvider> signingProvider;
 };
 }

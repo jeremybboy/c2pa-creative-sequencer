@@ -132,13 +132,13 @@ IngredientInfo parseManifest(const std::string& manifestJson)
     return info;
 }
 
-juce::String makeManifestDefinition(const juce::String& title,
+juce::String makeManifestDefinition(const StemProvenanceDescriptor& descriptor,
                                     const std::vector<SoftBindingClaim>& softBindings)
 {
     auto root = std::make_unique<juce::DynamicObject>();
     root->setProperty("claim_version", 2);
-    root->setProperty("title", title);
-    root->setProperty("format", "audio/wav");
+    root->setProperty("title", descriptor.title);
+    root->setProperty("format", descriptor.format);
 
     auto generator = std::make_unique<juce::DynamicObject>();
     generator->setProperty("name", juce::String(appInfo::name.data()));
@@ -147,18 +147,24 @@ juce::String makeManifestDefinition(const juce::String& title,
     generators.add(generator.release());
     root->setProperty("claim_generator_info", generators);
 
-    auto action = std::make_unique<juce::DynamicObject>();
-    action->setProperty("action", "c2pa.created");
-    action->setProperty("digitalSourceType",
-        "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation");
     juce::Array<juce::var> actions;
-    actions.add(action.release());
-    if (std::any_of(softBindings.begin(), softBindings.end(), [](const auto& binding)
-        { return binding.type == SoftBindingType::watermark; }))
+    for (const auto& definition : descriptor.actions)
     {
-        auto watermarked = std::make_unique<juce::DynamicObject>();
-        watermarked->setProperty("action", "c2pa.watermarked.bound");
-        actions.add(watermarked.release());
+        auto action = std::make_unique<juce::DynamicObject>();
+        action->setProperty("action", definition.action);
+        if (definition.digitalSourceType.isNotEmpty())
+            action->setProperty("digitalSourceType", definition.digitalSourceType);
+        if (definition.description.isNotEmpty())
+            action->setProperty("description", definition.description);
+        if (definition.softwareAgent.isNotEmpty())
+        {
+            auto agent = std::make_unique<juce::DynamicObject>();
+            agent->setProperty("name", definition.softwareAgent);
+            action->setProperty("softwareAgent", agent.release());
+        }
+        if (! definition.parameters.isVoid())
+            action->setProperty("parameters", definition.parameters);
+        actions.add(action.release());
     }
     auto actionData = std::make_unique<juce::DynamicObject>();
     actionData->setProperty("actions", actions);
@@ -444,6 +450,41 @@ juce::Result ProvenanceService::signWav(
     const std::vector<SoftBindingClaim>& softBindings,
     std::vector<std::uint8_t>* manifestStore) const
 {
+    StemProvenanceDescriptor descriptor;
+    descriptor.title = outputTitle;
+    descriptor.actions.push_back({ "c2pa.created",
+        "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation", {}, {}, {} });
+    if (std::any_of(softBindings.begin(), softBindings.end(), [](const auto& binding)
+        { return binding.type == SoftBindingType::watermark; }))
+        descriptor.actions.push_back({ "c2pa.watermarked.bound", {}, {}, {}, {} });
+    return signWavWithActions(unsignedWav, destination, descriptor, ingredients,
+                              softBindings, validation, manifestStore);
+}
+
+juce::Result ProvenanceService::signStemWav(
+    const juce::File& unsignedWav, const juce::File& destination,
+    const StemProvenanceDescriptor& descriptor, IngredientInfo& validation) const
+{
+    validation = {};
+    if (descriptor.title.trim().isEmpty() || descriptor.format != "audio/wav"
+        || descriptor.actions.empty())
+        return juce::Result::fail("A WAV stem requires a title, audio/wav format, and actions");
+    for (const auto& action : descriptor.actions)
+        if (action.action.trim().isEmpty()
+            || (! action.parameters.isVoid() && action.parameters.getDynamicObject() == nullptr))
+            return juce::Result::fail("Stem actions require a name and optional object parameters");
+    return signWavWithActions(unsignedWav, destination, descriptor, {}, {}, validation, nullptr);
+}
+
+juce::Result ProvenanceService::signWavWithActions(
+    const juce::File& unsignedWav, const juce::File& destination,
+    const StemProvenanceDescriptor& descriptor,
+    const std::vector<ContributingIngredient>& ingredients,
+    const std::vector<SoftBindingClaim>& softBindings,
+    IngredientInfo& validation, std::vector<std::uint8_t>* manifestStore) const
+{
+    validation = {};
+    if (manifestStore != nullptr) manifestStore->clear();
     if (const auto error = signingConfigurationError(); error.isNotEmpty())
         return juce::Result::fail(error);
     if (! unsignedWav.existsAsFile())
@@ -453,14 +494,14 @@ juce::Result ProvenanceService::signWav(
     if (const auto signerResult = constructSigner(signingProvider->credentialFile(), signer);
         signerResult.failed())
         return juce::Result::fail(
-            "Audio rendered successfully, but the C2PA claim could not be signed. "
+            "The C2PA claim could not be signed. "
             + signerResult.getErrorMessage());
 
     std::unique_ptr<c2pa::Builder> builder;
     try
     {
         builder = std::make_unique<c2pa::Builder>(
-            makeContext(), makeManifestDefinition(outputTitle, softBindings).toStdString());
+            makeContext(), makeManifestDefinition(descriptor, softBindings).toStdString());
         for (const auto& ingredient : ingredients)
             builder->add_ingredient(makeIngredientDefinition(ingredient).toStdString(),
                 std::filesystem::path(ingredient.file.getFullPathName().toStdString()));
@@ -476,19 +517,20 @@ juce::Result ProvenanceService::signWav(
         auto bytes = builder->sign(
             std::filesystem::path(unsignedWav.getFullPathName().toStdString()),
             std::filesystem::path(destination.getFullPathName().toStdString()), *signer);
-        if (manifestStore != nullptr)
-            manifestStore->assign(bytes.begin(), bytes.end());
+        // Only expose a manifest package after the embedded asset validates.
+        validation = inspect(destination);
+        if (! validation.c2paPresent || ! validation.assetIntact)
+            return juce::Result::fail(
+                "Exported Content Credentials failed post-export validation.");
+        if (manifestStore != nullptr) manifestStore->assign(bytes.begin(), bytes.end());
     }
     catch (const std::exception& error)
     {
+        validation = {};
         return juce::Result::fail("C2PA manifest could not be signed and embedded: "
                                   + juce::String::fromUTF8(error.what()));
     }
 
-    validation = inspect(destination);
-    if (! validation.c2paPresent || ! validation.assetIntact)
-        return juce::Result::fail(
-            "Exported Content Credentials failed post-export validation.");
     return juce::Result::ok();
 }
 
