@@ -35,6 +35,14 @@ struct AudioFileMetadata
     int channels = 0;
 };
 
+struct AudioInputChoice
+{
+    juce::String deviceName;
+    int channelIndex = 0;
+    juce::String channelName;
+    juce::String label() const { return deviceName + " / " + channelName; }
+};
+
 struct MidiPlaybackNote
 {
     int noteNumber = 60;
@@ -56,6 +64,9 @@ public:
     [[nodiscard]] TrackLevelSnapshot trackLevelSnapshot(int trackIndex) noexcept;
 
     [[nodiscard]] juce::AudioDeviceManager& audioDeviceManager() noexcept;
+    [[nodiscard]] std::vector<AudioInputChoice> recordingInputs();
+    [[nodiscard]] juce::Result enableRecordingInput(const AudioInputChoice&);
+    void disableRecordingInput();
 
     void play();
     void pause();

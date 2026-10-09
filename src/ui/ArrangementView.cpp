@@ -362,6 +362,7 @@ ArrangementView::ArrangementView(AudioEngine& engine,
     saveProjectButton.onClick = [this] { saveProject(); };
     exportButton.onClick = [this]
     {
+        if (audioEngine.isAudioRecording()) { cancelAudioTake(); return; }
         if (exportInProgress)
         {
             exportCancellationRequested.store(true);
@@ -404,7 +405,14 @@ ArrangementView::ArrangementView(AudioEngine& engine,
     undoButton.onClick = [this] { undoEdit(); };
     redoButton.onClick = [this] { redoEdit(); };
     playPause.onClick = [this] { togglePlayback(); };
-    stop.onClick = [this] { audioEngine.stop(); refreshTransport(); };
+    stop.onClick = [this]
+    {
+        if (audioEngine.isAudioRecording()) finishAudioRecording();
+        else { audioEngine.stop(); refreshTransport(); }
+    };
+    record.onClick = [this] { toggleAudioRecording(); };
+    record.setTooltip("Record one armed mono Audio input; press Stop to finalize and sign");
+    record.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(130, 40, 47));
     loop.setClickingTogglesState(true);
     loop.onClick = [this]
     {
@@ -461,10 +469,10 @@ ArrangementView::ArrangementView(AudioEngine& engine,
         layoutArrangement();
     };
 
-    const std::array<juce::Button*, 18> buttons {
+    const std::array<juce::Button*, 19> buttons {
         &newProject, &openProjectButton, &saveProjectButton, &exportButton,
         &credentialsButton, &signingButton, &audioSoftBindingButton, &fingerprintButton,
-        &undoButton, &redoButton, &playPause, &stop, &loop,
+        &undoButton, &redoButton, &playPause, &stop, &record, &loop,
         &zoomOut, &zoomIn, &audioSettings, &computerKeyboard, &addTrackButton
     };
     for (auto* button : buttons)
@@ -503,6 +511,7 @@ ArrangementView::ArrangementView(AudioEngine& engine,
 
 ArrangementView::~ArrangementView()
 {
+    if (audioEngine.isAudioRecording()) audioEngine.cancelAudioRecording();
     allComputerKeyboardNotesOff();
     exportCancellationRequested.store(true);
     if (exportThread.joinable()) exportThread.join();
@@ -555,7 +564,7 @@ void ArrangementView::resized()
     divider(0);
     placeButton(undoButton, 30); placeButton(redoButton, 30);
     divider(1);
-    placeButton(playPause, 32); placeButton(stop, 32); placeButton(loop, 32);
+    placeButton(playPause, 32); placeButton(stop, 32); placeButton(record, 32); placeButton(loop, 32);
     placeButton(position, 84);
     bpm.setBounds(top.removeFromLeft(110).reduced(2, 0));
     divider(2);
@@ -591,6 +600,13 @@ void ArrangementView::resized()
 
 bool ArrangementView::keyPressed(const juce::KeyPress& key)
 {
+    if (audioTakeFinalizing) return true;
+    if (audioEngine.isAudioRecording())
+    {
+        if (key.getKeyCode() == juce::KeyPress::spaceKey) finishAudioRecording();
+        else if (key.getKeyCode() == juce::KeyPress::escapeKey) cancelAudioTake();
+        return true;
+    }
     if (exportInProgress)
         return true;
 
@@ -792,6 +808,8 @@ void ArrangementView::itemDropped(const SourceDetails& details)
 
 void ArrangementView::timerCallback()
 {
+    if (audioEngine.isAudioRecording() && audioEngine.recordingInputFailed())
+    { finishAudioRecording(); return; }
     if (computerKeyboard.getToggleState())
     {
         if (textEditorHasFocus())
@@ -807,13 +825,17 @@ void ArrangementView::timerCallback()
 
 void ArrangementView::refreshTrackMeters()
 {
+    const auto armed = audioEngine.armedAudioTrack();
+    const auto inputPeak = audioEngine.consumeRecordingInputPeak();
     const auto playing = audioEngine.transportSnapshot().playing;
     const auto anySolo = std::any_of(snapshots.begin(), snapshots.end(),
         [](const auto& track) { return track.soloed; });
     const auto count = std::min(trackHeaders.size(), snapshots.size());
     for (std::size_t index = 0; index < count; ++index)
     {
-        const auto peak = audioEngine.trackLevelSnapshot(static_cast<int>(index));
+        const auto isArmed = armed == static_cast<int>(index);
+        const auto peak = isArmed ? TrackLevelSnapshot { inputPeak, inputPeak }
+            : audioEngine.trackLevelSnapshot(static_cast<int>(index));
         const auto& track = snapshots[index];
         const auto liveInput = std::any_of(activeComputerNotes.begin(),
             activeComputerNotes.end(), [index](const auto& entry)
@@ -822,7 +844,7 @@ void ArrangementView::refreshTrackMeters()
             });
         const auto audible = (playing || liveInput) && ! track.muted
             && (! anySolo || track.soloed);
-        trackHeaders[index]->setMeterPeak(peak, audible);
+        trackHeaders[index]->setMeterPeak(peak, isArmed || audible);
     }
 }
 
@@ -836,8 +858,18 @@ void ArrangementView::scrollBarMoved(juce::ScrollBar* bar, double start)
 
 void ArrangementView::refreshTransport()
 {
-    if (exportInProgress) return;
+    if (exportInProgress && ! audioEngine.isAudioRecording()) return;
     const auto snapshot = audioEngine.transportSnapshot();
+    if (audioEngine.isAudioRecording())
+    {
+        position.setText(transport::formatPosition(snapshot.positionSeconds).c_str(), juce::dontSendNotification);
+        status.setText("RECORDING | Stop: finalize/sign | Cancel or Escape: discard | No input monitoring", juce::dontSendNotification);
+        timelineSurface->setTransportState(snapshot);
+        return;
+    }
+    record.setEnabled(audioEngine.hasProject() && audioEngine.armedAudioTrack() >= 0
+        && audioEngine.signingConfigured());
+    record.setToggleState(false, juce::dontSendNotification);
     playPause.setIcon(snapshot.playing ? IconButton::Icon::pause : IconButton::Icon::play);
     playPause.setTooltip(snapshot.playing ? "Pause (Space)" : "Play (Space)");
     loop.setToggleState(snapshot.looping, juce::dontSendNotification);
@@ -863,6 +895,8 @@ void ArrangementView::refreshTransport()
     for (std::size_t index = 0; index < std::min(trackHeaders.size(), snapshots.size()); ++index)
     {
         const auto& track = snapshots[index];
+        trackHeaders[index]->setRecordArmed(audioEngine.armedAudioTrack() == static_cast<int>(index),
+                                           audioEngine.recordingInputLabel());
         trackHeaders[index]->setBounceAvailable(track.type == TrackType::midi
             && audioEngine.signingConfigured() && track.plugin.has_value()
             && ! track.plugin->missing && ! track.plugin->bypassed
@@ -1135,6 +1169,7 @@ void ArrangementView::setExportInProgress(bool active)
                              static_cast<juce::Component*>(&redoButton),
                              static_cast<juce::Component*>(&playPause),
                              static_cast<juce::Component*>(&stop),
+                             static_cast<juce::Component*>(&record),
                              static_cast<juce::Component*>(&loop),
                              static_cast<juce::Component*>(&computerKeyboard),
                              static_cast<juce::Component*>(&addTrackButton),
@@ -1346,6 +1381,89 @@ void ArrangementView::redoEdit()
     }
 }
 
+void ArrangementView::armAudioTrack(int index, bool enabled)
+{
+    if (exportInProgress) return;
+    const auto result = audioEngine.setTrackRecordArmed(index, enabled);
+    if (result.wasOk()) selectTrackForInput(index);
+    projectMessage = result.wasOk() ? (enabled ? "Input armed | No monitoring" : "Input disarmed")
+                                  : result.getErrorMessage();
+    refreshTransport();
+}
+
+void ArrangementView::chooseRecordingInput(int index)
+{
+    if (exportInProgress) return;
+    const auto inputs = audioEngine.recordingInputs();
+    juce::PopupMenu menu;
+    if (inputs.empty()) menu.addItem(1, "No input available", false);
+    for (std::size_t i = 0; i < inputs.size(); ++i)
+        menu.addItem(static_cast<int>(i) + 1, inputs[i].label());
+    menu.showMenuAsync(juce::PopupMenu::Options(),
+        [safe = juce::Component::SafePointer<ArrangementView>(this), inputs, index](int result)
+        {
+            if (safe == nullptr || safe->exportInProgress
+                || ! juce::isPositiveAndBelow(result - 1, static_cast<int>(inputs.size()))) return;
+            const auto selected = safe->audioEngine.setTrackRecordingInput(index, inputs[static_cast<std::size_t>(result - 1)]);
+            safe->projectMessage = selected.wasOk() ? "Selected " + inputs[static_cast<std::size_t>(result - 1)].label()
+                                                    : selected.getErrorMessage();
+            safe->refreshTransport();
+        });
+}
+
+void ArrangementView::toggleAudioRecording()
+{
+    if (audioTakeFinalizing) return;
+    if (audioEngine.isAudioRecording()) { finishAudioRecording(); return; }
+    if (exportInProgress) return;
+    stopSampleAudition("Preview stopped for recording");
+    allComputerKeyboardNotesOff();
+    pianoRoll->setVisible(false);
+    const auto result = audioEngine.startAudioRecording();
+    if (result.failed()) { showProjectResult(result, {}); return; }
+    setExportInProgress(true);
+    startTimerHz(30); // Keep input meter and playhead live while edits are locked.
+    stop.setEnabled(true);
+    record.setEnabled(true);
+    record.setToggleState(true, juce::dontSendNotification);
+    refreshTransport();
+}
+
+void ArrangementView::finishAudioRecording()
+{
+    if (audioTakeFinalizing || ! audioEngine.isAudioRecording()) return;
+    audioTakeFinalizing = true; // Reject repeated Stop/Space before the worker detaches capture.
+    audioEngine.pause();
+    if (exportThread.joinable()) exportThread.join();
+    setExportInProgress(true);
+    exportButton.setEnabled(false); // Finalization has exclusive ownership of the take.
+    status.setText("Finalizing, signing and validating recorded take...", juce::dontSendNotification);
+    const auto safe = juce::Component::SafePointer<ArrangementView>(this);
+    exportThread = std::thread([this, safe]
+    {
+        const auto result = audioEngine.stopAudioRecording();
+        juce::MessageManager::callAsync([safe, result]
+        {
+            if (safe == nullptr) return;
+            if (safe->exportThread.joinable()) safe->exportThread.join();
+            safe->audioTakeFinalizing = false;
+            safe->setExportInProgress(false);
+            safe->record.setToggleState(false, juce::dontSendNotification);
+            safe->lastExport.reset();
+            safe->applyEditResult(result, "Credentialed recorded take added | Playback paused");
+        });
+    });
+}
+
+void ArrangementView::cancelAudioTake()
+{
+    if (audioTakeFinalizing || ! audioEngine.isAudioRecording()) return;
+    audioEngine.cancelAudioRecording();
+    setExportInProgress(false);
+    projectMessage = "Take discarded; project unchanged";
+    refreshTransport();
+}
+
 void ArrangementView::showAddTrackMenu()
 {
     juce::PopupMenu menu;
@@ -1494,6 +1612,12 @@ void ArrangementView::rebuildArrangement()
                                audioEngine.availableVst3Plugins());
         header->setSelectedForInput(static_cast<int>(trackIndex) == selectedTrackIndex);
         header->onSelected = [this](int index) { selectTrackForInput(index); };
+        header->onRecordArm = [this](int index, bool enabled)
+        {
+            juce::MessageManager::callAsync([safe = juce::Component::SafePointer<ArrangementView>(this), index, enabled]
+            { if (safe != nullptr) safe->armAudioTrack(index, enabled); });
+        };
+        header->onChooseRecordingInput = [this](int index) { chooseRecordingInput(index); };
         header->onNameChanged = [this](int index, const auto& name)
         {
             deferTrackEdit([index, name](AudioEngine& engine)
@@ -2281,7 +2405,7 @@ void ArrangementView::deferTrackEdit(
         [safe = juce::Component::SafePointer<ArrangementView>(this),
          pendingEdit = std::move(edit), message = std::move(successMessage)]
         {
-            if (safe != nullptr)
+            if (safe != nullptr && ! safe->exportInProgress)
                 safe->applyEditResult(pendingEdit(safe->audioEngine), message);
         });
 }

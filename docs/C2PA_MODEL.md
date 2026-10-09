@@ -1,5 +1,22 @@
 # C2PA POC Model
 
+## PR 025 recorded input stems
+
+Stop/finalize is the capture provenance trigger, not arm, meter, or transport start. The actual
+finalized mono 24-bit input WAV is signed with `makeHumanRecordedStemActions`: `c2pa.created`
+and `digitalCapture`, without MIDI `c2pa.rendered` actions. `c2paseq:audioCapture` records actual
+input descriptor/index, track name, format, accepted sample count, placement/duration, take ID,
+and application version. The template name is not proof of a human performer: playback fed
+through an input also constitutes digital capture. No microphone/performer identity, serial,
+room, or location claim is inferred. Raw input is signed before track processing.
+
+The signed take is reopened for embedded integrity validation, copied through the normal
+SHA-256-verified media library, and committed as an ordinary undoable audio clip. Final signed
+Export includes that take as a normal credentialed ingredient; its capture actions live in
+the take's own manifest. Failed/cancelled capture never imports an unsigned alternative.
+Signature/integrity and external trust-list acceptance remain distinct; credentials remain
+the existing test identity, not production certification.
+
 **C2PA Creative Sequencer acts as a C2PA Claim Validator when media enters the creative workflow and a C2PA Claim Generator when the final mix is exported.**
 
 The implemented model is intentionally small:

@@ -284,6 +284,62 @@ juce::Result ProjectEngine::importAudio(const juce::File& source,
     return result;
 }
 
+juce::Result ProjectEngine::importRecordedTake(const juce::String& projectId,
+    const juce::String& trackId, const juce::File& signedWav, double startSeconds,
+    const juce::String& takeId)
+{
+    if (! project || ! paths || project->id != projectId || ! std::isfinite(startSeconds)
+        || startSeconds < 0.0) return juce::Result::fail("The recording project changed");
+    const auto target = std::find_if(project->tracks.begin(), project->tracks.end(),
+        [&](const auto& track) { return track.id == trackId && track.type == TrackType::audio; });
+    if (target == project->tracks.end()) return juce::Result::fail("The recorded audio track is no longer available");
+    const auto index = static_cast<std::size_t>(std::distance(project->tracks.begin(), target));
+    AudioFileMetadata audio;
+    if (auto result = tracktion.inspectAudioFile(signedWav, audio); result.failed()) return result;
+    const auto info = provenance.inspect(signedWav);
+    if (! info.c2paPresent || ! info.assetIntact) return juce::Result::fail("Recorded take failed C2PA integrity validation");
+    const auto document = juce::JSON::parse(info.rawManifestJson);
+    const auto manifest = document["manifests"][juce::Identifier(info.activeManifest)];
+    bool matchingCapture = false;
+    if (const auto* assertions = manifest["assertions"].getArray())
+        for (const auto& assertion : *assertions)
+            if (assertion["label"].toString().startsWith("c2pa.actions"))
+                if (const auto* actions = assertion["data"]["actions"].getArray())
+                    for (const auto& action : *actions)
+                        matchingCapture = matchingCapture || (action["action"].toString() == "c2pa.created"
+                            && action["digitalSourceType"].toString().endsWith("/digitalCapture")
+                            && action["parameters"]["c2paseq:audioCapture"]["takeId"].toString() == takeId);
+    if (! matchingCapture) return juce::Result::fail("Recorded take does not match this capture");
+    auto candidate = *project;
+    auto previous = *project;
+    MediaReference media;
+    bool added = false;
+    if (auto result = MediaLibrary::copySourceIntoProject(candidate, *paths, signedWav, media, &added);
+        result.failed()) return result;
+    const auto copied = paths->root().getChildFile(media.relativePath);
+    for (auto& plugin : candidate.plugins)
+    {
+        const auto track = std::find_if(candidate.tracks.begin(), candidate.tracks.end(),
+            [&](const auto& item) { return item.id == plugin.ownerId; });
+        if (track == candidate.tracks.end()) continue;
+        if (auto result = tracktion.captureTrackPluginState(static_cast<int>(std::distance(candidate.tracks.begin(), track)),
+            plugin.stateBase64, plugin.bypassed, plugin.missing); result.failed())
+        { if (added) copied.deleteFile(); return result; }
+    }
+    previous.plugins = candidate.plugins; // undo the take, not pre-existing live synth edits
+    for (auto& item : candidate.media) if (item.id == media.id) item.provenance = info;
+    ClipModel clip;
+    clip.id = juce::Uuid().toString();
+    clip.mediaId = media.id;
+    clip.startSeconds = startSeconds;
+    clip.lengthSeconds = audio.lengthSeconds;
+    candidate.tracks[index].clips.push_back(std::move(clip));
+    *project = std::move(candidate); // only after finalized, signed, validated and verified-copy
+    const auto result = commitMutation(std::move(previous));
+    if (result.failed() && added) copied.deleteFile();
+    return result;
+}
+
 juce::Result ProjectEngine::prepareMidiStem(int trackIndex, MidiStemPlan& plan)
 {
     if (! project || ! paths)

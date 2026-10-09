@@ -205,7 +205,7 @@ int main()
         return fail(12, "existing unwatermarked final-mix action history changed");
 
     // These are synthetic schema/signing fixtures, NOT evidence of a MIDI render
-    // or a human recording; neither workflow is connected to these templates yet.
+    // or a human recording; workflow integration is tested separately.
     const auto sourceHash = juce::SHA256(plain).toHexString();
     const auto renderParameters = juce::JSON::parse(
         R"({"fixture":true,"track":{"name":"Schema fixture","noteCount":3},"labels":["one","two"]})");

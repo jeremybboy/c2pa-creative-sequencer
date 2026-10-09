@@ -40,7 +40,8 @@ juce_add_gui_app(C2PACreativeSequencer
     PRODUCT_NAME "C2PA Creative Sequencer"
     BUNDLE_ID "app.c2paseq.CreativeSequencer"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/resources/app-icon-source.png"
-    MICROPHONE_PERMISSION_ENABLED FALSE)
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "Record a selected audio input only when you arm an Audio track.")
 
 juce_generate_juce_header(C2PACreativeSequencer)
 
@@ -56,6 +57,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/app/DemoRuntimeController.h
     src/app/MainWindow.cpp
     src/app/MainWindow.h
+    src/recording/InputRecordingService.cpp
+    src/recording/InputRecordingService.h
     src/engine/AudioEngine.cpp
     src/engine/AudioEngine.h
     src/engine/ClipOcclusion.cpp
@@ -368,6 +371,8 @@ if(BUILD_TESTING)
         ${C2PASEQ_TRACK_METER_SOURCES}
         tests/engine/ArrangementEditingTests.cpp
         src/app/AppInfo.h
+        src/recording/InputRecordingService.cpp
+        src/recording/InputRecordingService.h
         src/engine/AudioEngine.cpp
         src/engine/AudioEngine.h
         src/engine/ClipOcclusion.cpp
@@ -458,6 +463,8 @@ if(BUILD_TESTING)
         ${C2PASEQ_TRACK_METER_SOURCES}
         tests/export/ExportPipelineTests.cpp
         src/app/AppInfo.h
+        src/recording/InputRecordingService.cpp
+        src/recording/InputRecordingService.h
         src/engine/AudioEngine.cpp
         src/engine/AudioEngine.h
         src/engine/ClipOcclusion.cpp
@@ -525,6 +532,7 @@ if(BUILD_TESTING)
     add_dependencies(C2PAExportPipelineTests C2PATestGainVST3_VST3)
     c2paseq_enable_c2pa(C2PAExportPipelineTests)
     add_test(NAME export_pipeline COMMAND C2PAExportPipelineTests)
+    add_test(NAME audio_recording COMMAND C2PAExportPipelineTests --recording-only)
     if(C2PASEQ_ENABLE_REAL_AUDIOWMARK_TEST)
         add_test(NAME real_audiowmark_pipeline COMMAND C2PAExportPipelineTests)
         set_tests_properties(real_audiowmark_pipeline PROPERTIES
@@ -549,6 +557,8 @@ if(BUILD_TESTING)
         ${C2PASEQ_TRACK_METER_SOURCES}
         tests/plugins/PluginHostingTests.cpp
         src/app/AppInfo.h
+        src/recording/InputRecordingService.cpp
+        src/recording/InputRecordingService.h
         src/engine/AudioEngine.cpp
         src/engine/AudioEngine.h
         src/engine/ClipOcclusion.cpp

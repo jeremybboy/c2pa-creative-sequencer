@@ -25,6 +25,10 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     solo.setClickingTogglesState(true);
     mute.onClick = [this] { if (onMuteChanged) onMuteChanged(trackIndex, mute.getToggleState()); };
     solo.onClick = [this] { if (onSoloChanged) onSoloChanged(trackIndex, solo.getToggleState()); };
+    arm.onClick = [this] { if (onRecordArm) onRecordArm(trackIndex, ! arm.getToggleState()); };
+    arm.setTooltip("Arm one Audio track for mono input capture; no audio-through monitoring");
+    arm.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(130, 40, 47));
+    inputSelector.onClick = [this] { if (onChooseRecordingInput) onChooseRecordingInput(trackIndex); };
     deleteTrack.setTooltip("Delete track");
     deleteTrack.onClick = [this] { if (onDeleteTrack) onDeleteTrack(trackIndex); };
     for (auto* slider : { &gain, &panControl })
@@ -142,6 +146,8 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     addAndMakeVisible(nameEditor);
     addAndMakeVisible(mute);
     addAndMakeVisible(solo);
+    addAndMakeVisible(arm);
+    addChildComponent(inputSelector);
     addAndMakeVisible(pluginMenu);
     addAndMakeVisible(deleteTrack);
     addAndMakeVisible(gain);
@@ -154,6 +160,15 @@ void TrackHeaderView::setSelectedForInput(bool selected)
         return;
     selectedForInput = selected;
     repaint();
+}
+
+void TrackHeaderView::setRecordArmed(bool armed, const juce::String& inputLabel)
+{
+    arm.setToggleState(armed, juce::dontSendNotification);
+    inputSelector.setVisible(currentType == TrackType::audio);
+    inputSelector.setButtonText(armed ? "Input*" : "Input");
+    inputSelector.setTooltip((armed ? "Meter shows this input, not playback: " : "Choose recording input: ") + inputLabel);
+    resized();
 }
 
 void TrackHeaderView::mouseDown(const juce::MouseEvent& event)
@@ -197,6 +212,7 @@ void TrackHeaderView::setState(const juce::String& trackName, double gainDb, dou
 {
     accent = colour;
     currentType = type;
+    arm.setVisible(type == TrackType::audio);
     nameEditor.setText(trackName, juce::dontSendNotification);
     gain.setValue(gainDb, juce::dontSendNotification);
     panControl.setValue(pan, juce::dontSendNotification);
@@ -274,10 +290,13 @@ void TrackHeaderView::resized()
     deleteTrack.setBounds(top.removeFromRight(24).reduced(1));
     solo.setBounds(top.removeFromRight(27).reduced(1));
     mute.setBounds(top.removeFromRight(27).reduced(1));
+    arm.setBounds(top.removeFromRight(currentType == TrackType::audio ? 27 : 0).reduced(1));
     pluginMenu.setBounds(top.removeFromRight(currentType == TrackType::midi ? 78 : 58).reduced(1));
     nameEditor.setBounds(top.reduced(3, 0));
     auto gainRow = area.removeFromTop(22);
     gain.setBounds(gainRow);
-    panControl.setBounds(area.removeFromTop(22));
+    auto panRow = area.removeFromTop(22);
+    inputSelector.setBounds(panRow.removeFromLeft(currentType == TrackType::audio ? 60 : 0).reduced(1));
+    panControl.setBounds(panRow);
 }
 }

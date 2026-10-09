@@ -4,6 +4,27 @@ The system keeps four concerns separate: creative state, audio execution, proven
 
 The initial dependency and component flow is shown in the repository overview diagram. This document will expand only when implementation makes an architectural claim real.
 
+## PR 025 audio capture boundary
+
+`TracktionAdapter` enumerates device-reported input channels and opens exactly one only on explicit
+audio-track arm. `InputRecordingService` adds a JUCE device callback: raw input enters a bounded
+`AudioFormatWriter::ThreadedWriter` queue; atomic peak/frame/failure snapshots feed the UI. The callback
+performs no signing, file IO, project mutation, or audio-through. Its own output contribution is silence;
+the existing arrangement callback continues to supply output. MIDI keyboard monitoring is separate.
+
+The temporary workspace is unique per take. Stop detaches the callback writer, flushes off the audio
+thread, checks mono/24-bit/rate/frame count, then signs the stable WAV with the existing human-recorded
+`digitalCapture` action template. Only after embedded integrity validation does `ProjectEngine` make a
+verified media copy into a candidate project, capture live plugin states, and commit one undoable clip
+at the original recording position. Cancel/capture/signing failures clean temporary files without
+unsigned import. Editing and project switching are blocked during the UI recording/finalization flow.
+
+Arming and metering are transient machine-local execution state, never provenance or undo entries.
+Input selection is session-local, not a portable hardware configuration. Metadata records the actual
+input descriptor and accepted frames, not performer identity, room, device serial, or location.
+There is no latency compensation, monitoring, punch, loop recording, comping, MIDI recording, cache,
+or cloud subsystem. Existing automatic MIDI export and explicit credentialed bounce remain unchanged.
+
 ## PR 001 boundary
 
 `Application` controls lifecycle and destroys the window before the audio layer. `AudioEngine` is the application-facing boundary; `TracktionAdapter` is the only PR 001 class that includes Tracktion Engine headers or constructs `tracktion::engine::Engine`. `ArrangementView` renders an intentionally empty native JUCE surface and receives only a human-readable engine status string.

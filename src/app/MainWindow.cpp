@@ -38,7 +38,7 @@ bool MainWindow::canQuitDuringOfflineExport()
     if (arrangementView == nullptr || ! arrangementView->offlineExportActive())
         return true;
     juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
-        "Offline Export", "Wait for export or bounce to finish; Cancel discards the result after the current stage.",
+        "Operation in Progress", "Stop or cancel the recording first; wait for signing, export or bounce to finish before quitting.",
         "OK", this);
     return false;
 }

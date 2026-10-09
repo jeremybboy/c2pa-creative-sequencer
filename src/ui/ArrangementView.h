@@ -64,6 +64,11 @@ private:
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
     void refreshTransport();
     void refreshTrackMeters();
+    void armAudioTrack(int, bool);
+    void chooseRecordingInput(int);
+    void toggleAudioRecording();
+    void finishAudioRecording();
+    void cancelAudioTake();
     void showAudioSettings();
     void createProject();
     void openProject();
@@ -163,6 +168,7 @@ private:
     IconButton redoButton { "Redo", IconButton::Icon::redo };
     IconButton playPause { "Play Pause", IconButton::Icon::play };
     IconButton stop { "Stop", IconButton::Icon::stop };
+    IconButton record { "Record Audio", IconButton::Icon::record };
     IconButton loop { "Loop", IconButton::Icon::loop };
     IconButton zoomOut { "Zoom Out", IconButton::Icon::zoomOut };
     IconButton zoomIn { "Zoom In", IconButton::Icon::zoomIn };
@@ -197,6 +203,7 @@ private:
     juce::String openPianoRollClipId;
     std::atomic_bool exportCancellationRequested { false };
     bool exportInProgress = false;
+    bool audioTakeFinalizing = false;
     bool midiStemBounceInProgress = false;
     std::thread exportThread;
 };

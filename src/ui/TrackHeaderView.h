@@ -19,6 +19,7 @@ public:
                         const std::vector<PluginDescriptor>&);
     void setMeterPeak(TrackLevelSnapshot, bool audible);
     void setSelectedForInput(bool selected);
+    void setRecordArmed(bool armed, const juce::String& inputLabel);
     void setBounceAvailable(bool available) { bounceAvailable = available; }
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -44,6 +45,8 @@ public:
     std::function<void(int)> onBounceMidiStem;
     std::function<void(int)> onDeleteTrack;
     std::function<void(int)> onSelected;
+    std::function<void(int, bool)> onRecordArm;
+    std::function<void(int)> onChooseRecordingInput;
 
 private:
     int trackIndex;
@@ -54,6 +57,8 @@ private:
     juce::Label nameEditor;
     juce::TextButton mute { "M" };
     juce::TextButton solo { "S" };
+    IconButton arm { "Arm Audio Recording", IconButton::Icon::record };
+    juce::TextButton inputSelector { "Input" };
     juce::TextButton pluginMenu { "VST3" };
     IconButton deleteTrack { "Delete Track", IconButton::Icon::close };
     juce::Slider gain;

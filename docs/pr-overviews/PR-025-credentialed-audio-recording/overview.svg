@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960">
+  <rect width="1600" height="960" fill="#151c22"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#eef2f5">
+    <text x="40" y="55" font-size="24" fill="#77ccdd">PR 025 · HUMAN REVIEW REQUIRED</text>
+    <text x="40" y="105" font-size="39" font-weight="700">Minimal credentialed audio recording</text>
+    <text x="40" y="141" font-size="21" fill="#bac7cf">Mono input → finalized WAV → signed capture stem → normal mix ingredient</text>
+    <rect x="1140" y="25" width="420" height="133" fill="#26323d"/>
+    <text x="1160" y="59" font-size="23" font-weight="700">Goal</text>
+    <g font-size="18"><text x="1160" y="90">One armed track · one take</text><text x="1160" y="118">Sign actual audio, not arm/meter events</text><text x="1160" y="146">No unsigned recording fallback</text></g>
+    <text x="40" y="190" font-size="18" fill="#efc984">Release + 18/18 tests passed · Synthetic input + real signing · Live hardware / listening NOT verified</text>
+    <g fill="#26323d"><rect x="40" y="220" width="360" height="370"/><rect x="425" y="220" width="360" height="370"/><rect x="810" y="220" width="360" height="370"/><rect x="1195" y="220" width="365" height="370"/></g>
+    <g font-size="24" font-weight="700"><text x="60" y="262" fill="#ef8d93">1. Choose + arm</text><text x="445" y="262" fill="#77ccdd">2. Record raw input</text><text x="830" y="262" fill="#94d3ae">3. Stop + credential</text><text x="1215" y="262" fill="#b9a0e8">4. Import + export</text></g>
+    <g font-size="18" fill="#d5dee4">
+      <text x="60" y="300">Audio track only · mono channel.</text><text x="60" y="329">Second arm replaces the first.</text>
+      <text x="445" y="300">Global Record starts/continues Play.</text><text x="445" y="329">Bounded queue → disk thread.</text>
+      <text x="830" y="300">Finalize WAV before any claim.</text><text x="830" y="329">created / digitalCapture.</text>
+      <text x="1215" y="300">Verified copy into project Media.</text><text x="1215" y="329">Clip at original start position.</text>
+    </g>
+    <rect x="60" y="360" width="320" height="83" fill="#1a242c"/>
+    <text x="76" y="392" font-size="21">Audio 1</text><rect x="189" y="371" width="92" height="55" fill="#82302f"/><circle cx="235" cy="399" r="13" fill="#ef7279"/>
+    <rect x="299" y="374" width="12" height="50" fill="#24352e"/><rect x="299" y="388" width="12" height="36" fill="#78cb9b"/>
+    <text x="60" y="480" font-size="21">Input → live raw-input meter</text><text x="60" y="518" font-size="18" fill="#efc984">No monitoring to speakers</text>
+    <rect x="445" y="360" width="320" height="83" fill="#1a242c"/>
+    <circle cx="475" cy="399" r="13" fill="#ef7279"/><text x="501" y="406" font-size="22" fill="#ef8d93">RECORDING</text>
+    <text x="445" y="480" font-size="21">Temporary mono 24-bit WAV</text><text x="445" y="518" font-size="18" fill="#efc984">Edits locked · Cancel discards</text>
+    <g font-size="21" text-anchor="middle"><text x="990" y="385">Stable WAV</text><text x="990" y="424" fill="#77ccdd">↓</text><text x="990" y="463">Sign → reopen → validate</text><text x="990" y="509" fill="#efc984">Failure = no import</text></g>
+    <rect x="1215" y="360" width="325" height="68" fill="#36574b"/><text x="1233" y="401" font-size="20">Signed take → Audio track</text>
+    <g font-size="20"><text x="1215" y="475">Final signed mix</text><text x="1215" y="515" fill="#b9a0e8">↳ Take's capture manifest</text></g>
+    <g font-size="17" fill="#bac7cf"><text x="60" y="568">Arm/meter never create credentials.</text><text x="445" y="568">No file IO or signing in callback.</text><text x="830" y="568">OS input label ≠ verified identity.</text><text x="1215" y="568">One undoable import · Save/reopen.</text></g>
+    <rect x="40" y="616" width="1520" height="58" fill="#1e2933"/>
+    <text x="60" y="651" font-size="19">UI + capture: changed | C2PA: existing capture template wired to real take | MIDI export + soft bindings: retained</text>
+    <g fill="#26323d"><rect x="40" y="704" width="360" height="214"/><rect x="425" y="704" width="360" height="214"/><rect x="810" y="704" width="360" height="214"/><rect x="1195" y="704" width="365" height="214"/></g>
+    <g font-size="21" font-weight="700"><text x="60" y="740">BEFORE THIS PR: PR 024</text><text x="445" y="740">CHANGES IN THIS PR</text><text x="830" y="740">UNCHANGED / OUT OF SCOPE</text><text x="1215" y="740">AFTER HUMAN ACCEPTANCE</text></g>
+    <g font-size="18" fill="#d5dee4">
+      <text x="60" y="778">Automatic MIDI export provenance</text><text x="60" y="811">Explicit MIDI bounce available</text><text x="60" y="844">Capture signing template exists</text><text x="60" y="877">No external recording workflow</text>
+      <text x="445" y="778">Input + red arm + Record</text><text x="445" y="811">Meter and safe disk queue</text><text x="445" y="844">Finalize / sign / verify / import</text><text x="445" y="877">Cancel and failure safety tests</text>
+      <text x="830" y="778">No monitoring, loop, punch, comping</text><text x="830" y="811">No latency compensation</text><text x="830" y="844">No MIDI recording, cloud or cache</text><text x="830" y="877">No identity or production claims</text>
+      <text x="1215" y="778">Input capture → editable audio clip</text><text x="1215" y="811">Real captured essence credentialed</text><text x="1215" y="844">Take included in normal Export</text><text x="1215" y="877">Review + live hardware test first</text>
+    </g>
+  </g>
+</svg>
