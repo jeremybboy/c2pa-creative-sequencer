@@ -54,8 +54,11 @@ void SequencerLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b
                juce::Justification::centred, true);
 }
 
-juce::Font SequencerLookAndFeel::getTextButtonFont(juce::TextButton&, int height)
+juce::Font SequencerLookAndFeel::getTextButtonFont(juce::TextButton& button, int height)
 {
+    if (button.getProperties().contains("toolbarFontHeight"))
+        return juce::Font(juce::FontOptions(
+            static_cast<float>(button.getProperties()["toolbarFontHeight"]), juce::Font::bold));
     return juce::Font(juce::FontOptions(
         juce::jlimit(10.0f, 13.0f, static_cast<float>(height) * 0.42f),
         juce::Font::bold));

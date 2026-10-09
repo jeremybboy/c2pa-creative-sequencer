@@ -32,6 +32,9 @@ One workstation-usability pass, not a new provenance architecture.
 Headers are 268 px wide / 116 px tall, with distinct name, plug-in/control, gain and pan rows.
 Names truncate with ellipsis rather than horizontal font compression; full names remain in tooltips.
 Gain values have wider text boxes. M/S, arm, input, delete, plug-in menu, meter and rename remain.
+Toolbar text-button slots are measured from the rendered font, with space reserved for Export's
+Cancel label. Compact windows use a smaller natural font; labels are not horizontally compressed.
+This corrects the fixed-width toolbar truncation identified during human testing.
 
 ### 2. Musical MIDI labels
 
@@ -102,8 +105,9 @@ Channel count is explicitly a presentation heuristic: a large physical interface
   cover 40/120/127/240 BPM, negative clamping, snap idempotence, maximum/minimum zoom and anchoring.
 - Grouping tests retain all 67 synthetic input entries, compact microphone/interface groups,
   collapsed 64-channel source and selected-input identity after enumeration reorder.
-- Actual header/piano-roll components were rendered offscreen and visually inspected; visible
-  header child bounds are checked. The editable SVG/PNG overview was rendered and inspected too.
+- Actual toolbar/header/piano-roll components were rendered offscreen and visually inspected;
+  toolbar label fit and total width are checked at 1040 and 1280 px, including Export/Cancel,
+  and visible header child bounds are checked. The editable SVG/PNG overview was inspected too.
 - `git diff --check` and bundle `codesign --verify --deep --strict` passed.
 - Live native UI inspection was unavailable while the Mac was locked. Physical input enumeration,
   real plug-in listening, gestures and mixed end-to-end manual acceptance remain pending.

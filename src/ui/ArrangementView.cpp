@@ -5,6 +5,7 @@
 #include "ui/ArrangementShortcuts.h"
 #include "ui/TrackHeaderView.h"
 #include "ui/InputMenuGrouping.h"
+#include "ui/ToolbarButtonSizing.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
@@ -561,9 +562,17 @@ void ArrangementView::resized()
         top.removeFromLeft(6);
         toolbarDividers[index] = top.getX() - 3;
     };
+    for (auto* button : { &newProject, &openProjectButton, &saveProjectButton, &exportButton,
+                          &credentialsButton, &signingButton, &audioSoftBindingButton,
+                          &fingerprintButton, &addTrackButton })
+        button->getProperties().set("toolbarFontHeight", getWidth() < 1200 ? 11.0f : 12.6f);
+    const auto textWidth = [&top](juce::TextButton& button, const juce::String& alternate = {})
+    { return toolbarButtonSlotWidth(button, top.getHeight(), alternate); };
 
-    placeButton(newProject, 38); placeButton(openProjectButton, 40);
-    placeButton(saveProjectButton, 38); placeButton(exportButton, 48);
+    placeButton(newProject, textWidth(newProject));
+    placeButton(openProjectButton, textWidth(openProjectButton));
+    placeButton(saveProjectButton, textWidth(saveProjectButton));
+    placeButton(exportButton, textWidth(exportButton, "Cancel"));
     divider(0);
     placeButton(undoButton, 30); placeButton(redoButton, 30);
     divider(1);
@@ -571,14 +580,16 @@ void ArrangementView::resized()
     placeButton(position, 84);
     bpm.setBounds(top.removeFromLeft(110).reduced(2, 0));
     divider(2);
-    placeButton(credentialsButton, 78); placeButton(signingButton, 58);
-    placeButton(audioSoftBindingButton, 62); placeButton(fingerprintButton, 52);
+    placeButton(credentialsButton, textWidth(credentialsButton));
+    placeButton(signingButton, textWidth(signingButton));
+    placeButton(audioSoftBindingButton, textWidth(audioSoftBindingButton));
+    placeButton(fingerprintButton, textWidth(fingerprintButton));
 
     audioSettings.setBounds(top.removeFromRight(32).reduced(1));
     computerKeyboard.setBounds(top.removeFromRight(32).reduced(1));
     zoomIn.setBounds(top.removeFromRight(30).reduced(1));
     zoomOut.setBounds(top.removeFromRight(30).reduced(1));
-    addTrackButton.setBounds(top.removeFromRight(58).reduced(1));
+    addTrackButton.setBounds(top.removeFromRight(textWidth(addTrackButton)).reduced(1));
     toolbarDividers[3] = top.getRight() - 3;
     top.removeFromRight(6);
     projectName.setBounds(top.reduced(8, 0));

@@ -4,6 +4,7 @@
 #include "ui/PianoRollView.h"
 #include "ui/TrackHeaderView.h"
 #include "ui/SequencerLookAndFeel.h"
+#include "ui/ToolbarButtonSizing.h"
 
 #include <cmath>
 #include <iostream>
@@ -72,6 +73,36 @@ int main(int argc, char** argv)
     juce::Graphics graphics(preview);
     graphics.fillAll(juce::Colour::fromRGB(23, 28, 34));
     SequencerLookAndFeel lookAndFeel;
+    for (const auto windowWidth : { 1040, 1280 })
+    {
+        int textSlots = 0;
+        int x = 12;
+        for (const auto* label : { "New", "Open", "Save", "Export", "Credentials",
+                                   "Signing", "Audio SB", "FP SB", "+ Track" })
+        {
+            juce::TextButton button(label);
+            button.setLookAndFeel(&lookAndFeel);
+            button.getProperties().set("toolbarFontHeight", windowWidth < 1200 ? 11.0f : 12.6f);
+            const auto slotWidth = toolbarButtonSlotWidth(button, 32, juce::String(label) == "Export" ? "Cancel" : "");
+            button.setSize(slotWidth - 2, 30);
+            const auto font = lookAndFeel.getTextButtonFont(button, button.getHeight());
+            if (juce::GlyphArrangement::getStringWidthInt(font, label) > button.getWidth() - 12) return 13;
+            if (juce::String(label) == "Export")
+            {
+                if (juce::GlyphArrangement::getStringWidthInt(font, "Cancel") > button.getWidth() - 12) return 13;
+                button.setButtonText("Cancel");
+                if (toolbarButtonSlotWidth(button, 32, "Export") != slotWidth) return 14;
+                button.setButtonText(label);
+            }
+            if (windowWidth == 1280)
+                graphics.drawImageAt(button.createComponentSnapshot(button.getLocalBounds()), x, 5);
+            x += slotWidth;
+            textSlots += slotWidth;
+            button.setLookAndFeel(nullptr);
+        }
+        // Existing icon slots, time/BPM, dividers and outer padding use 542 px.
+        if (textSlots + 542 > windowWidth) return 15;
+    }
     for (int index = 0; index < 3; ++index)
     {
         TrackHeaderView header(index);

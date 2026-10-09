@@ -151,7 +151,9 @@ extend the clip beforehand. Automated tests use the test synth, not proof of you
 Use the Release app from `build-pr021` (the folder name is historical), built from
 `codex/arrangement-editing-ui-refinement`. Quit the previous app instance before launching it.
 
-1. Open a project with Audio/VST3 and MIDI/instrument tracks. Check the taller track-header
+1. Check New, Open, Save, Export, Credentials, Signing, Audio SB and FP SB are fully readable
+   at normal and minimum window widths; Export's Cancel label must also fit. Open a project
+   with Audio/VST3 and MIDI/instrument tracks. Check the taller track-header
    controls, readable proportions, long-name ellipsis/full-name tooltip, gain/pan, M/S, arm and input.
 2. Open a MIDI clip; check C, C#, D, F#, A#, B row/note labels at normal zoom. MIDI 60 is still C4.
    At dense pitch zoom, only C anchors remain; hover still identifies the exact musical pitch.
