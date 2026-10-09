@@ -33,12 +33,12 @@ void MainWindow::closeButtonPressed()
         application->systemRequestedQuit();
 }
 
-bool MainWindow::canQuitDuringStemBounce()
+bool MainWindow::canQuitDuringOfflineExport()
 {
-    if (arrangementView == nullptr || ! arrangementView->midiStemBounceActive())
+    if (arrangementView == nullptr || ! arrangementView->offlineExportActive())
         return true;
     juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
-        "MIDI Stem Bounce", "Wait for the bounce to finish, or press Cancel before quitting.",
+        "Offline Export", "Wait for export or bounce to finish; Cancel discards the result after the current stage.",
         "OK", this);
     return false;
 }

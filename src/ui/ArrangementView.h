@@ -46,6 +46,7 @@ public:
 
     void audioWMarkSetupFinished(bool installed, const juce::String& message);
     [[nodiscard]] bool midiStemBounceActive() const noexcept { return midiStemBounceInProgress; }
+    [[nodiscard]] bool offlineExportActive() const noexcept { return exportInProgress; }
 
     void paint(juce::Graphics&) override;
     void resized() override;

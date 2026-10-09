@@ -133,8 +133,46 @@ stem's credentials; undo removes project references but keeps media bytes, consi
 existing imports and redo. Failures do not add a track or mute the source; staged files are
 cleaned by the UI workspace.
 
-Final `ExportController` behavior is unchanged: the audible signed WAV becomes a real
-credentialed ingredient, and the SDK retains its manifest history. Direct, unbounced MIDI
-is still rendered into the mix but is not fabricated into a separately signed ingredient.
+In PR 023, final `ExportController` behavior was unchanged: the audible signed WAV became a
+real credentialed ingredient, while direct MIDI was rendered without a separate stem ingredient.
+The automatic-export follow-up below removes that manual requirement without fabricating assets.
 The selected clip's **Credentials** dialog displays the actual stored actions and MIDI /
 instrument metadata. Test signing credentials still do not imply external trust or conformance.
+
+## Automatic MIDI provenance during signed export
+
+Signed Export now plans real stems for each unmuted MIDI track allowed by the existing solo
+policy, with notes and an active, non-missing instrument. Empty, muted, excluded-by-solo,
+missing, and bypassed instrument tracks are not claimed as rendered MIDI ingredients.
+No extra checkbox or manual bounce is required. The PR 023 bounce command remains available.
+
+`ProjectEngine` captures live instrument state on the owner thread into an export-only project
+copy; it does not update canonical state, save files, or create undo history. Each eligible
+instrument independently renders to a temporary pre-mixer WAV, signed through the same
+created/rendered stem API. A signing/validation failure aborts export rather than silently
+omitting that MIDI provenance. No raw instrument state or private key is put into the manifest.
+
+Those signed WAVs actually replace instrument execution in the transient export graph: MIDI
+clips are temporarily silenced and their instrument bypassed, while the original track gain/pan
+and final master processing still apply once. All source stems are rendered before any graph
+substitution. The final signer consumes the real signed files and embeds their ingredient
+manifest history; it does not attach unrelated credential-only renders to a live rerendered mix.
+
+The playback context is detached on the owner thread with Tracktion's reallocation inhibitor
+throughout signed export (including audio-only), preventing edit timers rebuilding it while a
+worker renders. Cleanup restores MIDI clips, instruments, original mute/solo, and transport
+position on the owner thread
+before deleting the private UUID workspace, on success, cancellation, and failure. Playback
+remains paused. The project's visible tracks, media, notes, saved files, and undo history do not
+change. Normal Quit is guarded while an offline export worker needs the message thread.
+
+The exported Credentials dialog displays the automatic stem count and actual cached MIDI /
+instrument parameters. Intermediate WAVs are not retained as project media; their signed
+manifest history survives in the final export. Use manual bounce if a reusable standalone stem
+is wanted. Every export generates fresh stems; there is no persistent stem cache or schema change.
+
+Limitations remain: no automatic instrument-tail allowance beyond MIDI clip bounds, and replay
+through the engine's native WAV reader is not a claim of bit-identical direct-MIDI output (its
+Lagrange interpolation can introduce a very small phase/timing difference). Test-synth stereo
+level and timing checks are distinct from human acceptance with an installed external instrument.
+Watermark/fingerprint computation, thresholds, resolver behavior, and trust policy are unchanged.

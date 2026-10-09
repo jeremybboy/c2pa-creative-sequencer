@@ -31,6 +31,34 @@ struct MidiStemWorkspace
         .getChildFile("c2paseq-midi-stem-" + juce::Uuid().toString());
     ~MidiStemWorkspace() { directory.deleteRecursively(); }
 };
+
+juce::String midiStemDetails(const IngredientInfo& info)
+{
+    juce::String details;
+    const auto document = juce::JSON::parse(info.rawManifestJson);
+    const auto manifest = document["manifests"][juce::Identifier(info.activeManifest)];
+    if (const auto* assertions = manifest["assertions"].getArray())
+        for (const auto& assertion : *assertions)
+            if (assertion["label"].toString().startsWith("c2pa.actions"))
+                if (const auto* actions = assertion["data"]["actions"].getArray())
+                    for (const auto& action : *actions)
+                    {
+                        const auto source = action["parameters"]["c2paseq:midiRender"];
+                        if (source.getDynamicObject() == nullptr) continue;
+                        const auto instrument = source["instrument"];
+                        details += "\n  Action: " + action["action"].toString()
+                            + "\n  MIDI: " + source["trackName"].toString()
+                            + " | " + source["bpm"].toString() + " BPM"
+                            + " | " + source["noteCount"].toString() + " notes"
+                            + "\n  Instrument: " + instrument["name"].toString()
+                            + " | " + instrument["vendor"].toString()
+                            + " | " + instrument["version"].toString()
+                            + " | " + instrument["format"].toString()
+                            + "\n  MIDI SHA-256: " + source["midiContentSha256"].toString()
+                            + "\n  Instrument state SHA-256: " + instrument["stateSha256"].toString();
+                    }
+    return details;
+}
 }
 
 class TimelineSurface final : public juce::Component
@@ -949,6 +977,8 @@ void ArrangementView::beginExportWithConfiguredSigner()
 
 void ArrangementView::startBackgroundExport(const juce::File& destination)
 {
+    stopSampleAudition();
+    closePianoRoll();
     if (exportThread.joinable()) exportThread.join();
     exportCancellationRequested.store(false);
     setExportInProgress(true);
@@ -1038,6 +1068,8 @@ void ArrangementView::updateExportProgress(ExportStage stage)
     switch (stage)
     {
         case ExportStage::planning: projectMessage = "Preparing export…"; break;
+        case ExportStage::midiStemRender: projectMessage = "Rendering MIDI provenance stems…"; break;
+        case ExportStage::midiStemSigning: projectMessage = "Signing MIDI provenance stems…"; break;
         case ExportStage::audioRender: projectMessage = "Rendering audio…"; break;
         case ExportStage::watermarkEmbedding: projectMessage = "Embedding AudioWMark…"; break;
         case ExportStage::fingerprintComputation:
@@ -1205,6 +1237,8 @@ void ArrangementView::showExportCredentials()
         + "\nStatus: " + provenanceStatusLabel(result.outputProvenance.status)
         + "\nValidation: " + result.outputProvenance.validationSummary
         + "\nIngredients: " + juce::String(result.ingredients.size());
+    if (result.midiStemsSigned > 0)
+        details += "\nAutomatically signed MIDI stems: " + juce::String(result.midiStemsSigned);
     if (result.softBindingEnabled)
         details += "\nAudio soft binding: Published"
             "\nAlgorithm: " + juce::String(audioWMarkAlgorithm.data())
@@ -1222,7 +1256,8 @@ void ArrangementView::showExportCredentials()
         details += "\nManifest: " + result.outputProvenance.activeManifest;
     for (const auto& ingredient : result.ingredients)
         details += "\n- " + ingredient.title + ": "
-            + provenanceStatusLabel(ingredient.provenance.status);
+            + provenanceStatusLabel(ingredient.provenance.status)
+            + midiStemDetails(ingredient.provenance);
     juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
         "Exported Content Credentials", details, "OK", this);
 }

@@ -357,20 +357,30 @@ ExportResult AudioEngine::exportMix(const juce::File& destination,
                                     ExportProgressCallback progress,
                                     ExportCancellationCheck shouldCancel)
 {
-    if (const auto* project = projectEngine.currentProject())
-        if (const auto* paths = projectEngine.currentPaths())
-        {
-            ExportController controller(tracktion, provenance, watermark.get(),
-                                        &softBindingOutbox, useSoftBinding,
-                                        fingerprint.get(), useFingerprint,
-                                        std::move(progress), std::move(shouldCancel));
-            return controller.exportMix(*project, *paths, destination);
-        }
-
     ExportResult result;
     result.outputFile = destination;
     result.result = juce::Result::fail("Create or open a project before exporting");
-    return result;
+    std::optional<Project> snapshot;
+    std::optional<ProjectPaths> paths;
+    // Capture live instrument state on the owner thread into an export-only copy.
+    // Do not save, alter the canonical project, or create undo history.
+    tracktion::engine::callBlocking([&]
+    {
+        if (projectEngine.currentProject() == nullptr || projectEngine.currentPaths() == nullptr)
+            return;
+        Project captured;
+        result.result = projectEngine.createExportSnapshot(captured);
+        if (result.result.failed()) return;
+        snapshot = std::move(captured);
+        paths = *projectEngine.currentPaths();
+        pluginHost.closeEditorsForOfflineRender();
+    });
+    if (! snapshot || ! paths) return result;
+    ExportController controller(tracktion, provenance, watermark.get(),
+                                &softBindingOutbox, useSoftBinding,
+                                fingerprint.get(), useFingerprint,
+                                std::move(progress), std::move(shouldCancel));
+    return controller.exportMix(*snapshot, *paths, destination);
 }
 
 juce::Result AudioEngine::createProject(const juce::File& projectFolder,

@@ -111,6 +111,11 @@ public:
     [[nodiscard]] juce::Result beginExclusiveTrackRender(int trackIndex = -1,
                                                          bool includeTrackMix = true);
     void finishExclusiveTrackRender();
+    // Owner-thread, export-only substitutions; never save while this scope is active.
+    [[nodiscard]] juce::Result beginOfflineExport();
+    [[nodiscard]] juce::Result substituteMidiExportStem(int trackIndex, const juce::File&,
+                                                        double startSeconds, double lengthSeconds);
+    void finishOfflineExport();
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
     [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
     void setBeforeEditReplacement(std::function<void()> callback);
@@ -136,5 +141,16 @@ private:
     bool exclusiveTrackRender = false;
     tracktion::engine::VolumeAndPanPlugin::Ptr renderVolumePlugin;
     bool renderVolumeWasEnabled = false;
+    struct MidiExportReplacement
+    {
+        tracktion::engine::Clip::Ptr audio;
+        std::vector<std::pair<tracktion::engine::Clip::Ptr, bool>> midi;
+        tracktion::engine::Plugin::Ptr instrument;
+        bool instrumentEnabled = false;
+    };
+    std::vector<MidiExportReplacement> midiExportReplacements;
+    bool offlineExportActive = false;
+    double offlineExportPosition = 0.0;
+    std::unique_ptr<tracktion::engine::TransportControl::ReallocationInhibitor> offlineExportInhibitor;
 };
 }

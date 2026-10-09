@@ -10,6 +10,8 @@ enum class ExportStage
 {
     complete,
     planning,
+    midiStemRender,
+    midiStemSigning,
     audioRender,
     watermarkEmbedding,
     fingerprintComputation,
@@ -31,6 +33,7 @@ struct ExportResult
     juce::Result result = juce::Result::fail("Export has not run");
     juce::File outputFile;
     bool audioRendered = false;
+    int midiStemsSigned = 0;
     bool credentialsAttached = false;
     bool credentialsValidated = false;
     bool externallyTrusted = false;

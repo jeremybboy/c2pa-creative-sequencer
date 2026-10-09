@@ -637,14 +637,14 @@ juce::Result TracktionAdapter::renderWavInternal(const juce::File& destination,
         parameters, "Export Mix", nullptr, nullptr);
     if (task == nullptr)
     {
-        edit->getTransport().ensureContextAllocated(true);
+        if (! offlineExportActive) edit->getTransport().ensureContextAllocated(true);
         return juce::Result::fail("Tracktion could not create the offline render task");
     }
     while (task->runJob() == juce::ThreadPoolJob::jobNeedsRunningAgain)
     {
     }
     tracktion::engine::Renderer::turnOffAllPlugins(*edit);
-    edit->getTransport().ensureContextAllocated(true);
+    if (! offlineExportActive) edit->getTransport().ensureContextAllocated(true);
     if (task->errorMessage.isNotEmpty())
     {
         destination.deleteFile();
@@ -654,6 +654,72 @@ juce::Result TracktionAdapter::renderWavInternal(const juce::File& destination,
     if (! destination.existsAsFile())
         return juce::Result::fail("Tracktion offline WAV render produced no file");
     return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::beginOfflineExport()
+{
+    if (edit == nullptr || offlineExportActive || exclusiveTrackRender)
+        return juce::Result::fail("An offline export is active or no edit is open");
+    offlineExportPosition = transportSnapshot().positionSeconds;
+    offlineExportInhibitor = std::make_unique<tracktion::engine::TransportControl::ReallocationInhibitor>(
+        edit->getTransport());
+    tracktion::engine::TransportControl::stopAllTransports(engine, false, true);
+    edit->getTransport().freePlaybackContext();
+    offlineExportActive = true;
+    return juce::Result::ok();
+}
+
+juce::Result TracktionAdapter::substituteMidiExportStem(int trackIndex, const juce::File& file,
+                                                        double startSeconds, double lengthSeconds)
+{
+    const auto tracks = edit != nullptr ? tracktion::engine::getAudioTracks(*edit)
+                                        : juce::Array<tracktion::engine::AudioTrack*> {};
+    if (! offlineExportActive || ! juce::isPositiveAndBelow(trackIndex, tracks.size()))
+        return juce::Result::fail("No active MIDI export source track");
+    auto* track = tracks[trackIndex];
+    auto* instrument = track->pluginList.findFirstPluginOfType<tracktion::engine::ExternalPlugin>();
+    if (instrument == nullptr || ! instrument->isEnabled() || instrument->isMissing())
+        return juce::Result::fail("The export instrument is not available");
+    AudioFileMetadata metadata;
+    if (auto result = inspectAudioFile(file, metadata); result.failed()) return result;
+    if (! std::isfinite(startSeconds) || ! std::isfinite(lengthSeconds) || startSeconds < 0.0
+        || lengthSeconds <= 0.0 || std::abs(lengthSeconds - metadata.lengthSeconds) > 0.05)
+        return juce::Result::fail("The MIDI export stem has an invalid range");
+    MidiExportReplacement replacement;
+    replacement.instrument = instrument;
+    replacement.instrumentEnabled = instrument->isEnabled();
+    for (auto* clip : track->getClips())
+        if (clip->isMidi()) replacement.midi.emplace_back(clip, clip->isMuted());
+    const auto start = tracktion::TimePosition::fromSeconds(startSeconds);
+    replacement.audio = track->insertWaveClip("Credentialed MIDI export stem", file,
+        { { start, start + tracktion::TimeDuration::fromSeconds(metadata.lengthSeconds) }, {} }, false);
+    if (replacement.audio == nullptr)
+        return juce::Result::fail("Could not stage the signed MIDI stem in the export graph");
+    configureNativeAudioClip(*static_cast<tracktion::engine::WaveAudioClip*>(replacement.audio.get()),
+                             metadata.lengthSeconds);
+    for (const auto& original : replacement.midi) original.first->setMuted(true);
+    // The signed pre-mixer audio replaces instrument execution, not its track mixer.
+    instrument->setEnabled(false);
+    midiExportReplacements.push_back(std::move(replacement));
+    return juce::Result::ok();
+}
+
+void TracktionAdapter::finishOfflineExport()
+{
+    if (! offlineExportActive || edit == nullptr) return;
+    edit->getTransport().stop(false, true);
+    edit->getTransport().freePlaybackContext();
+    for (auto& replacement : midiExportReplacements)
+    {
+        replacement.audio->removeFromParent();
+        for (const auto& original : replacement.midi) original.first->setMuted(original.second);
+        replacement.instrument->setEnabled(replacement.instrumentEnabled);
+    }
+    midiExportReplacements.clear();
+    seek(offlineExportPosition);
+    offlineExportActive = false;
+    offlineExportInhibitor.reset();
+    edit->getTransport().ensureContextAllocated(true);
 }
 
 juce::AudioFormatManager& TracktionAdapter::audioFormatManager() noexcept

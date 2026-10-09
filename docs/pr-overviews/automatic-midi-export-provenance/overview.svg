@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960">
+  <rect width="1600" height="960" fill="#151c22"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#eef2f5">
+    <text x="40" y="60" font-size="24" fill="#77ccdd">FOLLOW-UP TO MERGED PR 023</text>
+    <text x="40" y="110" font-size="40" font-weight="700">Automatic MIDI provenance on Export</text>
+    <text x="40" y="145" font-size="20" fill="#bac7cf">Draw notes → choose instrument → Export; real signed stems, no manual bounce</text>
+    <rect x="1130" y="28" width="430" height="130" fill="#26323d"/>
+    <text x="1150" y="60" font-size="22" font-weight="700">Goal</text>
+    <g font-size="18"><text x="1150" y="88">No extra checkbox or visible tracks</text><text x="1150" y="117">Actual signed audio used in the mix</text><text x="1150" y="146">Keep MIDI editable and unmuted</text></g>
+    <text x="40" y="190" font-size="17" fill="#f1c77e">LOCAL BUILD + 17/17 TESTS PASSED · Not pushed · External-instrument / listening acceptance still required</text>
+    <g fill="#26323d"><rect x="40" y="220" width="360" height="370"/><rect x="425" y="220" width="360" height="370"/><rect x="810" y="220" width="360" height="370"/><rect x="1195" y="220" width="365" height="370"/></g>
+    <g font-size="24" font-weight="700"><text x="60" y="260" fill="#b9a0e8">1. Export normally</text><text x="445" y="260" fill="#77ccdd">2. Render + sign MIDI</text><text x="830" y="260" fill="#94d3ae">3. Mix real signed audio</text><text x="1215" y="260" fill="#efc984">4. Restore + inspect</text></g>
+    <g font-size="18" fill="#d5dee4">
+      <text x="60" y="299">Only eligible audible MIDI tracks.</text><text x="60" y="327">Capture live instrument parameters.</text>
+      <text x="445" y="299">Each instrument independently.</text><text x="445" y="327">Signed WAV, not a fake source entry.</text>
+      <text x="830" y="299">Temporary export-only substitution.</text><text x="830" y="327">Track gain/pan + master applied once.</text>
+      <text x="1215" y="299">Original project stays unchanged.</text><text x="1215" y="327">View nested stem credentials.</text>
+    </g>
+    <rect x="60" y="364" width="320" height="78" fill="#5f477b"/><rect x="78" y="392" width="60" height="12" fill="#cdb8ea"/><rect x="166" y="376" width="70" height="12" fill="#cdb8ea"/><rect x="266" y="412" width="65" height="12" fill="#cdb8ea"/>
+    <rect x="60" y="464" width="320" height="66" fill="#1a242c"/><text x="151" y="504" font-size="24" font-weight="700">Export WAV</text>
+    <g font-size="21" text-anchor="middle"><text x="605" y="385">Instrument output</text><text x="605" y="424" fill="#77ccdd">↓</text><text x="605" y="463">WAV → sign → validate</text><text x="605" y="504" fill="#94d3ae">created + rendered</text></g>
+    <rect x="830" y="362" width="320" height="72" fill="#36574b"/><text x="848" y="405" font-size="21">Signed stem audio → mixer</text><rect x="830" y="450" width="320" height="80" fill="#1a242c"/><text x="848" y="480" font-size="18">Original MIDI: temporarily silent</text><text x="848" y="511" font-size="18">No second instrument execution</text>
+    <g font-size="20"><text x="1215" y="386">Final signed mix</text><text x="1215" y="425" fill="#efc984">↳ MIDI stem manifest</text><text x="1215" y="464">↳ Instrument identity + hashes</text><text x="1215" y="510" fill="#94d3ae">Original MIDI plays again</text></g>
+    <g font-size="17" fill="#bac7cf"><text x="60" y="569">No manual bounce required.</text><text x="445" y="569">No raw state or private key in claims.</text><text x="830" y="569">Use the asset that was signed.</text><text x="1215" y="569">Temporary WAVs cleaned up.</text></g>
+    <rect x="40" y="616" width="1520" height="58" fill="#1e2933"/><text x="60" y="651" font-size="19">Export orchestration: changed  |  Canonical project / undo: unchanged  |  Manual bounce: retained  |  Recovery: unchanged</text>
+    <g fill="#26323d"><rect x="40" y="704" width="360" height="214"/><rect x="425" y="704" width="360" height="214"/><rect x="810" y="704" width="360" height="214"/><rect x="1195" y="704" width="365" height="214"/></g>
+    <g font-size="21" font-weight="700"><text x="60" y="740">STARTING STATE: PR 023</text><text x="445" y="740">CHANGES IN THIS UPDATE</text><text x="830" y="740">UNCHANGED / OUT OF SCOPE</text><text x="1215" y="740">INTENDED END RESULT</text></g>
+    <g font-size="18" fill="#d5dee4">
+      <text x="60" y="778">PR 023: explicit signed bounce</text><text x="60" y="811">Normal MIDI export: sound only</text><text x="60" y="844">Extra step for stem credentials</text><text x="60" y="877">Signed-stem foundation exists</text>
+      <text x="445" y="778">Automatic actual stem ingredients</text><text x="445" y="811">Owner-thread graph safeguards</text><text x="445" y="844">MIDI progress + credential details</text><text x="445" y="877">Cancel/failure restoration checks</text>
+      <text x="830" y="778">No recording or MIDI-file import</text><text x="830" y="811">No persistent cache / tail detection</text><text x="830" y="844">No binding / threshold changes</text><text x="830" y="877">No automatic merge</text>
+      <text x="1215" y="778">One normal signed Export action</text><text x="1215" y="811">Meaningful MIDI/instrument history</text><text x="1215" y="844">No new tracks, media, or mutes</text><text x="1215" y="877">Manual listening still required</text>
+    </g>
+  </g>
+</svg>

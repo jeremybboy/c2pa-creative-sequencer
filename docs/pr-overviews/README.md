@@ -9,6 +9,7 @@ snapshot retained to explain what was known when the overview was prepared.
 
 | PR | Overview | Status snapshot | Pull request |
 | --- | --- | --- | --- |
+| Follow-up to 023 | [Automatic MIDI provenance on Export](automatic-midi-export-provenance/implementation-brief.md) · [Visual](automatic-midi-export-provenance/overview.png) · [Editable SVG](automatic-midi-export-provenance/overview.svg) | Release build and 17/17 CTest passed on 2026-10-09; external-instrument listening acceptance pending | Not opened |
 | 023 | [Bounce MIDI track to credentialed stem](PR-023-midi-credentialed-stem/implementation-brief.md) · [Visual](PR-023-midi-credentialed-stem/overview.png) · [Editable SVG](PR-023-midi-credentialed-stem/overview.svg) | Release build, 17/17 tests, 4/4 focused checks, signature, and visual QA pass on 2026-10-09; human instrument/listening acceptance pending | Not opened |
 | 022 | [Stem provenance authoring foundation](PR-022-stem-provenance-foundation/implementation-brief.md) · [Visual](PR-022-stem-provenance-foundation/overview.png) · [Editable SVG](PR-022-stem-provenance-foundation/overview.svg) | Release build, 17/17 tests, focused checks, and signature pass on 2026-10-09; review pending; no bounce or recording UI | See GitHub for current status |
 | 021 | [Recovery demo launcher](PR-021-recovery-demo-launcher/implementation-brief.md) · [Editable visual](PR-021-recovery-demo-launcher/overview.svg) | Implementation, 17-test suite, signature, and local UI smoke pass; independent human acceptance pending | Not opened |
