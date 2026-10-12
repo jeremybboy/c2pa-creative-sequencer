@@ -337,7 +337,8 @@ int exerciseAudioRecording(const juce::File& root)
     if (engine.startAudioRecording().failed() || ! engine.transportSnapshot().playing)
         return fail(85, "record did not start transport");
     if (engine.createProject(root.getChildFile("Other.c2paseq"), "Other").wasOk()
-        || engine.deleteTrack(0).wasOk() || engine.setTrackRecordArmed(1, true).wasOk())
+        || engine.deleteTrack(0).wasOk() || engine.setTrackRecordArmed(1, true).wasOk()
+        || engine.deleteAudioTimeRange(c2paseq::ArrangementTimeSelection::between(0.0, 1.0, 0, 0)).wasOk())
         return fail(85, "recording target could be replaced during capture");
     for (int offset = 0; offset < 48000; offset += 512)
     {
@@ -391,6 +392,40 @@ int exerciseAudioRecording(const juce::File& root)
         || ! mixed.ingredients.front().provenance.assetIntact
         || ! mixed.outputProvenance.rawManifestJson.contains(clip.provenance.activeManifest))
         return fail(90, "final signed Export did not include the credentialed take ingredient: " + mixed.result.getErrorMessage());
+    const auto takeHash = juce::SHA256(clip.mediaFile).toHexString();
+    const auto mediaCountBeforeEdit = project.getChildFile("Media").getNumberOfChildFiles(juce::File::findFiles);
+    if (engine.trimClip(clip.id, 2.125, 0.125, 0.75).failed()
+        || juce::SHA256(clip.mediaFile).toHexString() != takeHash || ! engine.undo())
+        return fail(99, "trim modified the signed take or was not undoable");
+    if (engine.splitClip(clip.id, 2.5).failed()
+        || engine.arrangementSnapshot()[0].clips.size() != 2
+        || juce::SHA256(clip.mediaFile).toHexString() != takeHash || ! engine.undo())
+        return fail(99, "split modified the signed take or was not undoable");
+    if (engine.deleteAudioTimeRange(c2paseq::ArrangementTimeSelection::between(2.25, 2.75, 0, 0)).failed())
+        return fail(99, "credentialed take range delete failed");
+    const auto fragments = engine.arrangementSnapshot()[0].clips;
+    if (fragments.size() != 2 || fragments[0].mediaId != clip.mediaId || fragments[1].mediaId != clip.mediaId
+        || ! approximately(fragments[0].startSeconds, 2.0, 0.000001)
+        || ! approximately(fragments[0].sourceOffsetSeconds, 0.0, 0.000001)
+        || ! approximately(fragments[0].lengthSeconds, 0.25, 0.000001)
+        || ! approximately(fragments[1].startSeconds, 2.75, 0.000001)
+        || ! approximately(fragments[1].sourceOffsetSeconds, 0.75, 0.000001)
+        || ! approximately(fragments[1].lengthSeconds, 0.25, 0.000001)
+        || fragments[0].provenance.rawManifestJson != json || fragments[1].provenance.rawManifestJson != json
+        || juce::SHA256(clip.mediaFile).toHexString() != takeHash
+        || project.getChildFile("Media").getNumberOfChildFiles(juce::File::findFiles) != mediaCountBeforeEdit)
+        return fail(99, "range deletion changed signed source bytes/manifest/media identity or fragment math");
+    const auto editedMixFile = root.getChildFile("range-deleted-recorded-mix.wav");
+    const auto editedMix = engine.exportMix(editedMixFile);
+    WavReadback editedAudio;
+    if (editedMix.result.failed() || editedMix.ingredients.size() != 1
+        || editedMix.ingredients.front().provenance.activeManifest != clip.provenance.activeManifest
+        || ! editedMix.outputProvenance.assetIntact
+        || ! editedMix.outputProvenance.rawManifestJson.contains(clip.provenance.activeManifest)
+        || ! readWav(editedMixFile, editedAudio)
+        || rmsAt(editedAudio, 2.125) < 0.01 || rmsAt(editedAudio, 2.875) < 0.01
+        || rmsAt(editedAudio, 2.5) > 0.00001 || ! engine.undo())
+        return fail(99, "fragment export did not keep one intact original ingredient and an audible non-ripple gap");
     if (! engine.undo() || ! engine.arrangementSnapshot()[0].clips.empty()
         || ! engine.redo() || engine.arrangementSnapshot()[0].clips.size() != 1)
         return fail(91, "take import was not one undoable edit");

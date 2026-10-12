@@ -8,6 +8,8 @@ class TimelineGeometry
 {
 public:
     static constexpr int beatsPerBar = 4;
+    static constexpr double minimumZoom = 24.0;
+    static constexpr double maximumZoom = 4096.0;
 
     double bpm = 120.0;
     double pixelsPerSecond = 96.0;
@@ -18,6 +20,9 @@ public:
     [[nodiscard]] double timeToX(double seconds) const noexcept;
     [[nodiscard]] double xToTime(double x) const noexcept;
     [[nodiscard]] double snapToBeat(double seconds) const noexcept;
+    [[nodiscard]] double snapStepBeats() const noexcept;
+    [[nodiscard]] double snapStepSeconds() const noexcept;
+    [[nodiscard]] double snapToGrid(double seconds) const noexcept;
     void zoomAround(double newPixelsPerSecond, double anchorX) noexcept;
 };
 }

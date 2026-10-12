@@ -1,4 +1,5 @@
 #include "ProjectSerializer.h"
+#include "timeline/TimelineGeometry.h"
 
 #include <cmath>
 
@@ -523,7 +524,8 @@ juce::Result ProjectSerializer::load(const ProjectPaths& paths, Project& project
     if (root->hasProperty("timelineScrollSeconds"))
         if (auto result = requireNumber(*root, "timelineScrollSeconds",
                                         loaded.timelineScrollSeconds); result.failed()) return result;
-    loaded.timelinePixelsPerSecond = juce::jlimit(24.0, 640.0,
+    loaded.timelinePixelsPerSecond = juce::jlimit(TimelineGeometry::minimumZoom,
+        TimelineGeometry::maximumZoom,
                                                    loaded.timelinePixelsPerSecond);
     loaded.timelineScrollSeconds = std::max(0.0, loaded.timelineScrollSeconds);
     if (root->hasProperty("loopStartSeconds"))

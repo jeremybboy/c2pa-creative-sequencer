@@ -15,6 +15,7 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     typeBadge.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGB(91, 69, 126));
     nameEditor.setEditable(false, true, false);
     nameEditor.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    nameEditor.setMinimumHorizontalScale(1.0f);
     nameEditor.setColour(juce::Label::textColourId, juce::Colour::fromRGB(239, 241, 243));
     nameEditor.onTextChange = [this]
     {
@@ -34,7 +35,7 @@ TrackHeaderView::TrackHeaderView(int index) : trackIndex(index)
     for (auto* slider : { &gain, &panControl })
     {
         slider->setSliderStyle(juce::Slider::LinearHorizontal);
-        slider->setTextBoxStyle(juce::Slider::TextBoxRight, false, 48, 18);
+        slider->setTextBoxStyle(juce::Slider::TextBoxRight, false, 60, 20);
     }
     gain.setRange(-60.0, 12.0, 0.1);
     gain.setTextValueSuffix(" dB");
@@ -214,6 +215,7 @@ void TrackHeaderView::setState(const juce::String& trackName, double gainDb, dou
     currentType = type;
     arm.setVisible(type == TrackType::audio);
     nameEditor.setText(trackName, juce::dontSendNotification);
+    nameEditor.setTooltip(trackName + " | Double-click to rename");
     gain.setValue(gainDb, juce::dontSendNotification);
     panControl.setValue(pan, juce::dontSendNotification);
     mute.setToggleState(muted, juce::dontSendNotification);
@@ -248,7 +250,7 @@ void TrackHeaderView::paint(juce::Graphics& g)
     g.fillAll(currentType == TrackType::midi ? juce::Colour::fromRGB(56, 53, 63)
                                              : juce::Colour::fromRGB(53, 57, 61));
     g.setColour(juce::Colour::fromRGB(47, 51, 55));
-    g.fillRect(4, 0, getWidth() - 4, 34);
+    g.fillRect(4, 0, getWidth() - 4, 36);
     g.setColour(accent);
     g.fillRect(0, 0, 4, getHeight());
     g.setColour(juce::Colour::fromRGB(75, 80, 85));
@@ -281,22 +283,27 @@ void TrackHeaderView::paint(juce::Graphics& g)
 
 void TrackHeaderView::resized()
 {
-    auto area = getLocalBounds().reduced(7, 5);
+    auto area = getLocalBounds().reduced(9, 6);
     meterBounds = area.removeFromRight(11).reduced(1, 2);
     area.removeFromRight(4);
-    auto top = area.removeFromTop(25);
-    number.setBounds(top.removeFromLeft(24));
+    auto top = area.removeFromTop(26);
+    number.setBounds(top.removeFromLeft(20));
     typeBadge.setBounds(top.removeFromLeft(currentType == TrackType::midi ? 36 : 0).reduced(2, 3));
     deleteTrack.setBounds(top.removeFromRight(24).reduced(1));
-    solo.setBounds(top.removeFromRight(27).reduced(1));
-    mute.setBounds(top.removeFromRight(27).reduced(1));
-    arm.setBounds(top.removeFromRight(currentType == TrackType::audio ? 27 : 0).reduced(1));
-    pluginMenu.setBounds(top.removeFromRight(currentType == TrackType::midi ? 78 : 58).reduced(1));
     nameEditor.setBounds(top.reduced(3, 0));
+    area.removeFromTop(3);
+    auto controls = area.removeFromTop(28);
+    solo.setBounds(controls.removeFromRight(28).reduced(1));
+    mute.setBounds(controls.removeFromRight(28).reduced(1));
+    arm.setBounds(controls.removeFromRight(currentType == TrackType::audio ? 28 : 0).reduced(1));
+    controls.removeFromRight(4);
+    pluginMenu.setBounds(controls.reduced(1));
+    area.removeFromTop(3);
     auto gainRow = area.removeFromTop(22);
+    inputSelector.setBounds(gainRow.removeFromLeft(currentType == TrackType::audio ? 58 : 0).reduced(1));
     gain.setBounds(gainRow);
+    area.removeFromTop(2);
     auto panRow = area.removeFromTop(22);
-    inputSelector.setBounds(panRow.removeFromLeft(currentType == TrackType::audio ? 60 : 0).reduced(1));
     panControl.setBounds(panRow);
 }
 }

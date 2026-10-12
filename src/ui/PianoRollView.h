@@ -23,6 +23,8 @@ public:
     void mouseDrag(const juce::MouseEvent&) override;
     void mouseUp(const juce::MouseEvent&) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&,
                         const juce::MouseWheelDetails&) override;
     void mouseMagnify(const juce::MouseEvent&, float scaleFactor) override;
@@ -67,6 +69,7 @@ private:
     bool selectInsertedNotesOnNextUpdate = false;
     ArrangementMidiNoteSnapshot dragNote;
     std::optional<ArrangementMidiNoteSnapshot> dragPreview;
+    std::optional<int> hoveredPitch;
     DragMode dragMode = DragMode::none;
     juce::Point<float> dragStart;
     double horizontalZoom = 1.0;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TrackLevelMeter.h"
+#include "recording/AudioInputChoice.h"
 
 #include <tracktion_engine/tracktion_engine.h>
 
@@ -33,14 +34,6 @@ struct AudioFileMetadata
     double lengthSeconds = 0.0;
     double sampleRate = 0.0;
     int channels = 0;
-};
-
-struct AudioInputChoice
-{
-    juce::String deviceName;
-    int channelIndex = 0;
-    juce::String channelName;
-    juce::String label() const { return deviceName + " / " + channelName; }
 };
 
 struct MidiPlaybackNote

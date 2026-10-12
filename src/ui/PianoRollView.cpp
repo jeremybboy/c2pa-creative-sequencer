@@ -1,4 +1,5 @@
 #include "PianoRollView.h"
+#include "midi/MidiNoteFormatting.h"
 
 #include <algorithm>
 #include <cmath>
@@ -190,12 +191,18 @@ void PianoRollView::paint(juce::Graphics& g)
         + " | Pinch grid: time | Pinch keys: pitch";
     if (dragPreview.has_value())
         header = "Moving note | Song " + songPositionLabel(dragPreview->startBeats)
-            + " | MIDI " + juce::String(dragPreview->noteNumber)
+            + " | " + midiNoteName(dragPreview->noteNumber)
+            + " (MIDI " + juce::String(dragPreview->noteNumber) + ")"
             + " | Length " + juce::String(dragPreview->durationBeats, 2)
             + " beats | Velocity " + juce::String(dragPreview->velocity);
+    else if (hoveredPitch.has_value())
+        header = "Pitch " + midiNoteName(*hoveredPitch) + " (MIDI "
+            + juce::String(*hoveredPitch) + ") | Song "
+            + songPositionLabel(visibleStartBeat) + " | Double-click to draw";
     else if (const auto* note = selectedNote())
         header = "Selected note | Song " + songPositionLabel(note->startBeats)
-            + " | MIDI " + juce::String(note->noteNumber)
+            + " | " + midiNoteName(note->noteNumber)
+            + " (MIDI " + juce::String(note->noteNumber) + ")"
             + " | Length " + juce::String(note->durationBeats, 2)
             + " beats | Velocity " + juce::String(note->velocity);
     g.drawText(header,
@@ -229,11 +236,11 @@ void PianoRollView::paint(juce::Graphics& g)
         g.fillRect(0.0f, y, static_cast<float>(keyboardWidth), rowHeight);
         g.setColour(juce::Colour::fromRGB(72, 77, 83));
         g.drawHorizontalLine(juce::roundToInt(y), 0.0f, grid.getRight());
-        if (pitch % 12 == 0)
+        if (rowHeight >= 12.0f || (pitch % 12 == 0 && rowHeight >= 5.0f))
         {
             g.setColour(juce::Colour::fromRGB(210, 214, 217));
-            g.setFont(juce::FontOptions(9.0f));
-            g.drawText("C" + juce::String(pitch / 12 - 1), 5,
+            g.setFont(juce::FontOptions(10.0f));
+            g.drawText(midiNoteName(pitch), 5,
                        juce::roundToInt(y), keyboardWidth - 8,
                        std::max(8, juce::roundToInt(rowHeight)),
                        juce::Justification::centredLeft);
@@ -281,6 +288,12 @@ void PianoRollView::paint(juce::Graphics& g)
         g.fillRoundedRectangle(bounds, 2.0f);
         g.setColour(juce::Colour::fromRGB(18, 69, 44));
         g.drawRoundedRectangle(bounds, 2.0f, 1.0f);
+        if (bounds.getWidth() >= 38.0f && bounds.getHeight() >= 12.0f)
+        {
+            g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+            g.drawText(midiNoteName(displayed.noteNumber), bounds.reduced(4.0f, 0.0f),
+                       juce::Justification::centredLeft, true);
+        }
     }
 
     const auto lane = velocityBounds();
@@ -409,7 +422,28 @@ void PianoRollView::mouseDoubleClick(const juce::MouseEvent& event)
     const auto start = std::min(beatAt(event.position.x, ! event.mods.isAltDown()),
         std::max(0.0, midiClip.lengthBeats - gridStepBeats));
     const auto duration = std::min(1.0, midiClip.lengthBeats - start);
-    onAddNote(pitchAt(event.position.y), start, duration, 100);
+    const auto pitch = pitchAt(event.position.y);
+    hoveredPitch = pitch;
+    selectInsertedNotesOnNextUpdate = true;
+    onAddNote(pitch, start, duration, 100);
+    if (onStatus) onStatus("Created " + midiNoteName(pitch) + " | Song " + songPositionLabel(start));
+    repaint();
+}
+
+void PianoRollView::mouseMove(const juce::MouseEvent& event)
+{
+    hoveredPitch.reset();
+    const auto grid = gridBounds();
+    if (event.position.y >= grid.getY() && event.position.y < grid.getBottom())
+        hoveredPitch = grid.contains(event.position) && noteAt(event.position) != nullptr
+            ? noteAt(event.position)->noteNumber : pitchAt(event.position.y);
+    repaint();
+}
+
+void PianoRollView::mouseExit(const juce::MouseEvent&)
+{
+    hoveredPitch.reset();
+    repaint();
 }
 
 void PianoRollView::mouseWheelMove(const juce::MouseEvent& event,

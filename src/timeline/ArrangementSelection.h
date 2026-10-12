@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 
 namespace c2paseq
 {
@@ -14,7 +15,8 @@ struct ArrangementTimeSelection
 
     [[nodiscard]] bool isValid() const noexcept
     {
-        return active && endSeconds > startSeconds + 0.001
+        return active && std::isfinite(startSeconds) && std::isfinite(endSeconds)
+            && startSeconds >= 0.0 && endSeconds > startSeconds + 0.001
             && firstTrack >= 0 && lastTrack >= firstTrack;
     }
 

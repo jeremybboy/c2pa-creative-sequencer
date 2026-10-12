@@ -320,6 +320,21 @@ if(BUILD_TESTING)
         juce::juce_recommended_config_flags)
     add_test(NAME timeline_geometry COMMAND C2PATimelineTests)
 
+    add_executable(C2PAUIRefinementTests
+        tests/ui/UIRefinementTests.cpp
+        src/timeline/TimelineGeometry.cpp
+        src/ui/TrackHeaderView.cpp
+        src/ui/PianoRollView.cpp
+        src/ui/IconButton.cpp
+        src/ui/SequencerLookAndFeel.cpp
+        src/engine/TrackLevelMeter.cpp)
+    target_include_directories(C2PAUIRefinementTests PRIVATE src)
+    target_compile_features(C2PAUIRefinementTests PRIVATE cxx_std_20)
+    target_compile_definitions(C2PAUIRefinementTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+    target_link_libraries(C2PAUIRefinementTests PRIVATE
+        juce::juce_audio_processors juce::juce_gui_basics juce::juce_recommended_config_flags)
+    add_test(NAME ui_refinement COMMAND C2PAUIRefinementTests)
+
     add_executable(C2PAArrangementRulesTests
         tests/engine/ArrangementRulesTests.cpp
         src/engine/ClipOcclusion.cpp
