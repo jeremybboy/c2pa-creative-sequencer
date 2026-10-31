@@ -30,6 +30,7 @@ struct CredentialViewModel
     juce::String title, badge, description, policy, details;
     std::array<CredentialCheck, 3> checks;
     CredentialHistoryNode history;
+    bool demoTrust = false;
 };
 [[nodiscard]] CredentialViewModel makeCredentialViewModel(
     const IngredientInfo&, const juce::String& title,

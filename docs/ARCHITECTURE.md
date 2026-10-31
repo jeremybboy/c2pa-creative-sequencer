@@ -23,6 +23,19 @@ loading, not a new project schema, undo action, claim, or continuous file monito
 retain their previous SDK defaults and signing semantics. No official-list or test trust is claimed
 unless separately configured and actually reported; a signing PEM is not a validator trust policy.
 
+The viewer's explicit, default-off **Demo trust** checkbox is that separate local-only policy.
+On opt-in, `ProvenanceService::demoTrustCertificates` extracts public certificate blocks only
+from the configured signing bundle; no key material reaches the view. Background Reader calls
+use `trust.user_anchors` with remote-manifest/OCSP fetching disabled, keeping signature, binding,
+chain and timestamp checks enabled. `allowed_list` and verification bypasses are not used.
+Results and complete public-policy identity are cached separately in the arrangement view;
+they never replace project provenance, normal export validation or global SDK settings. Disabling
+the mode immediately restores baseline inspection. No policy file or trust list is persisted.
+A dashed green trust card requires actual SDK trust success and is marked DEMO/TEST, not production.
+While an opted-in inspection runs, the trust result is Unknown, not a recoloured baseline failure;
+known binding/signature failures remain failures. The graph uses audio symbols, not source
+waveform data or audition playback. Default framing favors readable type; explicit Fit frames nodes.
+
 The system keeps four concerns separate: creative state, audio execution, provenance state, and C2PA serialization. JUCE owns the application shell and custom interface; a narrow adapter shields application code from Tracktion Engine; the provenance service translates the stable internal provenance model into `c2pa-cpp` calls only at its boundary.
 
 The initial dependency and component flow is shown in the repository overview diagram. This document will expand only when implementation makes an architectural claim real.

@@ -87,6 +87,8 @@ private:
     void showExportCredentials();
     void showSelectedCredentials();
     void refreshCredentialsPanel();
+    [[nodiscard]] CredentialViewModel credentialViewFor(const IngredientInfo&, const juce::File&,
+        const juce::String&, const std::vector<ContributingIngredient>& = {});
     void togglePlayback();
     void stopSampleAudition(const juce::String& message = {});
     void scanPlugins();
@@ -151,6 +153,10 @@ private:
     std::unique_ptr<PianoRollView> pianoRoll;
     CredentialsPanel credentialsPanel;
     juce::String credentialsSelectionKey;
+    juce::String demoTrustPublicCertificates;
+    std::map<juce::String, IngredientInfo> demoTrustCache;
+    std::thread demoTrustThread;
+    bool demoTrustRunning = false;
     juce::Component headerContainer;
     juce::ScrollBar horizontalScroll { false };
     juce::ScrollBar verticalScroll { true };

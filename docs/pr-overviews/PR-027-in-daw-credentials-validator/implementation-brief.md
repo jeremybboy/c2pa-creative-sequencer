@@ -10,6 +10,40 @@ Snapshot: 2026-10-30; implementation and automated checks complete; human accept
 
 ![Implemented scope and boundaries](overview.png)
 
+## Latest review — simpler dock, readable cards, explicit local demo trust
+
+The compact dock is now summary + validation only: its redundant "How this audio was made"
+disclosure list was removed. History remains in Expand Provenance. The graph uses larger white
+type, dark cards on black, blue outlines/source pills and schematic audio symbols, not image
+placeholders or fabricated waveform/playback data. Opening frames the tree at a readable scale;
+pan to outer branches or use Fit for the complete overview.
+
+The light **Demo trust** checkbox is off by default and resets on application restart. Opting in
+extracts only public certificate blocks from the configured signer's PEM and evaluates the local
+file in a background SDK Reader with `trust.user_anchors`; remote-manifest and OCSP fetching stay
+off, and signature, binding and credential checks remain enabled. There is no allowed-list bypass.
+A dashed green **DEMO / TEST** card requires explicit `signingCredential.trusted` success from
+that evaluation. It means local demo-policy trust, not a production/official-list assertion or
+automatic classification of the certificate as a test certificate. Signed export and normal
+SDK validation remain unchanged. No key material, trust configuration, or demo result is saved
+to the project or exported manifest. Turn the mode off to restore the original result immediately;
+toggle off/on after changing Signing to take a new public-certificate snapshot.
+
+These are opt-in, per-file local checks: the default dock still uses cached inspection. While
+checking, trust is Unknown, not falsely green; known binding/signature failures remain visible.
+Missing certificates or source files cannot produce a successful demo result. Source availability
+and graph ingredient history are not independently validated simply because the root is trusted.
+
+Actual SDK evaluation of an existing signed WAV under a real local public-certificate policy:
+
+![Real local demo trust, not a recoloured result](real-demo-trust.png)
+
+Backend tests verify genuine local trust, no private key in the public-certificate API, no
+contamination of the default context, empty-anchor rejection, and a real PCM-only tamper that
+still fails hard binding while demo mode is in use. Viewer tests cover demo labelling, default-off
+toggle behavior and retained signature failure. Playback continuity and the native toggle/background
+flow with the user's project remain human acceptance, not claims established by component renders.
+
 ## UI revision following human feedback — spatial graph
 
 The initial expandable list did not meet the expected navigable-tree experience. PR 027 now
@@ -50,7 +84,7 @@ not a new validation engine, a file-drop verifier, or a new signing workflow.
 | Previous UI | Compact clip badges and modal validation/export summaries. |
 | User-visible | Compact validation dock plus expandable, navigable spatial graph; Clip / Last Export / Details; independent checks and neutral missing/unavailable states. |
 | Model | Deterministic typed `CredentialViewModel`, separate graph layout/camera and selection, independent of authoring, signing and audio execution. |
-| Inspection | Existing Reader; default inspection path unchanged. Project reopening rehydrates Reader JSON from local project media with remote manifest and OCSP fetching disabled. |
+| Inspection | Default Reader unchanged; project reopening is local-only. Explicit Demo trust adds a separate, session-only background Reader context with the configured public chain as user anchors. |
 | Persistence / undo | No project schema change, panel persistence or undo action; dock state and last completed export are session-local. Saving retains the existing summary fields only. |
 | Audio / realtime | Dock callbacks have no audio/transport/signing calls; piano-roll overlay is constrained to the remaining timeline. Audible uninterrupted playback still needs human acceptance. |
 | C2PA | No changed action templates, signer configuration, hard-binding semantics, thresholds, watermark/fingerprint or recovery behavior. |
@@ -71,10 +105,10 @@ results produce positive individual cards. No result is Unknown, not green. Fail
 success; informational OCSP inaccessibility does not erase explicitly reported trust.
 Other issues/warnings and unknown individual results keep the overall badge **CC ?**.
 
-The current Reader uses SDK defaults, not a configured official C2PA trust list. Loading the
-test signing PEM is not evidence that the validator uses a test trust anchor. Accordingly this
-UI does not falsely label a test-trust mode or production trust. Real signed fixtures report
-binding/signature success with an untrusted signer; that distinction remains visible.
+The default Reader uses SDK defaults, not a configured official C2PA trust list. Loading a
+signing PEM alone establishes no validator trust; only the explicit Demo trust opt-in adds its
+public chain to a separate local Reader context. Real signed fixtures report binding/signature
+success with an untrusted signer under defaults, and explicit local trust under demo policy.
 
 History uses actual manifest actions, source types, software agents, MIDI instrument parameters,
 and ingredient relationships. Available embedded manifests can be expanded; full technical data
@@ -89,8 +123,10 @@ say No Content Credentials, not failure. Transient automatic MIDI stems can have
 even after their source WAV workspace is gone. A failed/cancelled export does not erase the last
 successful export snapshot. New/open project resets the export snapshot as before.
 
-Opening the panel performs no SDK validation or network request; import, recording, bounce and
-successful export supply existing results. Reopening a project now explicitly refreshes local
+With Demo trust off, opening the panel performs no SDK validation or network request; import,
+recording, bounce and successful export supply existing results. Opting in enables separate
+background local checks of selected/last-export files without changing those results. Reopening
+a project explicitly refreshes local
 source inspection because the project serializer stores a summary rather than raw Reader JSON.
 This occurs during project loading, not playback or panel toggling, and creates no undo action.
 The dock is not continuous surveillance of later file changes.
@@ -98,7 +134,7 @@ The dock is not continuous surveillance of later file changes.
 ## Design reference — not implemented results
 
 The supplied image shows desired hierarchy/density; its blue explanatory annotations are **not**
-application UI. Its green test-trust result is not copied into the implementation.
+application UI. A green local-demo result is computed by the Reader, not copied from this image.
 
 ![User-supplied design reference, not a test report](design-reference.png)
 
@@ -155,7 +191,7 @@ Follow [the ten-step checklist](../../DEMO.md#pr-027-content-credentials-viewer-
 Do not merge if playback stops on dock/selection changes, any unknown state turns green,
 the active file inherits an ingredient's check result, missing audio appears independently
 validated, test signing is presented as official trust, or existing recording/MIDI/export/recovery
-behavior regresses. Do not add trust infrastructure, network fetching, authorship inference,
+behavior regresses. Do not add production/global trust infrastructure, network fetching, authorship inference,
 new claims, signing workflows or broad repository restructuring to resolve a UI limitation.
 
 This PR is for human review; do not merge automatically.

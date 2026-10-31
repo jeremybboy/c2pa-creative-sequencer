@@ -25,38 +25,15 @@ juce::String checkName(CredentialCheckState state)
         default: return "UNKNOWN";
     }
 }
-class HistoryItem final : public juce::TreeViewItem
-{
-public:
-    HistoryItem(CredentialHistoryNode value, std::function<void(const juce::String&)> callback)
-        : node(std::move(value)), selected(std::move(callback))
-    {
-        for (auto& child : node.children) addSubItem(new HistoryItem(child, selected));
-    }
-    bool mightContainSubItems() override { return getNumSubItems() > 0; }
-    int getItemHeight() const override { return 46; }
-    void paintItem(juce::Graphics& g, int width, int height) override
-    {
-        const juce::Rectangle<int> bounds(0, 2, std::max(0, width - 4), height - 4);
-        g.setColour(juce::Colour(0xff29333c)); g.fillRoundedRectangle(bounds.toFloat(), 4);
-        g.setColour(juce::Colour(0xff71818e)); g.drawRoundedRectangle(bounds.toFloat(), 4, 1);
-        g.setColour(juce::Colour(0xffedf1f3)); g.setFont(juce::FontOptions(12, juce::Font::bold));
-        g.drawText(node.title, bounds.reduced(8, 2).removeFromTop(17), juce::Justification::centredLeft);
-        g.setFont(juce::FontOptions(11)); g.setColour(juce::Colour(0xffbfccd5));
-        g.drawText(node.subtitle, bounds.reduced(8, 2).withTrimmedTop(18), juce::Justification::centredLeft);
-    }
-    juce::String getTooltip() override { return node.title + "\n" + node.subtitle + "\nClick for details; expand for available history."; }
-    void itemClicked(const juce::MouseEvent&) override
-    { if (selected) selected(node.title + "\n" + node.subtitle + "\n\n" + node.details); }
-private:
-    CredentialHistoryNode node;
-    std::function<void(const juce::String&)> selected;
-};
 }
 CredentialsPanel::CredentialsPanel()
 {
     for (auto* button : { &clipTab, &exportTab, &detailsTab, &fullDetails, &close, &expand }) addAndMakeVisible(button);
     addChildComponent(graph);
+    addAndMakeVisible(demoTrust);
+    demoTrust.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffc4ced6));
+    demoTrust.setTooltip("Session-only, offline demo trust using public certificates from your configured signer. Not production or official-list trust; exports are unchanged. Toggle off/on after changing Signing.");
+    demoTrust.onClick = [this] { if (onDemoTrustChanged) onDemoTrustChanged(demoTrust.getToggleState()); };
     expand.onClick = [this] { setExpanded(! expanded); };
     for (auto& button : checkDetails)
     { button.setButtonText("Details"); addAndMakeVisible(button); button.setWantsKeyboardFocus(false); }
@@ -83,12 +60,14 @@ CredentialsPanel::CredentialsPanel()
     details.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xff1c242b));
     details.setColour(juce::TextEditor::textColourId, juce::Colour(0xffe4eaf0));
     addChildComponent(details);
-    tree.setColour(juce::TreeView::backgroundColourId, juce::Colour(0xff1b2228));
-    tree.setColour(juce::TreeView::linesColourId, juce::Colour(0xff8295a3));
-    tree.setRootItemVisible(true); tree.setDefaultOpenness(false); addAndMakeVisible(tree);
     updateContent();
 }
-CredentialsPanel::~CredentialsPanel() { tree.setRootItem(nullptr); }
+CredentialsPanel::~CredentialsPanel() = default;
+void CredentialsPanel::setDemoTrustEnabled(bool enabled)
+{
+    demoTrust.setToggleState(enabled, juce::dontSendNotification);
+    if (onDemoTrustChanged) onDemoTrustChanged(enabled);
+}
 void CredentialsPanel::setClip(CredentialViewModel view, const juce::String& trackName)
 { clip = std::move(view); track = trackName; if (! exportSelected) updateContent(); }
 void CredentialsPanel::setEmptySelection(bool multiple)
@@ -111,14 +90,10 @@ void CredentialsPanel::showDetails(const juce::String& text)
 { detailsSelected = true; details.setText(text, false); resized(); repaint(); }
 void CredentialsPanel::updateContent()
 {
-    tree.setRootItem(nullptr); root.reset();
     const auto& current = exportSelected ? lastExport : clip;
     if (current)
     {
         graph.setHistory(current->history);
-        root = std::make_unique<HistoryItem>(current->history,
-            [this](const auto& text) { showDetails(text); });
-        tree.setRootItem(root.get()); root->setOpen(true);
     }
     if (detailsSelected) details.setText(current ? current->details : emptyMessage, false);
     resized(); repaint();
@@ -131,18 +106,16 @@ void CredentialsPanel::resized()
     exportTab.setBounds(top.removeFromLeft(102).reduced(2));
     detailsTab.setBounds(top.removeFromLeft(74).reduced(2));
     expand.setBounds(top.removeFromLeft(166).reduced(2));
+    demoTrust.setBounds(top.removeFromLeft(118).reduced(3));
     close.setBounds(top.removeFromRight(64).reduced(2));
     area.removeFromTop(10);
     details.setBounds(area); details.setVisible(detailsSelected);
     const auto& current = exportSelected ? lastExport : clip;
     expand.setEnabled(current.has_value() || expanded);
     graph.setBounds(area); graph.setVisible(expanded && ! detailsSelected && current.has_value());
-    summaryBounds = area.removeFromLeft(juce::jlimit(220, 300, getWidth() / 4));
-    area.removeFromLeft(12);
-    checksBounds = area.removeFromLeft(juce::jlimit(300, 360, getWidth() / 3));
-    area.removeFromLeft(12); historyBounds = area;
-    tree.setBounds(historyBounds.withTrimmedTop(24));
-    tree.setVisible(! detailsSelected && ! expanded);
+    summaryBounds = area.removeFromLeft(juce::jlimit(250, 380, getWidth() / 3));
+    area.removeFromLeft(24);
+    checksBounds = area;
     fullDetails.setBounds(summaryBounds.withTrimmedTop(summaryBounds.getHeight() - 30).withWidth(164));
     fullDetails.setVisible(current.has_value() && ! detailsSelected && ! expanded);
     for (int i = 0; i < 3; ++i)
@@ -177,7 +150,7 @@ void CredentialsPanel::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0xff8cb6ca)); g.drawRect(icon, 1.0f);
     for (int line = 0; line < 3; ++line)
         g.drawHorizontalLine(juce::roundToInt(icon.getY() + 5 + line * 4), icon.getX() + 3, icon.getRight() - 3);
-    g.setFont(juce::FontOptions(14, juce::Font::bold));
+    g.setFont(juce::FontOptions(16, juce::Font::bold));
     g.drawText(view.title, summary.removeFromTop(24), juce::Justification::centredLeft);
     g.setFont(juce::FontOptions(12)); g.setColour(juce::Colour(0xffbfccd5));
     g.drawText(exportSelected ? "Completed signed export (session snapshot)" : "Track: " + track,
@@ -189,16 +162,23 @@ void CredentialsPanel::paint(juce::Graphics& g)
     g.drawFittedText(view.description, summary, juce::Justification::topLeft, 5, 1.0f);
     g.setColour(juce::Colours::white); g.setFont(juce::FontOptions(12, juce::Font::bold));
     g.drawText("Validation", checksBounds.withHeight(20), juce::Justification::centredLeft);
-    g.drawText("How this audio was made", historyBounds.withHeight(20), juce::Justification::centredLeft);
     for (int i = 0; i < 3; ++i)
     {
         const auto& check = view.checks[static_cast<size_t>(i)];
         auto card = checksBounds.withTrimmedTop(24 + i * 50).withHeight(46);
         g.setColour(juce::Colour(0xff283038)); g.fillRoundedRectangle(card.toFloat(), 4);
+        if (i == 2 && view.demoTrust && check.state == CredentialCheckState::pass)
+        {
+            juce::Path outline, dashed; outline.addRoundedRectangle(card.toFloat().reduced(1), 4);
+            const float pattern[] { 5, 4 };
+            juce::PathStrokeType(1.2f).createDashedStroke(dashed, outline, pattern, 2);
+            g.setColour(checkColour(check.state)); g.fillPath(dashed);
+        }
         card.removeFromRight(66); card.reduce(8, 3);
-        g.setColour(checkColour(check.state)); g.setFont(juce::FontOptions(12, juce::Font::bold));
-        g.drawText(check.title + " - " + checkName(check.state), card.removeFromTop(18), juce::Justification::centredLeft);
-        g.setFont(juce::FontOptions(11));
+        g.setColour(checkColour(check.state)); g.setFont(juce::FontOptions(14, juce::Font::bold));
+        g.drawText(check.title + " - " + (i == 2 && view.demoTrust && check.state == CredentialCheckState::pass
+            ? "DEMO / TEST" : checkName(check.state)), card.removeFromTop(18), juce::Justification::centredLeft);
+        g.setFont(juce::FontOptions(13));
         g.drawText(check.summary, card, juce::Justification::centredLeft);
     }
     auto policy = checksBounds.withTrimmedTop(178);

@@ -115,6 +115,7 @@ CredentialViewModel makeCredentialViewModel(const IngredientInfo& info, const ju
                                            const std::vector<ContributingIngredient>& local)
 {
     CredentialViewModel view;
+    view.demoTrust = info.demoTrustEvaluation;
     view.title = title;
     view.checks = {{{ CredentialCheckState::unknown, "Content binding", "Not separately reported", {} },
                     { CredentialCheckState::unknown, "Claim signature", "Not separately reported", {} },
@@ -122,6 +123,7 @@ CredentialViewModel makeCredentialViewModel(const IngredientInfo& info, const ju
     view.policy = "Policy: cached SDK inspection; trust anchors not reported. No official-list or test-trust assertion.";
     if (info.inspectionPolicy.isNotEmpty()) view.policy = "Policy: " + info.inspectionPolicy
         + ". No official-list or test-trust assertion.";
+    if (info.demoTrustEvaluation) view.policy = "Policy: " + info.inspectionPolicy;
     view.badge = "CC ?";
     view.description = "Content Credentials are present; review the reported results below.";
     view.details = "File: " + title + "\nActive manifest: " + info.activeManifest
@@ -215,6 +217,13 @@ CredentialViewModel makeCredentialViewModel(const IngredientInfo& info, const ju
     if (! issue && info.validationIssues.empty() && std::all_of(view.checks.begin(), view.checks.end(),
         [](const auto& check) { return check.state == CredentialCheckState::pass; }))
         view.badge = juce::String::fromUTF8("CC \xe2\x9c\x93");
+    if (view.demoTrust)
+    {
+        if (view.checks[2].state == CredentialCheckState::pass)
+            view.checks[2].summary = "Trusted locally - DEMO/TEST only";
+        // A local demo evaluation must never look like a normal production-trust badge.
+        view.badge += " (demo)";
+    }
     int budget = 128;
     if (informational) view.policy += " Additional informational statuses reported - see Details.";
     view.history = history(document, activeId, title, local, {}, 0, budget);

@@ -145,6 +145,7 @@ public:
     [[nodiscard]] juce::AudioFormatManager& audioFormatManager() noexcept;
     [[nodiscard]] juce::AudioThumbnailCache& audioThumbnailCache() noexcept;
     [[nodiscard]] IngredientInfo inspectProvenance(const juce::File&) const;
+    [[nodiscard]] juce::String demoTrustCertificates() const;
     [[nodiscard]] bool signingConfigured() const;
     [[nodiscard]] juce::String signingCredentialStatus() const;
     [[nodiscard]] juce::Result configureSigningCredential(const juce::File&);

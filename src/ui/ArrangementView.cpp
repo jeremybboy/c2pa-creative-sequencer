@@ -470,6 +470,12 @@ ArrangementView::ArrangementView(AudioEngine& engine,
     addChildComponent(*pianoRoll);
     addChildComponent(credentialsPanel);
     credentialsPanel.onExpansionChanged = [this] { resized(); };
+    credentialsPanel.onDemoTrustChanged = [this](bool enabled)
+    {
+        // Public certificate snapshot only: no private key, project edit or global policy mutation.
+        demoTrustPublicCertificates = enabled ? audioEngine.demoTrustCertificates() : juce::String();
+        demoTrustCache.clear(); credentialsSelectionKey.clear(); refreshCredentialsPanel();
+    };
     credentialsPanel.onClose = [this]
     {
         credentialsPanel.setVisible(false);
@@ -495,6 +501,7 @@ ArrangementView::ArrangementView(AudioEngine& engine,
 
 ArrangementView::~ArrangementView()
 {
+    if (demoTrustThread.joinable()) demoTrustThread.join();
     if (audioEngine.isAudioRecording()) audioEngine.cancelAudioRecording();
     allComputerKeyboardNotesOff();
     exportCancellationRequested.store(true);
@@ -1299,7 +1306,7 @@ void ArrangementView::refreshCredentialsPanel()
     {
         auto available = lastExport->ingredients;
         std::erase_if(available, [](const auto& item) { return ! item.file.existsAsFile(); });
-        auto view = makeCredentialViewModel(lastExport->outputProvenance,
+        auto view = credentialViewFor(lastExport->outputProvenance, lastExport->outputFile,
             lastExport->outputFile.getFileName(), available);
         view.details += "\n\nExport snapshot\nFile: " + lastExport->outputFile.getFullPathName()
             + "\nAutomatically signed MIDI stems: " + juce::String(lastExport->midiStemsSigned)
@@ -1321,7 +1328,7 @@ void ArrangementView::refreshCredentialsPanel()
         for (const auto& clip : track.clips)
             if (clip.id == id)
             {
-                credentialsPanel.setClip(makeCredentialViewModel(clip.provenance,
+                credentialsPanel.setClip(credentialViewFor(clip.provenance, clip.mediaFile,
                     clip.mediaFile.getFileName()), track.name);
                 return;
             }
@@ -1343,6 +1350,48 @@ void ArrangementView::showSelectedCredentials()
     credentialsSelectionKey.clear();
     refreshCredentialsPanel();
     resized();
+}
+
+CredentialViewModel ArrangementView::credentialViewFor(const IngredientInfo& baseline,
+    const juce::File& file, const juce::String& title,
+    const std::vector<ContributingIngredient>& available)
+{
+    if (! credentialsPanel.isDemoTrustEnabled() || ! baseline.c2paPresent)
+        return makeCredentialViewModel(baseline, title, available);
+    const auto key = file.getFullPathName() + "|" + juce::String(file.getSize()) + "|"
+        + juce::String(file.getLastModificationTime().toMilliseconds()) + "|"
+        + demoTrustPublicCertificates;
+    if (const auto found = demoTrustCache.find(key); found != demoTrustCache.end())
+        return makeCredentialViewModel(found->second, title, available);
+    if (! demoTrustRunning && demoTrustPublicCertificates.isNotEmpty() && file.existsAsFile())
+    {
+        if (demoTrustThread.joinable()) demoTrustThread.join();
+        demoTrustRunning = true;
+        demoTrustThread = std::thread([safe = juce::Component::SafePointer<ArrangementView>(this),
+                                      file, key, certificates = demoTrustPublicCertificates]
+        {
+            auto result = ProvenanceService::inspectWithDemoTrust(file, certificates);
+            juce::MessageManager::callAsync([safe, key, result = std::move(result)]() mutable
+            {
+                if (safe == nullptr) return;
+                safe->demoTrustRunning = false;
+                safe->demoTrustCache[key] = std::move(result);
+                safe->credentialsSelectionKey.clear(); safe->refreshCredentialsPanel();
+            });
+        });
+    }
+    auto pending = makeCredentialViewModel(baseline, title, available);
+    pending.badge = "CC ? (demo pending)";
+    pending.policy = demoTrustPublicCertificates.isEmpty()
+        ? "Demo trust: configure Signing first. No local trust result is available."
+        : ! file.existsAsFile() ? "Demo trust: source file unavailable for local evaluation."
+        : "Demo trust: checking locally in the background; exports and default trust are unchanged.";
+    for (size_t index = 0; index < pending.checks.size(); ++index)
+        if (index == 2 || pending.checks[index].state != CredentialCheckState::fail)
+        { pending.checks[index].state = CredentialCheckState::unknown;
+          pending.checks[index].summary = "Local demo evaluation pending"; }
+    pending.details += "\n\n" + pending.policy;
+    return pending;
 }
 
 void ArrangementView::togglePlayback()

@@ -55,6 +55,7 @@ public:
 private:
     class Canvas;
     void refreshLayout(bool shouldFit);
+    void frame(bool readable);
     void updateDetails();
     const ProvenanceGraphNode* selected() const;
     std::unique_ptr<Canvas> canvas;

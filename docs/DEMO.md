@@ -155,12 +155,19 @@ are not application UI. Green requires explicitly reported success, not simply a
 1. Open the mixed project, start playback, select one Audio clip and toggle **Credentials**.
    Check the bottom dock opens/closes without stopping music or adding an undo/save mutation.
    Resize to the minimum window; toolbar labels, dock tabs and the three checks must remain usable.
+   The compact dock now has summary + validation only; use Expand Provenance for history.
 2. Select an unsigned conventional sample: **No CC**, three N/A checks, no invented history.
    No CC must not be described as bad audio or a trust failure.
 3. Select a signed imported/generative loop. Check its actual claim generator/actions remain
    attributed to the external tool. No AI label is inferred from its filename or waveform.
 4. Select the finalized microphone take: inspect declared `digitalCapture` and the actual tool.
    Signature success and untrusted signer may coexist. No performer identity is inferred.
+   With Signing configured, enable the small **Demo trust** checkbox and allow the local
+   background evaluation to finish. A successful SDK trust result is dashed green and labelled
+   **DEMO / TEST**; its policy must explicitly say local, not production/official-list trust.
+   Turn it off: the default result must return. It starts off again after restarting the app.
+   Toggle off/on after replacing Signing. No configured certificate or missing source means
+   no positive demo result; a tampered hard binding or invalid signature must still fail.
 5. Select project MIDI: **CC on export** is informational, not a validated signed WAV.
    Select a credentialed rendered stem and inspect the declared render action/instrument parameters.
 6. Select multiple clips: expect a request to select one asset, not a guessed clip. Select another
@@ -177,6 +184,9 @@ are not application UI. Green requires explicitly reported success, not simply a
    distinct from embedded history. **Back to Arrangement** or Escape restores the dock.
    While exploring, Delete/Command-D must not edit the hidden timeline; Space still controls
    transport. Check the graph at minimum window size, with long filenames and several ingredients.
+   Text and source labels should be larger, with high-contrast blue accents and audio symbols.
+   Initial framing may crop outer branches to keep text readable: pan, or press Fit for all nodes.
+   Audio symbols are schematic icons only, not actual waveforms or new Play/Stop controls.
 8. Referenced/unavailable sources must not have green validation badges. Local files are labelled
    as cached inspections, not freshly revalidated files. Embedded history is not independent
    validation of ingredient audio. Unsigned ingredients remain neutral, not failures.
@@ -188,8 +198,9 @@ are not application UI. Green requires explicitly reported success, not simply a
     automatic MIDI signed Export and both recovery paths. No signing template or threshold changed.
 
 The dock shows cached results and a session-local Last Export, not continuous file surveillance.
-Default SDK trust anchors are not reported; the viewer does not claim official C2PA trust-list
-validation or that loading a test signing credential establishes test/custom validator trust.
+Default SDK trust anchors are not reported; no official C2PA trust-list validation is claimed.
+Loading a signing credential alone does not enable validator trust: Demo trust is a separate
+explicit opt-in Reader policy using only its public certificates, never a production assertion.
 Real hardware, the user's external generator asset and audible uninterrupted playback remain
 manual acceptance; offscreen fixtures do not prove those behaviors.
 

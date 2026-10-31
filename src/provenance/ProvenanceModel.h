@@ -34,6 +34,7 @@ struct IngredientInfo
     juce::String rawManifestJson;
     std::vector<juce::String> validationIssues;
     juce::String inspectionPolicy;
+    bool demoTrustEvaluation = false; // Session-only inspection; never an export/signing policy.
 };
 
 // An authored history, not an inference from audio or a project snapshot.

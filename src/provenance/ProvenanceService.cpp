@@ -361,7 +361,7 @@ ProvenanceService::ProvenanceService(std::unique_ptr<SigningProvider> provider)
 
 namespace
 {
-IngredientInfo inspectAsset(const juce::File& asset, bool offline)
+IngredientInfo inspectAsset(const juce::File& asset, bool offline, const juce::String& demoCertificates = {})
 {
     IngredientInfo info;
     if (! asset.existsAsFile())
@@ -373,9 +373,16 @@ IngredientInfo inspectAsset(const juce::File& asset, bool offline)
 
     try
     {
-        const auto reader = c2pa::Reader::from_asset(
-            offline ? std::make_shared<c2pa::Context>(
-                R"({"verify":{"remote_manifest_fetch":false,"ocsp_fetch":false}})") : makeContext(),
+        auto settings = juce::JSON::parse(R"({"verify":{"remote_manifest_fetch":false,"ocsp_fetch":false}})");
+        if (demoCertificates.isNotEmpty())
+        {
+            auto* trust = new juce::DynamicObject;
+            trust->setProperty("user_anchors", demoCertificates);
+            settings.getDynamicObject()->setProperty("trust", trust);
+        }
+        const auto context = offline ? std::make_shared<c2pa::Context>(
+            juce::JSON::toString(settings).toStdString()) : makeContext();
+        const auto reader = c2pa::Reader::from_asset(context,
             std::filesystem::path(asset.getFullPathName().toStdString()));
         if (! reader.has_value())
         {
@@ -387,6 +394,11 @@ IngredientInfo inspectAsset(const juce::File& asset, bool offline)
         parsed.inspectionPolicy = offline
             ? "Local-only SDK defaults; remote manifests and OCSP fetching disabled; trust anchors not reported"
             : "SDK defaults; trust anchors not reported";
+        if (demoCertificates.isNotEmpty())
+        {
+            parsed.demoTrustEvaluation = true;
+            parsed.inspectionPolicy = "DEMO/TEST ONLY: configured signer's public certificates added as local trust anchors; offline; not production or official-list trust";
+        }
         return parsed;
     }
     catch (const std::exception& error)
@@ -404,6 +416,29 @@ IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
 
 IngredientInfo ProvenanceService::inspectOffline(const juce::File& asset) const
 { return inspectAsset(asset, true); }
+
+juce::String ProvenanceService::demoTrustCertificates() const
+{
+    const auto bundle = signingProvider->credentialFile();
+    if (! bundle.existsAsFile()) return {};
+    return juce::String(extractPemBlocks(bundle.loadFileAsString(),
+        "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"));
+}
+
+IngredientInfo ProvenanceService::inspectWithDemoTrust(const juce::File& asset,
+                                                     const juce::String& certificates)
+{
+    // Accept certificates only; do not permit a caller's PEM key or JSON settings into the policy.
+    const auto publicOnly = juce::String(extractPemBlocks(certificates,
+        "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"));
+    if (publicOnly.isEmpty())
+    {
+        IngredientInfo info; info.status = ProvenanceStatus::unableToValidate;
+        info.validationSummary = "Demo trust needs the public certificate chain from a configured signer";
+        return info;
+    }
+    return inspectAsset(asset, true, publicOnly);
+}
 
 bool ProvenanceService::signingConfigured() const
 {

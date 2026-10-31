@@ -257,6 +257,41 @@ int main()
         || ! captureView.policy.contains("Local-only"))
         return fail(26, "real signed capture view/offline inspection lost evidence");
 
+    const auto certificates = relaunched.demoTrustCertificates();
+    if (certificates.isEmpty() || certificates.contains("PRIVATE KEY"))
+        return fail(27, "demo trust leaked key material or lost certificates");
+    const auto demoInfo = c2paseq::ProvenanceService::inspectWithDemoTrust(captureOutput, certificates);
+    const auto demoView = c2paseq::makeCredentialViewModel(demoInfo, "Demo capture");
+    if (! demoInfo.demoTrustEvaluation || demoView.checks[2].state != c2paseq::CredentialCheckState::pass
+        || demoView.checks[0].state != c2paseq::CredentialCheckState::pass
+        || demoView.checks[1].state != c2paseq::CredentialCheckState::pass
+        || ! demoView.checks[2].summary.contains("DEMO/TEST"))
+        return fail(28, "real demo-anchor validation did not explicitly report local trust: " + demoInfo.validationSummary);
+    if (c2paseq::makeCredentialViewModel(relaunched.inspect(captureOutput), "Default").checks[2].state
+            == c2paseq::CredentialCheckState::pass
+        || c2paseq::ProvenanceService::inspectWithDemoTrust(captureOutput, {}).demoTrustEvaluation)
+        return fail(29, "demo trust contaminated default validation or empty anchors were accepted");
+    juce::MemoryBlock tamperedBytes;
+    if (! captureOutput.loadFileAsData(tamperedBytes)) return fail(30, "could not read tamper fixture");
+    auto* bytes = static_cast<unsigned char*>(tamperedBytes.getData());
+    bool changedAudio = false;
+    for (size_t offset = 12; offset + 8 < tamperedBytes.getSize();)
+    {
+        const auto size = static_cast<size_t>(juce::ByteOrder::littleEndianInt(bytes + offset + 4));
+        if (offset + 8 + size > tamperedBytes.getSize()) break;
+        if (bytes[offset] == 'd' && bytes[offset + 1] == 'a'
+            && bytes[offset + 2] == 't' && bytes[offset + 3] == 'a' && size > 0)
+        { bytes[offset + 8] ^= 1; changedAudio = true; break; }
+        offset += 8 + size + (size & 1);
+    }
+    const auto altered = root.getChildFile("demo-tampered.wav");
+    if (! changedAudio || ! altered.replaceWithData(bytes, tamperedBytes.getSize()))
+        return fail(30, "could not create PCM-only tamper fixture");
+    const auto alteredView = c2paseq::makeCredentialViewModel(
+        c2paseq::ProvenanceService::inspectWithDemoTrust(altered, certificates), "Tampered demo");
+    if (alteredView.checks[0].state != c2paseq::CredentialCheckState::fail)
+        return fail(31, "local demo trust hid a real hard-binding mismatch");
+
     const c2paseq::StemProvenanceDescriptor minimal {
         "Optional-field fixture", "audio/wav", {
             { "c2pa.created", "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation",

@@ -67,6 +67,15 @@ int main(int argc, char** argv)
     auto unknown = makeCredentialViewModel(fixture(""), "Unknown.wav");
     for (const auto& check : unknown.checks) require(check.state == CredentialCheckState::unknown, "missing evidence fabricated success");
     auto warning = makeCredentialViewModel(fixture(validCodes, {}, "signingCredential.ocsp.inaccessible"), "Warning.wav");
+    auto demoFixture = good; demoFixture.demoTrustEvaluation = true;
+    demoFixture.inspectionPolicy = "DEMO/TEST fixture policy; not production trust";
+    const auto demoView = makeCredentialViewModel(demoFixture, "Demo trust.wav");
+    require(demoView.demoTrust && demoView.checks[2].state == CredentialCheckState::pass
+        && demoView.checks[2].summary.contains("DEMO/TEST") && demoView.badge.contains("demo"), "demo trust label missing");
+    auto demoFailure = fixture("signingCredential.trusted", "claimSignature.mismatch");
+    demoFailure.demoTrustEvaluation = true;
+    require(makeCredentialViewModel(demoFailure, "Bad demo").checks[1].state == CredentialCheckState::fail,
+            "demo mode hid signature failure");
     require(warning.checks[2].state == CredentialCheckState::pass && warning.checks[2].evidence.contains("ocsp"), "OCSP overwrote explicit trust");
     require(warning.badge == "CC ?", "warning erased from overall badge");
     auto untrusted = makeCredentialViewModel(fixture("assertion.dataHash.match,claimSignature.validated", "signingCredential.untrusted"), "Untrusted.wav");
@@ -130,6 +139,10 @@ int main(int argc, char** argv)
     require(matchedDetail, "node selection did not update corresponding details");
 
     CredentialsPanel dock; dock.setSize(1040, 300); dock.setClip(view, "Track");
+    require(! dock.isDemoTrustEnabled(), "demo mode unexpectedly enabled by default");
+    int modeChanges = 0; dock.onDemoTrustChanged = [&](bool) { ++modeChanges; };
+    dock.setDemoTrustEnabled(true); dock.setDemoTrustEnabled(false);
+    require(! dock.isDemoTrustEnabled() && modeChanges == 2, "demo toggle did not isolate session mode");
     int expansionChanges = 0; dock.onExpansionChanged = [&] { ++expansionChanges; };
     dock.setExpanded(true); require(dock.isExpanded() && expansionChanges == 1, "expanded workspace did not request layout");
     dock.setExpanded(false); require(! dock.isExpanded() && expansionChanges == 2, "return to arrangement failed");
@@ -145,23 +158,39 @@ int main(int argc, char** argv)
             "actual pinned SDK success format differs");
     require(real.checks[2].state != CredentialCheckState::pass, "default SDK fixture unexpectedly asserted trusted");
 
-    if (argc == 4 && juce::String(argv[1]) == "--render-asset")
+    if ((argc == 4 && juce::String(argv[1]) == "--render-asset")
+        || (argc == 5 && juce::String(argv[1]) == "--render-demo-asset"))
     {
-        const auto assetReader = c2pa::Reader::from_asset(std::make_shared<c2pa::Context>(),
+        const bool demo = argc == 5;
+        auto context = std::make_shared<c2pa::Context>();
+        if (demo)
+        {
+            const auto publicCertificates = juce::File(argv[3]).loadFileAsString();
+            require(! publicCertificates.contains("PRIVATE KEY"), "demo render accepts public certificates only");
+            auto settings = juce::JSON::parse(R"({"verify":{"remote_manifest_fetch":false,"ocsp_fetch":false},"trust":{}})");
+            settings["trust"].getDynamicObject()->setProperty("user_anchors", publicCertificates);
+            context = std::make_shared<c2pa::Context>(juce::JSON::toString(settings).toStdString());
+        }
+        const auto outputPath = juce::File(argv[demo ? 4 : 3]);
+        const auto assetReader = c2pa::Reader::from_asset(context,
                                                         std::filesystem::path(argv[2]));
         require(assetReader.has_value(), "render asset has no manifest");
         IngredientInfo data; data.c2paPresent = true; data.rawManifestJson = assetReader->json();
+        data.demoTrustEvaluation = demo;
+        if (demo) data.inspectionPolicy = "DEMO/TEST ONLY: configured public chain; offline; not production or official-list trust";
         auto model = makeCredentialViewModel(data, juce::File(argv[2]).getFileName());
+        if (demo) require(model.checks[2].state == CredentialCheckState::pass, "actual demo render did not report trusted");
         SequencerLookAndFeel look; CredentialsPanel panel; panel.setLookAndFeel(&look);
         panel.setVisible(true); panel.setSize(1440, 320); panel.setLastExport(model); panel.showLastExport();
+        panel.setDemoTrustEnabled(demo);
         juce::MessageManager::getInstance()->runDispatchLoopUntil(80);
-        juce::FileOutputStream output { juce::File(argv[3]) };
+        juce::FileOutputStream output { outputPath };
         output.setPosition(0); require(output.truncate().wasOk(), "asset render reset failed");
         require(juce::PNGImageFormat().writeImageToStream(panel.createComponentSnapshot(panel.getLocalBounds()), output), "asset render failed");
         panel.setLookAndFeel(nullptr);
         panel.setLookAndFeel(&look); panel.setSize(1440, 760); panel.setExpanded(true);
         juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
-        juce::FileOutputStream expandedOutput { juce::File(argv[3]).getSiblingFile("graph-real-mix.png") };
+        juce::FileOutputStream expandedOutput { outputPath.getSiblingFile("graph-real-mix.png") };
         expandedOutput.setPosition(0); expandedOutput.truncate();
         require(juce::PNGImageFormat().writeImageToStream(panel.createComponentSnapshot(panel.getLocalBounds()), expandedOutput), "expanded asset render failed");
         panel.setLookAndFeel(nullptr);
@@ -209,13 +238,14 @@ int main(int argc, char** argv)
         const std::vector<std::pair<juce::String, CredentialViewModel>> states {
             {"no-cc", plain}, {"valid", view}, {"warning", warning},
             {"recording", makeCredentialViewModel(good, "Microphone take.wav")},
-            {"midi-render", render}, {"export", view}, {"real-sdk", real} };
+            {"midi-render", render}, {"export", view}, {"real-sdk", real}, {"demo-trust", demoView} };
         for (const auto& [name, model] : states)
             for (const auto width : { 1040, 1440 })
             {
                 CredentialsPanel panel; panel.setLookAndFeel(&look); panel.setVisible(true); panel.setSize(width, 300);
                 panel.setClip(model, "Selected track");
                 if (name == "export") { panel.setLastExport(model); panel.showLastExport(); }
+                if (name == "demo-trust") panel.setDemoTrustEnabled(true);
                 juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
                 for (auto* child : panel.getChildren())
                     require(! child->isVisible() || panel.getLocalBounds().contains(child->getBounds()), "panel child outside bounds");

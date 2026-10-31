@@ -5,6 +5,7 @@ namespace c2paseq
 {
 namespace
 {
+constexpr float cardWidth = 360, cardHeight = 240, siblingGap = 48, levelPitch = 330;
 juce::String sourceLabel(const juce::String& source)
 {
     const auto term = source.fromLastOccurrenceOf("/", false, false);
@@ -55,20 +56,20 @@ ProvenanceGraphNode convert(const CredentialHistoryNode& value, const juce::Stri
 }
 float span(const ProvenanceGraphNode& node, const std::set<juce::String>& collapsed)
 {
-    if (node.children.empty() || collapsed.contains(node.id)) return 300;
-    float width = -40;
-    for (const auto& child : node.children) width += span(child, collapsed) + 40;
-    return std::max(300.0f, width);
+    if (node.children.empty() || collapsed.contains(node.id)) return cardWidth;
+    float width = -siblingGap;
+    for (const auto& child : node.children) width += span(child, collapsed) + siblingGap;
+    return std::max(cardWidth, width);
 }
 void place(const ProvenanceGraphNode& node, const std::set<juce::String>& collapsed,
            float x, float y, int parent, std::vector<ProvenanceGraphPlacement>& out)
 {
     const auto width = span(node, collapsed);
     const auto index = static_cast<int>(out.size());
-    out.push_back({ &node, { x + (width - 300) * 0.5f, y, 300, 188 }, parent });
+    out.push_back({ &node, { x + (width - cardWidth) * 0.5f, y, cardWidth, cardHeight }, parent });
     if (collapsed.contains(node.id)) return;
     for (const auto& child : node.children)
-    { place(child, collapsed, x, y + 266, index, out); x += span(child, collapsed) + 40; }
+    { place(child, collapsed, x, y + levelPitch, index, out); x += span(child, collapsed) + siblingGap; }
 }
 }
 ProvenanceGraphNode makeProvenanceGraph(const CredentialHistoryNode& root) { return convert(root, "root"); }
@@ -99,7 +100,7 @@ public:
     { setMouseCursor(juce::MouseCursor::DraggingHandCursor); setWantsKeyboardFocus(true); }
     void paint(juce::Graphics& graphics) override
     {
-        graphics.fillAll(juce::Colour(0xff11191f));
+        graphics.fillAll(juce::Colour(0xff0b0b0c));
         juce::Graphics::ScopedSaveState saved(graphics);
         graphics.addTransform(juce::AffineTransform::scale(owner.camera.zoom)
             .translated(owner.camera.translation.x, owner.camera.translation.y));
@@ -107,8 +108,8 @@ public:
         {
             if (placed.parent < 0) continue;
             const auto& parent = owner.nodes[static_cast<size_t>(placed.parent)];
-            const auto start = parent.bounds.getBottomLeft() + juce::Point<float>(150, 0);
-            const auto end = placed.bounds.getTopLeft() + juce::Point<float>(150, 0);
+            const juce::Point<float> start(parent.bounds.getCentreX(), parent.bounds.getBottom());
+            const juce::Point<float> end(placed.bounds.getCentreX(), placed.bounds.getY());
             juce::Path link; link.startNewSubPath(start);
             link.cubicTo(start.x, start.y + 40, end.x, end.y - 40, end.x, end.y);
             graphics.setColour(juce::Colour(0xff8398a6));
@@ -119,45 +120,63 @@ public:
                 graphics.fillPath(dashed);
             }
             else graphics.strokePath(link, juce::PathStrokeType(1.5f));
-            graphics.setFont(juce::FontOptions(11));
-            graphics.drawText(placed.node->relationship, juce::Rectangle<float>(end.x - 140, end.y - 24, 280, 18),
+            graphics.setFont(juce::FontOptions(14));
+            graphics.drawText(placed.node->relationship == "componentOf" ? "Component of" : placed.node->relationship,
+                              juce::Rectangle<float>(end.x - 150, end.y - 26, 300, 20),
                               juce::Justification::centred);
         }
         for (const auto& placed : owner.nodes)
         {
             const auto& node = *placed.node;
             auto bounds = placed.bounds;
-            graphics.setColour(juce::Colour(0xff25323c)); graphics.fillRoundedRectangle(bounds, 5);
-            graphics.setColour(node.id == owner.selectedId ? juce::Colour(0xffe5c472)
-                : node.hasManifest ? juce::Colour(0xff6ebacf) : juce::Colour(0xff81909c));
-            graphics.drawRoundedRectangle(bounds, 5, node.id == owner.selectedId ? 2.5f : 1.2f);
-            auto text = bounds.reduced(16, 12);
-            graphics.setFont(juce::FontOptions(11, juce::Font::bold));
-            graphics.drawText(placed.parent < 0 ? "SELECTED FILE" : node.relationship.isNotEmpty()
-                ? "INGREDIENT - " + node.relationship : "EMBEDDED HISTORY", text.removeFromTop(20), juce::Justification::centredLeft);
-            graphics.setColour(juce::Colours::white); graphics.setFont(juce::FontOptions(15, juce::Font::bold));
-            graphics.drawFittedText(node.title, text.removeFromTop(40).toNearestInt(), juce::Justification::topLeft, 2, 1.0f);
-            graphics.setFont(juce::FontOptions(12)); graphics.setColour(juce::Colour(0xffc8d7e2));
+            graphics.setColour(juce::Colour(0xff26282b)); graphics.fillRoundedRectangle(bounds, 9);
+            graphics.setColour(node.id == owner.selectedId ? juce::Colour(0xffa9d0ff)
+                : node.hasManifest ? juce::Colour(0xff438aff) : juce::Colour(0xff858a92));
+            graphics.drawRoundedRectangle(bounds, 9, node.id == owner.selectedId ? 3.0f : 1.8f);
+            auto text = bounds.reduced(18, 14);
+            auto heading = text.removeFromTop(30);
+            // A schematic audio symbol, not a fabricated waveform or a playback control.
+            auto audio = heading.removeFromLeft(34).reduced(3, 2);
+            graphics.setColour(juce::Colour(0xff13171c)); graphics.fillRoundedRectangle(audio, 4);
+            graphics.setColour(juce::Colour(0xff9bc6ff));
+            for (int bar = 0; bar < 5; ++bar)
+            {
+                const float height = 5.0f + static_cast<float>(2 - std::abs(bar - 2)) * 5.0f;
+                const auto x = audio.getX() + 5 + static_cast<float>(bar) * 4.0f;
+                graphics.drawLine(x, audio.getCentreY() - height * 0.5f, x, audio.getCentreY() + height * 0.5f, 2);
+            }
+            heading.removeFromLeft(8);
+            graphics.setFont(juce::FontOptions(13, juce::Font::bold));
+            graphics.drawText(placed.parent < 0 ? "SELECTED AUDIO" : node.relationship.isNotEmpty()
+                ? "AUDIO INGREDIENT" : "EMBEDDED HISTORY", heading, juce::Justification::centredLeft);
+            graphics.setColour(juce::Colours::white); graphics.setFont(juce::FontOptions(20, juce::Font::bold));
+            graphics.drawFittedText(node.title, text.removeFromTop(52).toNearestInt(), juce::Justification::topLeft, 2, 1.0f);
+            graphics.setFont(juce::FontOptions(16)); graphics.setColour(juce::Colour(0xffe1e3e7));
             graphics.drawText(node.generator.isNotEmpty() ? node.generator
                 : node.hasManifest ? "Claim generator not reported" : node.hasManifestReference
                     ? "Referenced manifest is not embedded" : node.credentialsAbsent
                         ? "No Content Credentials" : "Manifest / history unavailable",
-                text.removeFromTop(21), juce::Justification::centredLeft);
-            graphics.setColour(juce::Colour(0xffb4d9e0));
+                text.removeFromTop(26), juce::Justification::centredLeft);
+            auto pill = text.removeFromTop(30).reduced(0, 2);
+            graphics.setColour(juce::Colour(0xff111e32)); graphics.fillRoundedRectangle(pill, 9);
+            graphics.setColour(juce::Colour(0xffa3caff)); graphics.setFont(juce::FontOptions(15, juce::Font::bold));
             graphics.drawText(node.sources.isEmpty() ? "Source type not declared" : node.sources[0],
-                              text.removeFromTop(22), juce::Justification::centredLeft);
+                              pill.reduced(8, 0), juce::Justification::centredLeft);
             if (node.instrument.isNotEmpty())
-                graphics.drawText("Instrument: " + node.instrument, text.removeFromTop(20), juce::Justification::centredLeft);
-            graphics.setColour(juce::Colour(0xffb8c3cb)); graphics.setFont(juce::FontOptions(11));
+            {
+                graphics.setFont(juce::FontOptions(16));
+                graphics.drawText("Instrument: " + node.instrument, text.removeFromTop(24), juce::Justification::centredLeft);
+            }
+            graphics.setColour(juce::Colour(0xffc1c5cd)); graphics.setFont(juce::FontOptions(13));
             graphics.drawText(node.sourceUnavailable ? node.credentialsAbsent
                 ? "No CC - source audio unavailable" : "Source unavailable - history only"
                 : node.hasManifest ? "Embedded credentials - see validation separately"
                     : node.hasManifestReference ? "Credentials referenced - not embedded"
                         : node.credentialsAbsent ? "No Content Credentials" : "Credentials unknown / not evaluated",
-                text.removeFromTop(20), juce::Justification::centredLeft);
+                text.removeFromTop(22), juce::Justification::centredLeft);
             if (! node.children.empty())
             {
-                graphics.setColour(juce::Colour(0xffe5c472));
+                graphics.setColour(juce::Colour(0xffa3caff));
                 graphics.drawText(owner.collapsed.contains(node.id) ? "+ Expand earlier contributions"
                     : "- Collapse contributions", text, juce::Justification::centredLeft);
             }
@@ -207,7 +226,8 @@ ProvenanceGraphView::ProvenanceGraphView() : canvas(std::make_unique<Canvas>(*th
     for (auto* button : { &zoomIn, &zoomOut, &fitButton, &expandButton, &branchButton, &technicalButton }) addAndMakeVisible(button);
     addAndMakeVisible(zoomLabel); addAndMakeVisible(detailText);
     detailText.setMultiLine(true); detailText.setReadOnly(true); detailText.setScrollbarsShown(true);
-    detailText.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xff1c262e));
+    detailText.setFont(juce::FontOptions(15));
+    detailText.setColour(juce::TextEditor::backgroundColourId, juce::Colour(0xff202226));
     detailText.setColour(juce::TextEditor::textColourId, juce::Colour(0xffe4eaf0));
     zoomIn.onClick = [this] { zoomAt(1.2f, canvas->getLocalBounds().getCentre().toFloat()); };
     zoomOut.onClick = [this] { zoomAt(1 / 1.2f, canvas->getLocalBounds().getCentre().toFloat()); };
@@ -225,13 +245,17 @@ void ProvenanceGraphView::setHistory(const CredentialHistoryNode& history)
 void ProvenanceGraphView::refreshLayout(bool shouldFit)
 {
     nodes = layoutProvenanceGraph(graph, collapsed);
-    if (shouldFit) fit(); else canvas->repaint();
+    if (shouldFit) frame(true); else canvas->repaint();
 }
 void ProvenanceGraphView::fit()
+{ frame(false); }
+void ProvenanceGraphView::frame(bool readable)
 {
     juce::Rectangle<float> bounds;
     for (const auto& node : nodes) bounds = bounds.getUnion(node.bounds);
     camera.fit(bounds.expanded(26), canvas->getLocalBounds().toFloat().reduced(12));
+    if (readable && camera.zoom < 0.85f)
+        camera.zoomAt(0.85f / camera.zoom, canvas->getLocalBounds().getCentre().toFloat());
     zoomLabel.setText(juce::String(juce::roundToInt(camera.zoom * 100)) + "%", juce::dontSendNotification);
     canvas->repaint();
 }
@@ -281,11 +305,11 @@ void ProvenanceGraphView::resized()
     auto side = sideBounds.reduced(8); side.removeFromTop(24);
     technicalButton.setBounds(side.removeFromBottom(30)); side.removeFromBottom(6);
     branchButton.setBounds(side.removeFromBottom(30)); side.removeFromBottom(8); detailText.setBounds(side);
-    fit();
+    frame(true);
 }
 void ProvenanceGraphView::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xff182127)); g.setColour(juce::Colour(0xffc4d4df));
+    g.fillAll(juce::Colour(0xff17191c)); g.setColour(juce::Colour(0xffe0e3e8));
     g.setFont(juce::FontOptions(12, juce::Font::bold));
     g.drawText("Selected contribution", sideBounds.reduced(8).withHeight(20), juce::Justification::centredLeft);
     g.setFont(juce::FontOptions(12));

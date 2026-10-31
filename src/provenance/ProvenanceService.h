@@ -17,6 +17,10 @@ public:
     [[nodiscard]] IngredientInfo inspect(const juce::File& asset) const;
     // Same Reader, local-only inspection when rehydrating a reopened project's view data.
     [[nodiscard]] IngredientInfo inspectOffline(const juce::File& asset) const;
+    // Public certificates only; never returns private-key material.
+    [[nodiscard]] juce::String demoTrustCertificates() const;
+    [[nodiscard]] static IngredientInfo inspectWithDemoTrust(const juce::File& asset,
+                                                           const juce::String& publicCertificates);
     [[nodiscard]] bool signingConfigured() const;
     [[nodiscard]] juce::String signingConfigurationError() const;
     [[nodiscard]] juce::String signingCredentialStatus() const;

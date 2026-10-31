@@ -471,6 +471,9 @@ bool AudioEngine::signingConfigured() const
     return provenance.signingConfigured();
 }
 
+juce::String AudioEngine::demoTrustCertificates() const
+{ return provenance.demoTrustCertificates(); }
+
 juce::String AudioEngine::signingCredentialStatus() const
 {
     return provenance.signingCredentialStatus();

@@ -16,10 +16,13 @@ public:
     void showLastExport();
     void setExpanded(bool expanded);
     [[nodiscard]] bool isExpanded() const noexcept { return expanded; }
+    void setDemoTrustEnabled(bool enabled);
+    [[nodiscard]] bool isDemoTrustEnabled() const noexcept { return demoTrust.getToggleState(); }
     void paint(juce::Graphics&) override;
     void resized() override;
     std::function<void()> onClose;
     std::function<void()> onExpansionChanged;
+    std::function<void(bool)> onDemoTrustChanged;
 private:
     void updateContent();
     void showDetails(const juce::String& text);
@@ -31,10 +34,9 @@ private:
     juce::TextButton fullDetails { "View Full Details" }, close { "Close" };
     juce::TextButton expand { "Expand Provenance" };
     ProvenanceGraphView graph;
+    juce::ToggleButton demoTrust { "Demo trust" };
     std::array<juce::TextButton, 3> checkDetails;
     juce::TextEditor details;
-    juce::TreeView tree;
-    std::unique_ptr<juce::TreeViewItem> root;
-    juce::Rectangle<int> summaryBounds, checksBounds, historyBounds;
+    juce::Rectangle<int> summaryBounds, checksBounds;
 };
 }

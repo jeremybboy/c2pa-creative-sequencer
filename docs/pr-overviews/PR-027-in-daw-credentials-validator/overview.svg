@@ -14,6 +14,7 @@
 <text x="424" y="246" font-size="18">Content binding · Claim signature</text>
 <text x="424" y="275" font-size="18">Signer trust under actual SDK policy</text>
 <text x="424" y="316" font-size="17" fill="#e7bf73">Unknown ≠ pass; signature ≠ trust</text>
+<text x="424" y="344" font-size="16" fill="#b4c2ca">Opt-in local demo trust, never production</text>
 <path d="M794 258H846m-12-8 12 8-12 8" fill="none" stroke="#88c3d3" stroke-width="2"/>
 <text x="874" y="210" font-size="24" font-weight="bold">3  Spatial provenance graph</text>
 <path d="M896 235V282H925M896 264H925" fill="none" stroke="#88c3d3" stroke-width="2"/>
@@ -23,7 +24,7 @@
 <text x="36" y="378" font-size="19">4  Last Export: actual mix root and componentOf ingredients, not one flattened origin label</text>
 <path d="M36 407H1404" stroke="#657780"/>
 <g font-size="17" font-weight="bold" fill="#88c3d3"><text x="36" y="445">CURRENT STATE</text><text x="382" y="445">CHANGES IN THIS PR</text><text x="740" y="445">UNCHANGED / OUT OF SCOPE</text><text x="1118" y="445">END RESULT</text></g>
-<g font-size="16"><text x="36" y="478">Existing Reader + modal summaries</text><text x="382" y="478">Dock, view model, local reopen cache</text><text x="740" y="478">Signing, actions, audio, soft bindings</text><text x="1118" y="478">Creator-facing inspection</text>
-<text x="36" y="506">Not a separate validator engine</text><text x="382" y="506">Explicit checks and expandable history</text><text x="740" y="506">No production trust infrastructure</text><text x="1118" y="506">Technical evidence one click away</text></g>
+<g font-size="16"><text x="36" y="478">Existing Reader + modal summaries</text><text x="382" y="478">Two-column dock + local demo trust</text><text x="740" y="478">Signing, actions, audio, soft bindings</text><text x="1118" y="478">Creator-facing inspection</text>
+<text x="36" y="506">Not a separate validator engine</text><text x="382" y="506">Readable graph + audio symbols</text><text x="740" y="506">No production trust infrastructure</text><text x="1118" y="506">Technical evidence one click away</text></g>
 <text x="36" y="566" font-size="16" fill="#b4c2ca">Verification: deterministic parser + real pinned SDK + component renders; live musical/hardware acceptance remains human work.</text>
 </g></svg>
