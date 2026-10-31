@@ -33,34 +33,6 @@ struct MidiStemWorkspace
         .getChildFile("c2paseq-midi-stem-" + juce::Uuid().toString());
     ~MidiStemWorkspace() { directory.deleteRecursively(); }
 };
-
-juce::String midiStemDetails(const IngredientInfo& info)
-{
-    juce::String details;
-    const auto document = juce::JSON::parse(info.rawManifestJson);
-    const auto manifest = document["manifests"][juce::Identifier(info.activeManifest)];
-    if (const auto* assertions = manifest["assertions"].getArray())
-        for (const auto& assertion : *assertions)
-            if (assertion["label"].toString().startsWith("c2pa.actions"))
-                if (const auto* actions = assertion["data"]["actions"].getArray())
-                    for (const auto& action : *actions)
-                    {
-                        const auto source = action["parameters"]["c2paseq:midiRender"];
-                        if (source.getDynamicObject() == nullptr) continue;
-                        const auto instrument = source["instrument"];
-                        details += "\n  Action: " + action["action"].toString()
-                            + "\n  MIDI: " + source["trackName"].toString()
-                            + " | " + source["bpm"].toString() + " BPM"
-                            + " | " + source["noteCount"].toString() + " notes"
-                            + "\n  Instrument: " + instrument["name"].toString()
-                            + " | " + instrument["vendor"].toString()
-                            + " | " + instrument["version"].toString()
-                            + " | " + instrument["format"].toString()
-                            + "\n  MIDI SHA-256: " + source["midiContentSha256"].toString()
-                            + "\n  Instrument state SHA-256: " + instrument["stateSha256"].toString();
-                    }
-    return details;
-}
 }
 
 class TimelineSurface final : public juce::Component
@@ -496,6 +468,20 @@ ArrangementView::ArrangementView(AudioEngine& engine,
     addAndMakeVisible(browser);
     addAndMakeVisible(*timelineSurface);
     addChildComponent(*pianoRoll);
+    addChildComponent(credentialsPanel);
+    credentialsPanel.onExpansionChanged = [this] { resized(); };
+    credentialsPanel.onDemoTrustChanged = [this](bool enabled)
+    {
+        // Public certificate snapshot only: no private key, project edit or global policy mutation.
+        demoTrustPublicCertificates = enabled ? audioEngine.demoTrustCertificates() : juce::String();
+        demoTrustCache.clear(); credentialsSelectionKey.clear(); refreshCredentialsPanel();
+    };
+    credentialsPanel.onClose = [this]
+    {
+        credentialsPanel.setVisible(false);
+        credentialsButton.setToggleState(false, juce::dontSendNotification);
+        resized();
+    };
     addAndMakeVisible(headerContainer);
     addAndMakeVisible(horizontalScroll);
     addAndMakeVisible(verticalScroll);
@@ -515,6 +501,7 @@ ArrangementView::ArrangementView(AudioEngine& engine,
 
 ArrangementView::~ArrangementView()
 {
+    if (demoTrustThread.joinable()) demoTrustThread.join();
     if (audioEngine.isAudioRecording()) audioEngine.cancelAudioRecording();
     allComputerKeyboardNotesOff();
     exportCancellationRequested.store(true);
@@ -551,6 +538,9 @@ void ArrangementView::resized()
     auto area = getLocalBounds();
     auto top = area.removeFromTop(topBarHeight).reduced(6, 5);
     status.setBounds(area.removeFromBottom(statusHeight).reduced(8, 1));
+    if (credentialsPanel.isVisible())
+        credentialsPanel.setBounds(credentialsPanel.isExpanded() ? area
+            : area.removeFromBottom(std::min(300, area.getHeight() / 2)));
     browser.setBounds(area.removeFromLeft(browserWidth));
 
     auto placeButton = [&](juce::Component& component, int width)
@@ -601,12 +591,15 @@ void ArrangementView::resized()
     timelineBounds = area;
     timelineSurface->setBounds(timelineBounds);
 
-    const auto editorHeight = std::min(480, std::max(300, timelineBounds.getHeight() / 2));
+    const auto editorHeight = std::min(std::max(0, timelineBounds.getHeight() - 24),
+                                      std::min(480, std::max(300, timelineBounds.getHeight() / 2)));
     pianoRoll->setBounds(timelineBounds.getX() + 12,
                          timelineBounds.getBottom() - editorHeight - 12,
                          std::max(320, timelineBounds.getWidth() - 24), editorHeight);
     if (pianoRoll->isVisible())
         pianoRoll->toFront(false);
+    if (credentialsPanel.isVisible() && credentialsPanel.isExpanded())
+        credentialsPanel.toFront(false);
 
     updateScrollRanges();
     layoutArrangement();
@@ -614,6 +607,9 @@ void ArrangementView::resized()
 
 bool ArrangementView::keyPressed(const juce::KeyPress& key)
 {
+    if (credentialsPanel.isVisible() && credentialsPanel.isExpanded()
+        && key.getKeyCode() == juce::KeyPress::escapeKey)
+    { credentialsPanel.setExpanded(false); return true; }
     if (audioTakeFinalizing) return true;
     if (audioEngine.isAudioRecording())
     {
@@ -631,6 +627,14 @@ bool ArrangementView::keyPressed(const juce::KeyPress& key)
             || command == ArrangementCommand::cut
             || command == ArrangementCommand::paste))
         return false;
+
+    if (credentialsPanel.isVisible() && credentialsPanel.isExpanded())
+    {
+        // The graph camera must not send editing shortcuts to the hidden arrangement.
+        if (command == ArrangementCommand::togglePlayPause) togglePlayback();
+        else if (command == ArrangementCommand::save) saveProject();
+        return true;
+    }
 
     switch (command)
     {
@@ -904,15 +908,8 @@ void ArrangementView::refreshTransport()
     loop.setEnabled(audioEngine.hasProject());
     addTrackButton.setEnabled(audioEngine.hasProject());
     computerKeyboard.setEnabled(audioEngine.hasProject() && ! exportInProgress);
-    const auto oneAudioClipSelected = selectedClipIds.size() == 1
-        && std::any_of(snapshots.begin(), snapshots.end(), [this](const auto& track)
-        {
-            return std::any_of(track.clips.begin(), track.clips.end(), [this](const auto& clip)
-            {
-                return selectedClipIds.contains(clip.id);
-            });
-        });
-    credentialsButton.setEnabled(oneAudioClipSelected);
+    credentialsButton.setEnabled(true);
+    refreshCredentialsPanel();
     for (std::size_t index = 0; index < std::min(trackHeaders.size(), snapshots.size()); ++index)
     {
         const auto& track = snapshots[index];
@@ -1150,7 +1147,6 @@ void ArrangementView::completeBackgroundExport(ExportResult result)
     setExportInProgress(false);
     if (result.result.failed())
     {
-        lastExport.reset();
         projectMessage = result.stage == ExportStage::cancelled
             ? "Export cancelled" : "Export failed: " + result.result.getErrorMessage();
         refreshTransport();
@@ -1286,83 +1282,116 @@ void ArrangementView::showExportCompletion()
 
 void ArrangementView::showExportCredentials()
 {
-    if (! lastExport.has_value()) return;
-    const auto& result = *lastExport;
-    auto details = "File: " + result.outputFile.getFileName()
-        + "\nClaim generator: " + result.outputProvenance.claimGenerator
-        + "\nStatus: " + provenanceStatusLabel(result.outputProvenance.status)
-        + "\nValidation: " + result.outputProvenance.validationSummary
-        + "\nIngredients: " + juce::String(result.ingredients.size());
-    if (result.midiStemsSigned > 0)
-        details += "\nAutomatically signed MIDI stems: " + juce::String(result.midiStemsSigned);
-    if (result.softBindingEnabled)
-        details += "\nAudio soft binding: Published"
-            "\nAlgorithm: " + juce::String(audioWMarkAlgorithm.data())
-            + "\nBinding: " + result.softBindingPayloadHex
-            + "\nPublication package: " + result.publicationPackage.getFullPathName()
-            + "\nAudioWMark embed: " + juce::String(result.watermarkEmbedSeconds, 3) + " s"
-            + "\nTotal export: " + juce::String(result.totalSeconds, 3) + " s";
-    if (result.fingerprintEnabled)
-        details += "\nFingerprint soft binding: Published"
-            "\nAlgorithm: " + juce::String(audfprintAlgorithm.data())
-            + "\nRegistration: " + result.fingerprintValueHex
-            + "\nFingerprint time: " + juce::String(result.fingerprintSeconds, 3) + " s"
-            + "\nPublication package: " + result.publicationPackage.getFullPathName();
-    if (result.outputProvenance.activeManifest.isNotEmpty())
-        details += "\nManifest: " + result.outputProvenance.activeManifest;
-    for (const auto& ingredient : result.ingredients)
-        details += "\n- " + ingredient.title + ": "
-            + provenanceStatusLabel(ingredient.provenance.status)
-            + midiStemDetails(ingredient.provenance);
-    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
-        "Exported Content Credentials", details, "OK", this);
+    if (lastExport.has_value())
+    {
+        credentialsPanel.setVisible(true);
+        credentialsButton.setToggleState(true, juce::dontSendNotification);
+        credentialsSelectionKey.clear();
+        refreshCredentialsPanel();
+        credentialsPanel.showLastExport();
+        resized();
+    }
+}
+
+void ArrangementView::refreshCredentialsPanel()
+{
+    if (! credentialsPanel.isVisible()) return;
+    juce::String key;
+    for (const auto& id : selectedClipIds) key += id + "|";
+    key += lastExport.has_value() ? lastExport->outputProvenance.activeManifest : "no export";
+    // Snapshots are immutable between arrangement rebuilds; do not parse JSON at 30 Hz.
+    if (key == credentialsSelectionKey) return;
+    credentialsSelectionKey = key;
+    if (lastExport.has_value())
+    {
+        auto available = lastExport->ingredients;
+        std::erase_if(available, [](const auto& item) { return ! item.file.existsAsFile(); });
+        auto view = credentialViewFor(lastExport->outputProvenance, lastExport->outputFile,
+            lastExport->outputFile.getFileName(), available);
+        view.details += "\n\nExport snapshot\nFile: " + lastExport->outputFile.getFullPathName()
+            + "\nAutomatically signed MIDI stems: " + juce::String(lastExport->midiStemsSigned)
+            + "\nTotal export: " + juce::String(lastExport->totalSeconds, 3) + " s";
+        if (lastExport->softBindingEnabled)
+            view.details += "\nWatermark binding: " + lastExport->softBindingPayloadHex;
+        if (lastExport->fingerprintEnabled)
+            view.details += "\nFingerprint registration: " + lastExport->fingerprintValueHex;
+        if (lastExport->publicationPackage != juce::File())
+            view.details += "\nPublication package: " + lastExport->publicationPackage.getFullPathName();
+        credentialsPanel.setLastExport(std::move(view));
+    }
+    else credentialsPanel.setLastExport(std::nullopt);
+    if (selectedClipIds.size() != 1)
+    { credentialsPanel.setEmptySelection(selectedClipIds.size() > 1); return; }
+    const auto& id = *selectedClipIds.begin();
+    for (const auto& track : snapshots)
+    {
+        for (const auto& clip : track.clips)
+            if (clip.id == id)
+            {
+                credentialsPanel.setClip(credentialViewFor(clip.provenance, clip.mediaFile,
+                    clip.mediaFile.getFileName()), track.name);
+                return;
+            }
+        for (const auto& clip : track.midiClips)
+            if (clip.id == id)
+            {
+                credentialsPanel.setClip(makeUnrenderedMidiCredentialView("MIDI clip"), track.name);
+                return;
+            }
+    }
+    credentialsPanel.setEmptySelection(false);
 }
 
 void ArrangementView::showSelectedCredentials()
 {
-    for (const auto& track : snapshots)
-        for (const auto& clip : track.clips)
-            if (selectedClipIds.contains(clip.id))
+    const auto visible = ! credentialsPanel.isVisible();
+    credentialsPanel.setVisible(visible);
+    credentialsButton.setToggleState(visible, juce::dontSendNotification);
+    credentialsSelectionKey.clear();
+    refreshCredentialsPanel();
+    resized();
+}
+
+CredentialViewModel ArrangementView::credentialViewFor(const IngredientInfo& baseline,
+    const juce::File& file, const juce::String& title,
+    const std::vector<ContributingIngredient>& available)
+{
+    if (! credentialsPanel.isDemoTrustEnabled() || ! baseline.c2paPresent)
+        return makeCredentialViewModel(baseline, title, available);
+    const auto key = file.getFullPathName() + "|" + juce::String(file.getSize()) + "|"
+        + juce::String(file.getLastModificationTime().toMilliseconds()) + "|"
+        + demoTrustPublicCertificates;
+    if (const auto found = demoTrustCache.find(key); found != demoTrustCache.end())
+        return makeCredentialViewModel(found->second, title, available);
+    if (! demoTrustRunning && demoTrustPublicCertificates.isNotEmpty() && file.existsAsFile())
+    {
+        if (demoTrustThread.joinable()) demoTrustThread.join();
+        demoTrustRunning = true;
+        demoTrustThread = std::thread([safe = juce::Component::SafePointer<ArrangementView>(this),
+                                      file, key, certificates = demoTrustPublicCertificates]
+        {
+            auto result = ProvenanceService::inspectWithDemoTrust(file, certificates);
+            juce::MessageManager::callAsync([safe, key, result = std::move(result)]() mutable
             {
-                const auto& info = clip.provenance;
-                auto details = "File: " + clip.mediaFile.getFileName()
-                    + "\nContent Credentials: " + (info.c2paPresent ? "Present" : "Not present")
-                    + "\nStatus: " + provenanceStatusLabel(info.status);
-                if (info.activeManifest.isNotEmpty())
-                    details += "\nActive manifest: " + info.activeManifest;
-                if (info.claimGenerator.isNotEmpty())
-                    details += "\nGenerator: " + info.claimGenerator;
-                if (info.signer.isNotEmpty())
-                    details += "\nSigner: " + info.signer;
-                if (info.validationSummary.isNotEmpty())
-                    details += "\nValidation: " + info.validationSummary;
-                const auto document = juce::JSON::parse(info.rawManifestJson);
-                const auto manifest = document["manifests"][juce::Identifier(info.activeManifest)];
-                if (const auto* assertions = manifest["assertions"].getArray())
-                    for (const auto& assertion : *assertions)
-                        if (assertion["label"].toString().startsWith("c2pa.actions"))
-                            if (const auto* actions = assertion["data"]["actions"].getArray())
-                                for (const auto& action : *actions)
-                                {
-                                    details += "\nAction: " + action["action"].toString();
-                                    const auto source = action["parameters"]["c2paseq:midiRender"];
-                                    if (source.getDynamicObject() == nullptr) continue;
-                                    const auto plugin = source["instrument"];
-                                    details += "\nMIDI track: " + source["trackName"].toString()
-                                        + " | " + source["bpm"].toString() + " BPM"
-                                        + "\nClips: " + source["clipCount"].toString()
-                                        + " | Notes: " + source["noteCount"].toString()
-                                        + "\nInstrument: " + plugin["name"].toString()
-                                        + " | " + plugin["vendor"].toString()
-                                        + " | " + plugin["version"].toString()
-                                        + " | " + plugin["format"].toString()
-                                        + "\nMIDI SHA-256: " + source["midiContentSha256"].toString()
-                                        + "\nInstrument state SHA-256: " + plugin["stateSha256"].toString();
-                                }
-                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,
-                    "Content Credentials", details);
-                return;
-            }
+                if (safe == nullptr) return;
+                safe->demoTrustRunning = false;
+                safe->demoTrustCache[key] = std::move(result);
+                safe->credentialsSelectionKey.clear(); safe->refreshCredentialsPanel();
+            });
+        });
+    }
+    auto pending = makeCredentialViewModel(baseline, title, available);
+    pending.badge = "CC ? (Test Mode)";
+    pending.policy = demoTrustPublicCertificates.isEmpty()
+        ? "Test Mode: no public test certificates are available."
+        : ! file.existsAsFile() ? "Test Mode: source file unavailable for local evaluation."
+        : "Test Mode: checking test certificates...";
+    for (size_t index = 0; index < pending.checks.size(); ++index)
+        if (index == 2 || pending.checks[index].state != CredentialCheckState::fail)
+        { pending.checks[index].state = CredentialCheckState::unknown;
+          pending.checks[index].summary = "Test Mode evaluation pending"; }
+    pending.details += "\n\n" + pending.policy;
+    return pending;
 }
 
 void ArrangementView::togglePlayback()
@@ -1637,6 +1666,7 @@ void ArrangementView::importAudioFiles(const juce::Array<juce::File>& files, int
 
 void ArrangementView::rebuildArrangement()
 {
+    credentialsSelectionKey.clear();
     waveformViews.clear();
     midiClipViews.clear();
     trackHeaders.clear();
@@ -1764,7 +1794,9 @@ void ArrangementView::rebuildArrangement()
                 audioEngine.audioFormatManager(), audioEngine.audioThumbnailCache(),
                 clip.mediaFile, clip.name, clip.id, static_cast<int>(trackIndex),
                 clip.startSeconds, clip.sourceOffsetSeconds, clip.lengthSeconds, colour,
-                clip.provenance.status);
+                ! clip.provenance.c2paPresent ? clip.provenance.status
+                    : makeCredentialViewModel(clip.provenance, clip.name).badge.endsWith(juce::String::fromUTF8("\xe2\x9c\x93"))
+                        ? ProvenanceStatus::valid : ProvenanceStatus::presentWithValidationIssue);
             view->setSelected(selectedClipIds.contains(clip.id));
             view->setTimeSelection(timeSelection.startSeconds, timeSelection.endSeconds,
                 timeSelection.isValid()

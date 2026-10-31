@@ -1,4 +1,5 @@
 #include "ProvenanceService.h"
+#include "TestTrust.h"
 
 #include "app/AppInfo.h"
 
@@ -359,7 +360,9 @@ ProvenanceService::ProvenanceService(std::unique_ptr<SigningProvider> provider)
 {
 }
 
-IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
+namespace
+{
+IngredientInfo inspectAsset(const juce::File& asset, bool offline, const juce::String& demoCertificates = {})
 {
     IngredientInfo info;
     if (! asset.existsAsFile())
@@ -371,15 +374,33 @@ IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
 
     try
     {
-        const auto reader = c2pa::Reader::from_asset(
-            makeContext(), std::filesystem::path(asset.getFullPathName().toStdString()));
+        auto settings = juce::JSON::parse(R"({"verify":{"remote_manifest_fetch":false,"ocsp_fetch":false}})");
+        if (demoCertificates.isNotEmpty())
+        {
+            auto* trust = new juce::DynamicObject;
+            trust->setProperty("user_anchors", demoCertificates);
+            settings.getDynamicObject()->setProperty("trust", trust);
+        }
+        const auto context = offline ? std::make_shared<c2pa::Context>(
+            juce::JSON::toString(settings).toStdString()) : makeContext();
+        const auto reader = c2pa::Reader::from_asset(context,
+            std::filesystem::path(asset.getFullPathName().toStdString()));
         if (! reader.has_value())
         {
             info.status = ProvenanceStatus::noCredentials;
             info.validationSummary = "No C2PA manifest is embedded";
             return info;
         }
-        return parseManifest(reader->json());
+        auto parsed = parseManifest(reader->json());
+        parsed.inspectionPolicy = offline
+            ? "Local-only SDK defaults; remote manifests and OCSP fetching disabled; trust anchors not reported"
+            : "SDK defaults; trust anchors not reported";
+        if (demoCertificates.isNotEmpty())
+        {
+            parsed.demoTrustEvaluation = true;
+            parsed.inspectionPolicy = "Test Mode: explicit local test certificates; offline; not production trust";
+        }
+        return parsed;
     }
     catch (const std::exception& error)
     {
@@ -387,6 +408,39 @@ IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
         info.validationSummary = juce::String::fromUTF8(error.what());
         return info;
     }
+}
+
+} // namespace
+
+IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
+{ return inspectAsset(asset, false); }
+
+IngredientInfo ProvenanceService::inspectOffline(const juce::File& asset) const
+{ return inspectAsset(asset, true); }
+
+juce::String ProvenanceService::demoTrustCertificates() const
+{
+    const auto bundle = signingProvider->credentialFile();
+    auto certificates = juce::String(testTrust::rootCertificate);
+    if (bundle.existsAsFile())
+        certificates += "\n" + juce::String(extractPemBlocks(bundle.loadFileAsString(),
+            "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"));
+    return certificates;
+}
+
+IngredientInfo ProvenanceService::inspectWithDemoTrust(const juce::File& asset,
+                                                     const juce::String& certificates)
+{
+    // Accept certificates only; do not permit a caller's PEM key or JSON settings into the policy.
+    const auto publicOnly = juce::String(extractPemBlocks(certificates,
+        "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"));
+    if (publicOnly.isEmpty())
+    {
+        IngredientInfo info; info.status = ProvenanceStatus::unableToValidate;
+        info.validationSummary = "Test Mode needs an explicitly configured public test certificate";
+        return info;
+    }
+    return inspectAsset(asset, true, publicOnly);
 }
 
 bool ProvenanceService::signingConfigured() const

@@ -1,5 +1,50 @@
 # Architecture
 
+## PR 027 inspection presentation boundary
+
+`CredentialViewModel` derives scoped, explicit binding/signature/trust checks and bounded declared
+history from the existing Reader JSON; it does not sign, validate, fetch or infer authorship.
+`CredentialsPanel` is a docked JUCE view with Clip / Last Export / Details, separate from audio
+execution and the signing path. `ArrangementView` supplies snapshots and existing export results.
+Its **Expand Provenance** action fills the workspace with `ProvenanceGraphView`: typed asset/
+ingredient/action nodes become a connected top-down graph, with action metadata retained on
+its actual asset instead of fabricated audio nodes. Layout and camera math are independently
+testable. Pinch/Command-scroll zoom anchors at the pointer; drag/scroll pans, Fit frames visible
+nodes, and branches expand/collapse without changing project or timeline zoom. A side pane
+shows the selected node's declared evidence, with raw data behind Technical Details. The
+expanded page blocks hidden arrangement-editing shortcuts and returns through Back or Escape.
+Referenced ingredient history and local source availability are labelled separately; neither
+implies fresh independent source validation. Unknown is neutral; signature validity is not trust.
+
+Project serialization previously retained summaries only. `ProjectEngine::openProject` rehydrates
+each local media inspection through the same SDK Reader with remote manifests and OCSP fetching
+disabled; panel toggling does not inspect or fetch. This is read-only source IO during project
+loading, not a new project schema, undo action, claim, or continuous file monitor. Import/sign/export
+retain their previous SDK defaults and signing semantics. No official-list or test trust is claimed
+unless separately configured and actually reported; a signing PEM is not a validator trust policy.
+
+The viewer's explicit, default-off **Test Mode** checkbox is that separate local-only policy.
+On opt-in, `ProvenanceService::demoTrustCertificates` returns the pinned public C2PA Conformance
+Test Root (shared with Conformulator) plus public certificate blocks from the configured signing
+bundle, if present; no key material reaches the view. The built-in root does not require Signing
+configuration and is not taken from the asset being validated. See `resources/test-trust/NOTICE.md`
+for the exact upstream source, revision and certificate fingerprint. Background Reader calls
+use `trust.user_anchors` with remote-manifest/OCSP fetching disabled, keeping signature, binding,
+chain and timestamp checks enabled. `allowed_list` and verification bypasses are not used.
+Results and complete public-policy identity are cached separately in the arrangement view;
+they never replace project provenance, normal export validation or global SDK settings. Disabling
+the mode immediately restores baseline inspection. No policy file or trust list is persisted.
+A dashed green trust card requires actual SDK trust success and says PASS (Test Mode), with
+"Trusted in Test Mode - test certificate used" beneath it. Unrelated chains remain untrusted.
+While an opted-in inspection runs, the trust result is Unknown, not a recoloured baseline failure;
+known binding/signature failures remain failures. The graph uses audio symbols, not source
+waveform data or audition playback. Default framing favors readable type; explicit Fit frames nodes.
+Human-readable source pills translate canonical HTTP/HTTPS IPTC digital-source declarations:
+`trainedAlgorithmicMedia` becomes Contains GenAI Media, `digitalCapture` becomes Contains Captured
+Media, `digitalCreation` becomes Contains Non-GenAI digital creation, and
+`compositeWithTrainedAlgorithmicMedia` becomes Contains GenAI edits. Unknown/foreign vocabularies
+remain explicit raw declarations. This is not audio classification or the full Signals rubric.
+
 The system keeps four concerns separate: creative state, audio execution, provenance state, and C2PA serialization. JUCE owns the application shell and custom interface; a narrow adapter shields application code from Tracktion Engine; the provenance service translates the stable internal provenance model into `c2pa-cpp` calls only at its boundary.
 
 The initial dependency and component flow is shown in the repository overview diagram. This document will expand only when implementation makes an architectural claim real.

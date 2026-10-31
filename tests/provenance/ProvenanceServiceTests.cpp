@@ -1,4 +1,6 @@
 #include "provenance/ProvenanceService.h"
+#include "provenance/CredentialViewModel.h"
+#include "provenance/TestTrust.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_cryptography/juce_cryptography.h>
@@ -154,6 +156,9 @@ int main()
         std::make_unique<c2paseq::ConformanceTestSigningProvider>(configuration, false));
     if (service.signingConfigured())
         return fail(3, "isolated signer unexpectedly started configured");
+    if (! service.demoTrustCertificates().contains(c2paseq::testTrust::rootCertificate)
+        || service.demoTrustCertificates().contains("PRIVATE KEY"))
+        return fail(32, "Test Mode lost its built-in public root without Signing configured");
     const auto invalid = root.getChildFile("invalid.pem");
     if (! invalid.replaceWithText("not a PEM")
         || service.configureSigningCredential(invalid).wasOk())
@@ -226,6 +231,11 @@ int main()
         return fail(14, "rendered stem fields did not round-trip or unsigned source changed");
 
     const auto captureSource = root.getChildFile("capture-fixture.wav");
+    const auto midiView = c2paseq::makeCredentialViewModel(validation, "MIDI render");
+    if (! midiView.description.contains("rendered audio")
+        || midiView.checks[0].state != c2paseq::CredentialCheckState::pass
+        || midiView.checks[1].state != c2paseq::CredentialCheckState::pass)
+        return fail(25, "real signed MIDI view did not reflect SDK validation/history");
     if (! writeTone(captureSource, 330.0)) return fail(15, "could not create second WAV fixture");
     const auto captureParameters = juce::JSON::parse(
         R"({"fixture":true,"input":{"name":"Synthetic test input"},"channels":1})");
@@ -243,6 +253,52 @@ int main()
         || actionHistory(validation)[0]["digitalSourceType"].toString()
             != "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture")
         return fail(17, "digitalCapture stem fields did not round-trip");
+
+    const auto captureView = c2paseq::makeCredentialViewModel(relaunched.inspectOffline(captureOutput), "Capture");
+    if (! captureView.description.contains("digital capture")
+        || captureView.checks[0].state != c2paseq::CredentialCheckState::pass
+        || captureView.checks[1].state != c2paseq::CredentialCheckState::pass
+        || ! captureView.policy.contains("Local-only"))
+        return fail(26, "real signed capture view/offline inspection lost evidence");
+
+    const auto certificates = relaunched.demoTrustCertificates();
+    if (certificates.isEmpty() || certificates.contains("PRIVATE KEY"))
+        return fail(27, "demo trust leaked key material or lost certificates");
+    const auto demoInfo = c2paseq::ProvenanceService::inspectWithDemoTrust(captureOutput, certificates);
+    const auto demoView = c2paseq::makeCredentialViewModel(demoInfo, "Demo capture");
+    if (! demoInfo.demoTrustEvaluation || demoView.checks[2].state != c2paseq::CredentialCheckState::pass
+        || demoView.checks[0].state != c2paseq::CredentialCheckState::pass
+        || demoView.checks[1].state != c2paseq::CredentialCheckState::pass
+        || ! demoView.checks[2].summary.contains("test certificate used"))
+        return fail(28, "real demo-anchor validation did not explicitly report local trust: " + demoInfo.validationSummary);
+    if (c2paseq::makeCredentialViewModel(relaunched.inspect(captureOutput), "Default").checks[2].state
+            == c2paseq::CredentialCheckState::pass
+        || c2paseq::ProvenanceService::inspectWithDemoTrust(captureOutput, {}).demoTrustEvaluation)
+        return fail(29, "demo trust contaminated default validation or empty anchors were accepted");
+    const auto unrelatedTestRoot = c2paseq::makeCredentialViewModel(
+        c2paseq::ProvenanceService::inspectWithDemoTrust(captureOutput, c2paseq::testTrust::rootCertificate), "Other test CA");
+    if (unrelatedTestRoot.checks[2].state == c2paseq::CredentialCheckState::pass)
+        return fail(33, "Test Mode trusted an unrelated chain solely because it is a test fixture");
+    juce::MemoryBlock tamperedBytes;
+    if (! captureOutput.loadFileAsData(tamperedBytes)) return fail(30, "could not read tamper fixture");
+    auto* bytes = static_cast<unsigned char*>(tamperedBytes.getData());
+    bool changedAudio = false;
+    for (size_t offset = 12; offset + 8 < tamperedBytes.getSize();)
+    {
+        const auto size = static_cast<size_t>(juce::ByteOrder::littleEndianInt(bytes + offset + 4));
+        if (offset + 8 + size > tamperedBytes.getSize()) break;
+        if (bytes[offset] == 'd' && bytes[offset + 1] == 'a'
+            && bytes[offset + 2] == 't' && bytes[offset + 3] == 'a' && size > 0)
+        { bytes[offset + 8] ^= 1; changedAudio = true; break; }
+        offset += 8 + size + (size & 1);
+    }
+    const auto altered = root.getChildFile("demo-tampered.wav");
+    if (! changedAudio || ! altered.replaceWithData(bytes, tamperedBytes.getSize()))
+        return fail(30, "could not create PCM-only tamper fixture");
+    const auto alteredView = c2paseq::makeCredentialViewModel(
+        c2paseq::ProvenanceService::inspectWithDemoTrust(altered, certificates), "Tampered demo");
+    if (alteredView.checks[0].state != c2paseq::CredentialCheckState::fail)
+        return fail(31, "local demo trust hid a real hard-binding mismatch");
 
     const c2paseq::StemProvenanceDescriptor minimal {
         "Optional-field fixture", "audio/wav", {

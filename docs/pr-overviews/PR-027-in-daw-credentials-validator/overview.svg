@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="610" viewBox="0 0 1440 610">
+<rect width="1440" height="610" fill="#182127"/>
+<g font-family="Helvetica,Arial,sans-serif" fill="#e9eff2">
+<text x="36" y="52" font-size="18" fill="#88c3d3">PR 027 · IMPLEMENTATION OVERVIEW · HUMAN ACCEPTANCE PENDING</text>
+<text x="36" y="100" font-size="36" font-weight="bold">Read the credentials without leaving the arrangement</text>
+<text x="36" y="135" font-size="20">Select a clip → inspect separate checks → explore declared contributions</text>
+<path d="M36 163H1404" stroke="#657780"/>
+<text x="36" y="210" font-size="24" font-weight="bold">1  Selected asset</text>
+<text x="36" y="246" font-size="18">Audio: CC ✓ / CC ? / No CC</text>
+<text x="36" y="275" font-size="18">Project MIDI: CC on export</text>
+<text x="36" y="316" font-size="17" fill="#b4c2ca">No inferred authorship or AI labels</text>
+<path d="M342 258H396m-12-8 12 8-12 8" fill="none" stroke="#88c3d3" stroke-width="2"/>
+<text x="424" y="210" font-size="24" font-weight="bold">2  Independent questions</text>
+<text x="424" y="246" font-size="18">Content binding · Claim signature</text>
+<text x="424" y="275" font-size="18">Signer trust under actual SDK policy</text>
+<text x="424" y="316" font-size="17" fill="#e7bf73">Unknown ≠ pass; signature ≠ trust</text>
+<text x="424" y="344" font-size="16" fill="#b4c2ca">Test Mode: shared test root, not production</text>
+<path d="M794 258H846m-12-8 12 8-12 8" fill="none" stroke="#88c3d3" stroke-width="2"/>
+<text x="874" y="210" font-size="24" font-weight="bold">3  Spatial provenance graph</text>
+<path d="M896 235V282H925M896 264H925" fill="none" stroke="#88c3d3" stroke-width="2"/>
+<text x="940" y="269" font-size="18">Connected ingredient cards + details</text>
+<text x="940" y="298" font-size="18">Pan · Zoom · Fit · Expand branches</text>
+<text x="874" y="335" font-size="17" fill="#b4c2ca">Referenced history ≠ validated source audio</text>
+<text x="36" y="378" font-size="19">4  Last Export: actual mix root and componentOf ingredients, not one flattened origin label</text>
+<path d="M36 407H1404" stroke="#657780"/>
+<g font-size="17" font-weight="bold" fill="#88c3d3"><text x="36" y="445">CURRENT STATE</text><text x="382" y="445">CHANGES IN THIS PR</text><text x="740" y="445">UNCHANGED / OUT OF SCOPE</text><text x="1118" y="445">END RESULT</text></g>
+<g font-size="16"><text x="36" y="478">Existing Reader + modal summaries</text><text x="382" y="478">Two-column dock + Test Mode</text><text x="740" y="478">Signing, actions, audio, soft bindings</text><text x="1118" y="478">Creator-facing inspection</text>
+<text x="36" y="506">Not a separate validator engine</text><text x="382" y="506">Readable graph + audio symbols</text><text x="740" y="506">No production trust infrastructure</text><text x="1118" y="506">Technical evidence one click away</text></g>
+<text x="36" y="566" font-size="16" fill="#b4c2ca">Verification: deterministic parser + real pinned SDK + component renders; live musical/hardware acceptance remains human work.</text>
+</g></svg>

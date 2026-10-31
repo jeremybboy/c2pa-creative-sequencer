@@ -172,6 +172,10 @@ juce::Result ProjectEngine::openProject(const juce::File& projectFolder)
     Project loaded;
     if (auto result = ProjectSerializer::load(newPaths, loaded); result.failed())
         return result;
+    // Project serialization stores a summary, not Reader JSON. Rehydrate once on open,
+    // never when the dock is toggled; no remote-manifest or OCSP fetches are allowed.
+    for (auto& media : loaded.media)
+        media.provenance = provenance.inspectOffline(newPaths.root().getChildFile(media.relativePath));
     project = std::move(loaded);
     paths = std::move(newPaths);
     undoHistory.clear();

@@ -88,6 +88,12 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/plugins/PluginWindow.h
     src/provenance/ProvenanceModel.cpp
     src/provenance/ProvenanceModel.h
+    src/provenance/CredentialViewModel.cpp
+    src/provenance/CredentialViewModel.h
+    src/ui/CredentialsPanel.cpp
+    src/ui/CredentialsPanel.h
+    src/ui/ProvenanceGraph.cpp
+    src/ui/ProvenanceGraph.h
     src/provenance/ProvenanceService.cpp
     src/provenance/ProvenanceService.h
     src/provenance/SigningProvider.cpp
@@ -335,6 +341,21 @@ if(BUILD_TESTING)
         juce::juce_audio_processors juce::juce_gui_basics juce::juce_recommended_config_flags)
     add_test(NAME ui_refinement COMMAND C2PAUIRefinementTests)
 
+    add_executable(C2PACredentialViewerTests
+        tests/ui/CredentialViewerTests.cpp
+        src/ui/ProvenanceGraph.cpp
+        src/provenance/CredentialViewModel.cpp
+        src/ui/CredentialsPanel.cpp
+        src/ui/SequencerLookAndFeel.cpp)
+    target_include_directories(C2PACredentialViewerTests PRIVATE src)
+    target_compile_definitions(C2PACredentialViewerTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+        JUCE_MODAL_LOOPS_PERMITTED=1
+        C2PA_KNOWN_SIGNED_WAV="${c2pa_cpp_source_SOURCE_DIR}/tests/fixtures/sample1_signed.wav")
+    target_link_libraries(C2PACredentialViewerTests PRIVATE
+        juce::juce_gui_basics juce::juce_recommended_config_flags)
+    c2paseq_enable_c2pa(C2PACredentialViewerTests)
+    add_test(NAME credential_viewer COMMAND C2PACredentialViewerTests)
+
     add_executable(C2PAArrangementRulesTests
         tests/engine/ArrangementRulesTests.cpp
         src/engine/ClipOcclusion.cpp
@@ -451,6 +472,7 @@ if(BUILD_TESTING)
 
     add_executable(C2PAProvenanceTests
         tests/provenance/ProvenanceServiceTests.cpp
+        src/provenance/CredentialViewModel.cpp
         src/app/AppInfo.h
         src/provenance/ProvenanceModel.cpp
         src/provenance/ProvenanceModel.h
