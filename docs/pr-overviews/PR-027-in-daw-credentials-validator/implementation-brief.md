@@ -10,6 +10,33 @@ Snapshot: 2026-10-30; implementation and automated checks complete; human accept
 
 ![Implemented scope and boundaries](overview.png)
 
+## UI revision following human feedback — spatial graph
+
+The initial expandable list did not meet the expected navigable-tree experience. PR 027 now
+also includes **Expand Provenance**: a full-workspace connected graph with the selected asset
+above its contributions, pointer-anchored zoom, pan, Fit, Expand All, per-branch folding,
+and node selection linked to a separate human-readable detail pane. Back to Arrangement or
+Escape restores the compact dock; Space remains transport, but hidden arrangement-editing
+shortcuts are blocked. The graph has its own camera, not musical/timeline zoom.
+
+The graph reads the same typed, bounded declared-history model. Linked ingredient manifests
+describe their actual ingredient cards rather than inventing extra audio assets; actions remain
+metadata on their asset. Declared source types and instrument names are shown when recorded,
+without audio/filename inference. Referenced-but-unembedded credentials and unavailable source
+audio remain distinct; no graph edge or outline is a validation badge.
+
+Actual component render using a four-contribution **synthetic layout fixture** (not trust,
+microphone, Surge XT execution, or end-to-end musical evidence):
+
+![Expanded spatial provenance graph](graph-1440.png)
+
+[Minimum-width graph](graph-1040.png) · [Graph of a real signed MIDI mix](graph-real-mix.png)
+
+Camera anchoring/clamps, fit containment, non-overlapping layout, action/asset separation,
+embedded-history versus source availability, branch expansion/collapse, selected-node details
+and expanded/return layout callbacks are covered by the viewer tests. Native trackpad gestures,
+playback continuity and the user's mixed song remain manual acceptance.
+
 ## Goal
 
 Select project audio and understand its reported binding, signature, trust and declared history
@@ -21,8 +48,8 @@ not a new validation engine, a file-drop verifier, or a new signing workflow.
 | Layer | Scope |
 | --- | --- |
 | Previous UI | Compact clip badges and modal validation/export summaries. |
-| User-visible | Collapsible bottom dock; Clip / Last Export / Details; independent check cards; expandable declared history; neutral missing/unavailable states. |
-| Model | Deterministic `CredentialViewModel`, separate from authoring, signing and audio execution. |
+| User-visible | Compact validation dock plus expandable, navigable spatial graph; Clip / Last Export / Details; independent checks and neutral missing/unavailable states. |
+| Model | Deterministic typed `CredentialViewModel`, separate graph layout/camera and selection, independent of authoring, signing and audio execution. |
 | Inspection | Existing Reader; default inspection path unchanged. Project reopening rehydrates Reader JSON from local project media with remote manifest and OCSP fetching disabled. |
 | Persistence / undo | No project schema change, panel persistence or undo action; dock state and last completed export are session-local. Saving retains the existing summary fields only. |
 | Audio / realtime | Dock callbacks have no audio/transport/signing calls; piano-roll overlay is constrained to the remaining timeline. Audible uninterrupted playback still needs human acceptance. |

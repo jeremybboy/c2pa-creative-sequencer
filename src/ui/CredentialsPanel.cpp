@@ -55,7 +55,9 @@ private:
 }
 CredentialsPanel::CredentialsPanel()
 {
-    for (auto* button : { &clipTab, &exportTab, &detailsTab, &fullDetails, &close }) addAndMakeVisible(button);
+    for (auto* button : { &clipTab, &exportTab, &detailsTab, &fullDetails, &close, &expand }) addAndMakeVisible(button);
+    addChildComponent(graph);
+    expand.onClick = [this] { setExpanded(! expanded); };
     for (auto& button : checkDetails)
     { button.setButtonText("Details"); addAndMakeVisible(button); button.setWantsKeyboardFocus(false); }
     clipTab.onClick = [this] { exportSelected = false; detailsSelected = false; updateContent(); };
@@ -98,6 +100,13 @@ void CredentialsPanel::setEmptySelection(bool multiple)
 void CredentialsPanel::setLastExport(std::optional<CredentialViewModel> view)
 { lastExport = std::move(view); if (exportSelected) updateContent(); }
 void CredentialsPanel::showLastExport() { exportSelected = true; detailsSelected = false; updateContent(); }
+void CredentialsPanel::setExpanded(bool enabled)
+{
+    expanded = enabled; detailsSelected = false;
+    expand.setButtonText(expanded ? "Back to Arrangement" : "Expand Provenance");
+    updateContent();
+    if (onExpansionChanged) onExpansionChanged();
+}
 void CredentialsPanel::showDetails(const juce::String& text)
 { detailsSelected = true; details.setText(text, false); resized(); repaint(); }
 void CredentialsPanel::updateContent()
@@ -106,6 +115,7 @@ void CredentialsPanel::updateContent()
     const auto& current = exportSelected ? lastExport : clip;
     if (current)
     {
+        graph.setHistory(current->history);
         root = std::make_unique<HistoryItem>(current->history,
             [this](const auto& text) { showDetails(text); });
         tree.setRootItem(root.get()); root->setOpen(true);
@@ -120,23 +130,26 @@ void CredentialsPanel::resized()
     clipTab.setBounds(top.removeFromLeft(62).reduced(2));
     exportTab.setBounds(top.removeFromLeft(102).reduced(2));
     detailsTab.setBounds(top.removeFromLeft(74).reduced(2));
+    expand.setBounds(top.removeFromLeft(166).reduced(2));
     close.setBounds(top.removeFromRight(64).reduced(2));
     area.removeFromTop(10);
     details.setBounds(area); details.setVisible(detailsSelected);
+    const auto& current = exportSelected ? lastExport : clip;
+    expand.setEnabled(current.has_value() || expanded);
+    graph.setBounds(area); graph.setVisible(expanded && ! detailsSelected && current.has_value());
     summaryBounds = area.removeFromLeft(juce::jlimit(220, 300, getWidth() / 4));
     area.removeFromLeft(12);
     checksBounds = area.removeFromLeft(juce::jlimit(300, 360, getWidth() / 3));
     area.removeFromLeft(12); historyBounds = area;
     tree.setBounds(historyBounds.withTrimmedTop(24));
-    tree.setVisible(! detailsSelected);
-    const auto& current = exportSelected ? lastExport : clip;
+    tree.setVisible(! detailsSelected && ! expanded);
     fullDetails.setBounds(summaryBounds.withTrimmedTop(summaryBounds.getHeight() - 30).withWidth(164));
-    fullDetails.setVisible(current.has_value() && ! detailsSelected);
+    fullDetails.setVisible(current.has_value() && ! detailsSelected && ! expanded);
     for (int i = 0; i < 3; ++i)
     {
         auto bounds = checksBounds.withTrimmedTop(24 + i * 50).withHeight(46);
         checkDetails[static_cast<size_t>(i)].setBounds(bounds.removeFromRight(62).reduced(2, 8));
-        checkDetails[static_cast<size_t>(i)].setVisible(current.has_value() && ! detailsSelected);
+        checkDetails[static_cast<size_t>(i)].setVisible(current.has_value() && ! detailsSelected && ! expanded);
     }
     clipTab.setToggleState(! exportSelected && ! detailsSelected, juce::dontSendNotification);
     exportTab.setToggleState(exportSelected && ! detailsSelected, juce::dontSendNotification);
@@ -147,7 +160,7 @@ void CredentialsPanel::paint(juce::Graphics& g)
     g.fillAll(juce::Colour(0xff1a2026));
     g.setColour(juce::Colour(0xff73838d)); g.drawHorizontalLine(0, 0, static_cast<float>(getWidth()));
     g.setFont(juce::FontOptions(15, juce::Font::bold)); g.setColour(juce::Colours::white);
-    g.drawText("Content Credentials", 14, 8, 180, 28, juce::Justification::centredLeft);
+    g.drawText(expanded ? "Provenance Explorer" : "Content Credentials", 14, 8, 180, 28, juce::Justification::centredLeft);
     if (detailsSelected) return;
     const auto& current = exportSelected ? lastExport : clip;
     if (! current)
@@ -157,6 +170,7 @@ void CredentialsPanel::paint(juce::Graphics& g)
                    getLocalBounds().reduced(20).withTrimmedTop(40), juce::Justification::centred);
         return;
     }
+    if (expanded) return;
     const auto& view = *current;
     auto summary = summaryBounds;
     const auto icon = summary.removeFromTop(22).removeFromLeft(18).toFloat().reduced(2);

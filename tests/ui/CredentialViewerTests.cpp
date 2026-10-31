@@ -93,6 +93,47 @@ int main(int argc, char** argv)
     IngredientInfo failed; failed.status = ProvenanceStatus::unableToValidate;
     require(makeCredentialViewModel(failed, "Missing").badge == "CC ?", "inspection failure misrepresented as absence");
 
+    // A spatial graph of real contributions, not one asset node per declared action.
+    const auto graph = makeProvenanceGraph(view.history);
+    require(graph.children.size() == 3 && graph.actions.size() == 1, "graph fabricated action assets");
+    require(graph.children[1].generator == "External Music Tool"
+        && graph.children[1].sources.joinIntoString(" ").contains("algorithmic media"), "graph lost declared external origin");
+    require(graph.children[1].hasManifest && graph.children[1].sourceUnavailable,
+            "embedded manifest conflated with available source audio");
+    require(! graph.children[2].hasManifest && graph.children[2].hasManifestReference, "reference treated as embedded credentials");
+    const auto placed = layoutProvenanceGraph(graph, {});
+    for (size_t i = 0; i < placed.size(); ++i)
+        for (size_t j = i + 1; j < placed.size(); ++j)
+            require(! placed[i].bounds.intersects(placed[j].bounds), "graph nodes overlap");
+    const auto folded = layoutProvenanceGraph(graph, { "root" });
+    require(folded.size() == 1 && folded.front().parent == -1, "root collapse lost root or retained branches");
+    ProvenanceGraphCamera camera; camera.translation = { 27, -45 };
+    const juce::Point<float> anchor(234, 161);
+    const auto before = camera.toWorld(anchor); camera.zoomAt(1.8f, anchor);
+    require(camera.toScreen(before).getDistanceFrom(anchor) < 0.01f, "graph zoom anchor drifted");
+    camera.zoomAt(1.0e20f, anchor); require(camera.zoom == 4.0f, "zoom upper bound failed");
+    camera.zoomAt(1.0e-20f, anchor); require(camera.zoom == 0.08f, "zoom lower bound failed");
+    juce::Rectangle<float> whole;
+    for (const auto& item : placed) whole = whole.getUnion(item.bounds);
+    const juce::Rectangle<float> viewport(0, 0, 1000, 600);
+    camera.fit(whole, viewport);
+    require(viewport.expanded(0.1f).contains({ camera.toScreen(whole.getTopLeft()),
+                                            camera.toScreen(whole.getBottomRight()) }), "fit-to-view misses nodes");
+    ProvenanceGraphView explorer; explorer.setSize(1440, 650); explorer.setHistory(view.history);
+    explorer.expandAll(); const auto expandedCount = explorer.placements().size();
+    explorer.toggleBranch("root"); require(explorer.placements().size() == 1, "interactive collapse failed");
+    explorer.toggleBranch("root"); require(explorer.placements().size() == expandedCount, "interactive expansion failed");
+    explorer.selectNode(explorer.placements()[1].node->id);
+    bool matchedDetail = false;
+    for (auto* child : explorer.getChildren())
+        if (auto* editor = dynamic_cast<juce::TextEditor*>(child)) matchedDetail |= editor->getText().contains("Unsigned sample");
+    require(matchedDetail, "node selection did not update corresponding details");
+
+    CredentialsPanel dock; dock.setSize(1040, 300); dock.setClip(view, "Track");
+    int expansionChanges = 0; dock.onExpansionChanged = [&] { ++expansionChanges; };
+    dock.setExpanded(true); require(dock.isExpanded() && expansionChanges == 1, "expanded workspace did not request layout");
+    dock.setExpanded(false); require(! dock.isExpanded() && expansionChanges == 2, "return to arrangement failed");
+
     // The actual pinned Reader is authoritative for field names and real-file evidence.
     const auto reader = c2pa::Reader::from_asset(std::make_shared<c2pa::Context>(),
                                                std::filesystem::path(C2PA_KNOWN_SIGNED_WAV));
@@ -118,6 +159,49 @@ int main(int argc, char** argv)
         output.setPosition(0); require(output.truncate().wasOk(), "asset render reset failed");
         require(juce::PNGImageFormat().writeImageToStream(panel.createComponentSnapshot(panel.getLocalBounds()), output), "asset render failed");
         panel.setLookAndFeel(nullptr);
+        panel.setLookAndFeel(&look); panel.setSize(1440, 760); panel.setExpanded(true);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+        juce::FileOutputStream expandedOutput { juce::File(argv[3]).getSiblingFile("graph-real-mix.png") };
+        expandedOutput.setPosition(0); expandedOutput.truncate();
+        require(juce::PNGImageFormat().writeImageToStream(panel.createComponentSnapshot(panel.getLocalBounds()), expandedOutput), "expanded asset render failed");
+        panel.setLookAndFeel(nullptr);
+    }
+    if (argc == 3 && juce::String(argv[1]) == "--render")
+    {
+        require(juce::File(argv[2]).createDirectory().wasOk(), "graph render directory failed");
+        // Four-contribution layout fixture; not an execution or production-trust claim.
+        auto mixDocument = juce::JSON::parse(good.rawManifestJson);
+        auto& mix = *mixDocument["manifests"].getDynamicObject();
+        auto rootManifest = mix.getProperty("root");
+        rootManifest.getDynamicObject()->setProperty("ingredients", juce::JSON::parse(R"([
+            {"title":"Drums - unsigned sample","relationship":"componentOf"},
+            {"title":"Generated loop","relationship":"componentOf","active_manifest":"external"},
+            {"title":"Vocal - mic recording","relationship":"componentOf","active_manifest":"capture"},
+            {"title":"MIDI instrument stem","relationship":"componentOf","active_manifest":"synth"}])"));
+        auto captureManifest = juce::JSON::parse(good.rawManifestJson)["manifests"]["root"];
+        captureManifest.getDynamicObject()->removeProperty("ingredients");
+        mix.setProperty("capture", captureManifest);
+        mix.setProperty("synth", juce::JSON::parse(R"json({"claim_generator":"C2PA Creative Sequencer",
+          "assertions":[{"label":"c2pa.actions.v2","data":{"actions":[{"action":"c2pa.rendered",
+          "digitalSourceType":"http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation",
+          "parameters":{"c2paseq:midiRender":{"instrument":{"name":"Surge XT (fixture)"}}}}]}}]})json"));
+        rootManifest["assertions"][0]["data"]["actions"][0].getDynamicObject()->setProperty("digitalSourceType",
+            "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation");
+        auto graphInfo = good; graphInfo.rawManifestJson = juce::JSON::toString(mixDocument);
+        const auto graphView = makeCredentialViewModel(graphInfo, "Final mixed song.wav");
+        for (const auto width : { 1040, 1440 })
+        {
+            SequencerLookAndFeel look; CredentialsPanel panel; panel.setLookAndFeel(&look);
+            panel.setVisible(true); panel.setSize(width, 760); panel.setLastExport(graphView); panel.showLastExport();
+            panel.setExpanded(true);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+            for (auto* child : panel.getChildren())
+                require(! child->isVisible() || panel.getLocalBounds().contains(child->getBounds()), "expanded UI outside bounds");
+            const auto target = juce::File(argv[2]).getChildFile("graph-" + juce::String(width) + ".png");
+            juce::FileOutputStream output(target); output.setPosition(0); output.truncate();
+            require(juce::PNGImageFormat().writeImageToStream(panel.createComponentSnapshot(panel.getLocalBounds()), output), "graph render failed");
+            panel.setLookAndFeel(nullptr);
+        }
     }
     if (argc == 3 && juce::String(argv[1]) == "--render")
     {

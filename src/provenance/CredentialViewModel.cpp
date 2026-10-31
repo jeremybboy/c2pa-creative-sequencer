@@ -51,7 +51,11 @@ void addActions(CredentialHistoryNode& node, const juce::var& manifest)
                             break;
                         }
                         node.children.push_back({ actionText(action), "Declared action",
-                                                  juce::JSON::toString(action, true), {} });
+                                                  juce::JSON::toString(action, true), {}, CredentialNodeKind::action });
+                        const auto source = action["digitalSourceType"].toString();
+                        if (source.isNotEmpty()) node.declaredSources.addIfNotAlreadyThere(source);
+                        const auto instrument = action["parameters"]["c2paseq:midiRender"]["instrument"]["name"].toString();
+                        if (instrument.isNotEmpty()) node.instrument = instrument;
                     }
 }
 CredentialHistoryNode history(const juce::var& document, const juce::String& id,
@@ -65,6 +69,8 @@ CredentialHistoryNode history(const juce::var& document, const juce::String& id,
     const auto manifest = property(document["manifests"], id);
     node.details = "Manifest: " + id + "\n\n" + juce::JSON::toString(manifest, true);
     const auto tool = generator(manifest);
+    node.generator = tool;
+    node.embeddedManifest = true;
     if (tool.isNotEmpty()) node.subtitle = "Claim generator: " + tool;
     addActions(node, manifest);
     if (const auto* ingredients = manifest["ingredients"].getArray())
@@ -74,23 +80,30 @@ CredentialHistoryNode history(const juce::var& document, const juce::String& id,
             const auto linkedId = ingredient["active_manifest"].toString();
             const auto name = ingredient["title"].toString();
             CredentialHistoryNode child { name.isNotEmpty() ? name : "Untitled ingredient", {}, {}, {} };
+            child.kind = CredentialNodeKind::ingredient;
+            child.relationship = ingredient["relationship"].toString();
+            child.referencedManifest = linkedId;
             const auto found = std::find_if(local.begin(), local.end(), [&](const auto& item)
             {
                 // Never match identity by filename alone.
                 return linkedId.isNotEmpty() && item.provenance.activeManifest == linkedId;
             });
             const bool available = found != local.end();
+            child.sourceAvailable = available;
             child.subtitle = available ? "Local source; cached inspection (not revalidated here)"
                 : "Referenced ingredient; source unavailable for independent validation";
             if (linkedId.isEmpty())
+            {
+                child.credentialsAbsent = true;
                 child.subtitle = "No Content Credentials in declared ingredient; source not independently validated";
+            }
             child.details = "Relationship: " + ingredient["relationship"].toString()
                 + "\n" + child.subtitle + "\n\n" + juce::JSON::toString(ingredient, true);
             if (linkedId.isNotEmpty() && property(document["manifests"], linkedId).isObject())
                 child.children.push_back(history(document, linkedId, "Available earlier provenance",
                                                  local, path, depth + 1, budget));
             else if (linkedId.isNotEmpty())
-                child.children.push_back({ "Earlier manifest not embedded", linkedId, {}, {} });
+                child.children.push_back({ "Earlier manifest not embedded", linkedId, {}, {}, CredentialNodeKind::notice });
             node.children.push_back(std::move(child));
             --budget;
         }
@@ -124,6 +137,7 @@ CredentialViewModel makeCredentialViewModel(const IngredientInfo& info, const ju
         { check.state = unable ? CredentialCheckState::unknown : CredentialCheckState::notApplicable;
           check.summary = unable ? "Unable to determine" : "Not applicable - no manifest"; }
         view.history = { title, unable ? "Inspection unavailable" : "No embedded provenance history", {}, {} };
+        view.history.credentialsAbsent = ! unable;
         view.details += "\n" + view.description;
         return view;
     }

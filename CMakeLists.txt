@@ -92,6 +92,8 @@ target_sources(C2PACreativeSequencer PRIVATE
     src/provenance/CredentialViewModel.h
     src/ui/CredentialsPanel.cpp
     src/ui/CredentialsPanel.h
+    src/ui/ProvenanceGraph.cpp
+    src/ui/ProvenanceGraph.h
     src/provenance/ProvenanceService.cpp
     src/provenance/ProvenanceService.h
     src/provenance/SigningProvider.cpp
@@ -341,6 +343,7 @@ if(BUILD_TESTING)
 
     add_executable(C2PACredentialViewerTests
         tests/ui/CredentialViewerTests.cpp
+        src/ui/ProvenanceGraph.cpp
         src/provenance/CredentialViewModel.cpp
         src/ui/CredentialsPanel.cpp
         src/ui/SequencerLookAndFeel.cpp)

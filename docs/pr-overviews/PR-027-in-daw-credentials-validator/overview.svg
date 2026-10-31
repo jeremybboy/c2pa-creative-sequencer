@@ -15,10 +15,10 @@
 <text x="424" y="275" font-size="18">Signer trust under actual SDK policy</text>
 <text x="424" y="316" font-size="17" fill="#e7bf73">Unknown ≠ pass; signature ≠ trust</text>
 <path d="M794 258H846m-12-8 12 8-12 8" fill="none" stroke="#88c3d3" stroke-width="2"/>
-<text x="874" y="210" font-size="24" font-weight="bold">3  Recorded history</text>
+<text x="874" y="210" font-size="24" font-weight="bold">3  Spatial provenance graph</text>
 <path d="M896 235V282H925M896 264H925" fill="none" stroke="#88c3d3" stroke-width="2"/>
-<text x="940" y="269" font-size="18">Actions and embedded ingredients</text>
-<text x="940" y="298" font-size="18">Full Details for source evidence</text>
+<text x="940" y="269" font-size="18">Connected ingredient cards + details</text>
+<text x="940" y="298" font-size="18">Pan · Zoom · Fit · Expand branches</text>
 <text x="874" y="335" font-size="17" fill="#b4c2ca">Referenced history ≠ validated source audio</text>
 <text x="36" y="378" font-size="19">4  Last Export: actual mix root and componentOf ingredients, not one flattened origin label</text>
 <path d="M36 407H1404" stroke="#657780"/>

@@ -469,6 +469,7 @@ ArrangementView::ArrangementView(AudioEngine& engine,
     addAndMakeVisible(*timelineSurface);
     addChildComponent(*pianoRoll);
     addChildComponent(credentialsPanel);
+    credentialsPanel.onExpansionChanged = [this] { resized(); };
     credentialsPanel.onClose = [this]
     {
         credentialsPanel.setVisible(false);
@@ -531,7 +532,8 @@ void ArrangementView::resized()
     auto top = area.removeFromTop(topBarHeight).reduced(6, 5);
     status.setBounds(area.removeFromBottom(statusHeight).reduced(8, 1));
     if (credentialsPanel.isVisible())
-        credentialsPanel.setBounds(area.removeFromBottom(std::min(300, area.getHeight() / 2)));
+        credentialsPanel.setBounds(credentialsPanel.isExpanded() ? area
+            : area.removeFromBottom(std::min(300, area.getHeight() / 2)));
     browser.setBounds(area.removeFromLeft(browserWidth));
 
     auto placeButton = [&](juce::Component& component, int width)
@@ -589,6 +591,8 @@ void ArrangementView::resized()
                          std::max(320, timelineBounds.getWidth() - 24), editorHeight);
     if (pianoRoll->isVisible())
         pianoRoll->toFront(false);
+    if (credentialsPanel.isVisible() && credentialsPanel.isExpanded())
+        credentialsPanel.toFront(false);
 
     updateScrollRanges();
     layoutArrangement();
@@ -596,6 +600,9 @@ void ArrangementView::resized()
 
 bool ArrangementView::keyPressed(const juce::KeyPress& key)
 {
+    if (credentialsPanel.isVisible() && credentialsPanel.isExpanded()
+        && key.getKeyCode() == juce::KeyPress::escapeKey)
+    { credentialsPanel.setExpanded(false); return true; }
     if (audioTakeFinalizing) return true;
     if (audioEngine.isAudioRecording())
     {
@@ -613,6 +620,14 @@ bool ArrangementView::keyPressed(const juce::KeyPress& key)
             || command == ArrangementCommand::cut
             || command == ArrangementCommand::paste))
         return false;
+
+    if (credentialsPanel.isVisible() && credentialsPanel.isExpanded())
+    {
+        // The graph camera must not send editing shortcuts to the hidden arrangement.
+        if (command == ArrangementCommand::togglePlayPause) togglePlayback();
+        else if (command == ArrangementCommand::save) saveProject();
+        return true;
+    }
 
     switch (command)
     {

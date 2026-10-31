@@ -6,6 +6,13 @@
 history from the existing Reader JSON; it does not sign, validate, fetch or infer authorship.
 `CredentialsPanel` is a docked JUCE view with Clip / Last Export / Details, separate from audio
 execution and the signing path. `ArrangementView` supplies snapshots and existing export results.
+Its **Expand Provenance** action fills the workspace with `ProvenanceGraphView`: typed asset/
+ingredient/action nodes become a connected top-down graph, with action metadata retained on
+its actual asset instead of fabricated audio nodes. Layout and camera math are independently
+testable. Pinch/Command-scroll zoom anchors at the pointer; drag/scroll pans, Fit frames visible
+nodes, and branches expand/collapse without changing project or timeline zoom. A side pane
+shows the selected node's declared evidence, with raw data behind Technical Details. The
+expanded page blocks hidden arrangement-editing shortcuts and returns through Back or Escape.
 Referenced ingredient history and local source availability are labelled separately; neither
 implies fresh independent source validation. Unknown is neutral; signature validity is not trust.
 

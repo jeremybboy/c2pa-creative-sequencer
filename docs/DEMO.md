@@ -168,6 +168,15 @@ are not application UI. Green requires explicitly reported success, not simply a
 7. Perform normal signed Export and choose **View Credentials**, or open **Last Export**.
    The completed exported WAV is the root; its real ingredients branch beneath it. Expand the
    generated loop, recorded take and rendered MIDI histories where those manifests are embedded.
+   Press **Expand Provenance** to fill the workspace with a connected spatial graph, not just
+   a disclosure list. Drag/scroll to pan; pinch or Command-scroll to zoom around the pointer;
+   use +/- and **Fit** to navigate. Click any ingredient card and check the corresponding
+   declared tool, source type and actions appear in the right-hand detail pane.
+   Click the card's expansion line, double-click, or use **Expand / Collapse Branch** to reveal
+   earlier contributions. **Expand All** reveals the available graph; unavailable audio stays
+   distinct from embedded history. **Back to Arrangement** or Escape restores the dock.
+   While exploring, Delete/Command-D must not edit the hidden timeline; Space still controls
+   transport. Check the graph at minimum window size, with long filenames and several ingredients.
 8. Referenced/unavailable sources must not have green validation badges. Local files are labelled
    as cached inspections, not freshly revalidated files. Embedded history is not independent
    validation of ingredient audio. Unsigned ingredients remain neutral, not failures.

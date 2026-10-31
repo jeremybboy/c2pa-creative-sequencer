@@ -10,10 +10,19 @@ struct CredentialCheck
     CredentialCheckState state = CredentialCheckState::unknown;
     juce::String title, summary, evidence;
 };
+enum class CredentialNodeKind { asset, ingredient, action, notice };
 struct CredentialHistoryNode
 {
     juce::String title, subtitle, details;
     std::vector<CredentialHistoryNode> children;
+    CredentialNodeKind kind = CredentialNodeKind::asset;
+    juce::String generator, relationship;
+    juce::StringArray declaredSources;
+    bool embeddedManifest = false;
+    bool sourceAvailable = false;
+    juce::String referencedManifest;
+    juce::String instrument;
+    bool credentialsAbsent = false;
 };
 // Presentation only: no SDK calls, signing, IO, inferred authorship or trust configuration.
 struct CredentialViewModel
