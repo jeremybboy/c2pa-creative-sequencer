@@ -1,5 +1,6 @@
 #include "provenance/ProvenanceService.h"
 #include "provenance/CredentialViewModel.h"
+#include "provenance/TestTrust.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_cryptography/juce_cryptography.h>
@@ -155,6 +156,9 @@ int main()
         std::make_unique<c2paseq::ConformanceTestSigningProvider>(configuration, false));
     if (service.signingConfigured())
         return fail(3, "isolated signer unexpectedly started configured");
+    if (! service.demoTrustCertificates().contains(c2paseq::testTrust::rootCertificate)
+        || service.demoTrustCertificates().contains("PRIVATE KEY"))
+        return fail(32, "Test Mode lost its built-in public root without Signing configured");
     const auto invalid = root.getChildFile("invalid.pem");
     if (! invalid.replaceWithText("not a PEM")
         || service.configureSigningCredential(invalid).wasOk())
@@ -265,12 +269,16 @@ int main()
     if (! demoInfo.demoTrustEvaluation || demoView.checks[2].state != c2paseq::CredentialCheckState::pass
         || demoView.checks[0].state != c2paseq::CredentialCheckState::pass
         || demoView.checks[1].state != c2paseq::CredentialCheckState::pass
-        || ! demoView.checks[2].summary.contains("DEMO/TEST"))
+        || ! demoView.checks[2].summary.contains("test certificate used"))
         return fail(28, "real demo-anchor validation did not explicitly report local trust: " + demoInfo.validationSummary);
     if (c2paseq::makeCredentialViewModel(relaunched.inspect(captureOutput), "Default").checks[2].state
             == c2paseq::CredentialCheckState::pass
         || c2paseq::ProvenanceService::inspectWithDemoTrust(captureOutput, {}).demoTrustEvaluation)
         return fail(29, "demo trust contaminated default validation or empty anchors were accepted");
+    const auto unrelatedTestRoot = c2paseq::makeCredentialViewModel(
+        c2paseq::ProvenanceService::inspectWithDemoTrust(captureOutput, c2paseq::testTrust::rootCertificate), "Other test CA");
+    if (unrelatedTestRoot.checks[2].state == c2paseq::CredentialCheckState::pass)
+        return fail(33, "Test Mode trusted an unrelated chain solely because it is a test fixture");
     juce::MemoryBlock tamperedBytes;
     if (! captureOutput.loadFileAsData(tamperedBytes)) return fail(30, "could not read tamper fixture");
     auto* bytes = static_cast<unsigned char*>(tamperedBytes.getData());

@@ -1,4 +1,5 @@
 #include "provenance/CredentialViewModel.h"
+#include "provenance/TestTrust.h"
 #include "ui/CredentialsPanel.h"
 #include "ui/SequencerLookAndFeel.h"
 #include <juce_graphics/juce_graphics.h>
@@ -71,7 +72,7 @@ int main(int argc, char** argv)
     demoFixture.inspectionPolicy = "DEMO/TEST fixture policy; not production trust";
     const auto demoView = makeCredentialViewModel(demoFixture, "Demo trust.wav");
     require(demoView.demoTrust && demoView.checks[2].state == CredentialCheckState::pass
-        && demoView.checks[2].summary.contains("DEMO/TEST") && demoView.badge.contains("demo"), "demo trust label missing");
+        && demoView.checks[2].summary.contains("test certificate used") && demoView.badge.contains("Test Mode"), "test mode label missing");
     auto demoFailure = fixture("signingCredential.trusted", "claimSignature.mismatch");
     demoFailure.demoTrustEvaluation = true;
     require(makeCredentialViewModel(demoFailure, "Bad demo").checks[1].state == CredentialCheckState::fail,
@@ -106,7 +107,16 @@ int main(int argc, char** argv)
     const auto graph = makeProvenanceGraph(view.history);
     require(graph.children.size() == 3 && graph.actions.size() == 1, "graph fabricated action assets");
     require(graph.children[1].generator == "External Music Tool"
-        && graph.children[1].sources.joinIntoString(" ").contains("algorithmic media"), "graph lost declared external origin");
+        && graph.children[1].sources.contains("Contains GenAI Media"), "graph lost declared external origin");
+    require(graph.sources.contains("Contains Captured Media"), "capture label not clear");
+    auto labelNode = view.history;
+    labelNode.children.clear();
+    labelNode.declaredSources = { "https://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation" };
+    require(makeProvenanceGraph(labelNode).sources.contains("Contains Non-GenAI digital creation"), "digital creation label missing");
+    labelNode.declaredSources = { "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia" };
+    require(makeProvenanceGraph(labelNode).sources.contains("Contains GenAI edits"), "GenAI edit overstated as full generation");
+    labelNode.declaredSources = { "https://example.test/trainedAlgorithmicMedia" };
+    require(! makeProvenanceGraph(labelNode).sources.contains("Contains GenAI Media"), "foreign vocabulary inferred as IPTC GenAI");
     require(graph.children[1].hasManifest && graph.children[1].sourceUnavailable,
             "embedded manifest conflated with available source audio");
     require(! graph.children[2].hasManifest && graph.children[2].hasManifestReference, "reference treated as embedded credentials");
@@ -159,29 +169,32 @@ int main(int argc, char** argv)
     require(real.checks[2].state != CredentialCheckState::pass, "default SDK fixture unexpectedly asserted trusted");
 
     if ((argc == 4 && juce::String(argv[1]) == "--render-asset")
+        || (argc == 4 && juce::String(argv[1]) == "--render-test-asset")
         || (argc == 5 && juce::String(argv[1]) == "--render-demo-asset"))
     {
-        const bool demo = argc == 5;
+        const bool builtInTest = juce::String(argv[1]) == "--render-test-asset";
+        const bool demo = argc == 5 || builtInTest;
         auto context = std::make_shared<c2pa::Context>();
         if (demo)
         {
-            const auto publicCertificates = juce::File(argv[3]).loadFileAsString();
+            const auto publicCertificates = builtInTest ? juce::String(testTrust::rootCertificate)
+                : juce::File(argv[3]).loadFileAsString();
             require(! publicCertificates.contains("PRIVATE KEY"), "demo render accepts public certificates only");
             auto settings = juce::JSON::parse(R"({"verify":{"remote_manifest_fetch":false,"ocsp_fetch":false},"trust":{}})");
             settings["trust"].getDynamicObject()->setProperty("user_anchors", publicCertificates);
             context = std::make_shared<c2pa::Context>(juce::JSON::toString(settings).toStdString());
         }
-        const auto outputPath = juce::File(argv[demo ? 4 : 3]);
+        const auto outputPath = juce::File(argv[argc == 5 ? 4 : 3]);
         const auto assetReader = c2pa::Reader::from_asset(context,
                                                         std::filesystem::path(argv[2]));
         require(assetReader.has_value(), "render asset has no manifest");
         IngredientInfo data; data.c2paPresent = true; data.rawManifestJson = assetReader->json();
         data.demoTrustEvaluation = demo;
-        if (demo) data.inspectionPolicy = "DEMO/TEST ONLY: configured public chain; offline; not production or official-list trust";
+        if (demo) data.inspectionPolicy = "Test Mode: explicit local test certificates; offline; not production trust";
         auto model = makeCredentialViewModel(data, juce::File(argv[2]).getFileName());
         if (demo) require(model.checks[2].state == CredentialCheckState::pass, "actual demo render did not report trusted");
         SequencerLookAndFeel look; CredentialsPanel panel; panel.setLookAndFeel(&look);
-        panel.setVisible(true); panel.setSize(1440, 320); panel.setLastExport(model); panel.showLastExport();
+        panel.setVisible(true); panel.setSize(1440, 320); panel.setClip(model, "Local signed asset");
         panel.setDemoTrustEnabled(demo);
         juce::MessageManager::getInstance()->runDispatchLoopUntil(80);
         juce::FileOutputStream output { outputPath };

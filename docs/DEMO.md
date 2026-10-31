@@ -162,12 +162,16 @@ are not application UI. Green requires explicitly reported success, not simply a
    attributed to the external tool. No AI label is inferred from its filename or waveform.
 4. Select the finalized microphone take: inspect declared `digitalCapture` and the actual tool.
    Signature success and untrusted signer may coexist. No performer identity is inferred.
-   With Signing configured, enable the small **Demo trust** checkbox and allow the local
+   Enable the small **Test Mode** checkbox and allow the local
    background evaluation to finish. A successful SDK trust result is dashed green and labelled
-   **DEMO / TEST**; its policy must explicitly say local, not production/official-list trust.
+   **PASS (Test Mode)** with **Trusted in Test Mode - test certificate used** beneath it.
+   Files signed under the shared C2PA Conformance Test Root must work without configuring Signing;
+   any configured signer's public certificates are also included as explicit local test anchors.
+   The graph should show **Contains GenAI Media**, **Contains Captured Media** or
+   **Contains Non-GenAI digital creation** only where the manifest declares the corresponding type.
    Turn it off: the default result must return. It starts off again after restarting the app.
-   Toggle off/on after replacing Signing. No configured certificate or missing source means
-   no positive demo result; a tampered hard binding or invalid signature must still fail.
+   Toggle off/on after replacing Signing. A missing source or unrelated certificate chain means
+   no positive test result; a tampered hard binding or invalid signature must still fail.
 5. Select project MIDI: **CC on export** is informational, not a validated signed WAV.
    Select a credentialed rendered stem and inspect the declared render action/instrument parameters.
 6. Select multiple clips: expect a request to select one asset, not a guessed clip. Select another
@@ -199,8 +203,9 @@ are not application UI. Green requires explicitly reported success, not simply a
 
 The dock shows cached results and a session-local Last Export, not continuous file surveillance.
 Default SDK trust anchors are not reported; no official C2PA trust-list validation is claimed.
-Loading a signing credential alone does not enable validator trust: Demo trust is a separate
-explicit opt-in Reader policy using only its public certificates, never a production assertion.
+Loading a signing credential alone does not enable validator trust: Test Mode is a separate
+explicit opt-in Reader policy using the pinned C2PA Conformance Test Root and any configured
+signer's public certificates, never a production assertion.
 Real hardware, the user's external generator asset and audible uninterrupted playback remain
 manual acceptance; offscreen fixtures do not prove those behaviors.
 

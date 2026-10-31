@@ -9,10 +9,14 @@ constexpr float cardWidth = 360, cardHeight = 240, siblingGap = 48, levelPitch =
 juce::String sourceLabel(const juce::String& source)
 {
     const auto term = source.fromLastOccurrenceOf("/", false, false);
-    if (term == "digitalCapture") return "Captured audio (declared)";
-    if (term == "digitalCreation") return "Digital creation (declared)";
-    if (term == "trainedAlgorithmicMedia") return "Trained algorithmic media (declared)";
-    // Preserve other vocabulary terms verbatim; do not invent a GenAI classifier.
+    if (source != "http://cv.iptc.org/newscodes/digitalsourcetype/" + term
+        && source != "https://cv.iptc.org/newscodes/digitalsourcetype/" + term)
+        return "Declared source: " + source;
+    if (term == "digitalCapture") return "Contains Captured Media";
+    if (term == "digitalCreation") return "Contains Non-GenAI digital creation";
+    if (term == "trainedAlgorithmicMedia") return "Contains GenAI Media";
+    if (term == "compositeWithTrainedAlgorithmicMedia") return "Contains GenAI edits";
+    // Translate explicit IPTC declarations only; never infer from filenames or audio.
     return "Declared source: " + term;
 }
 ProvenanceGraphNode convert(const CredentialHistoryNode& value, const juce::String& id)
@@ -51,7 +55,8 @@ ProvenanceGraphNode convert(const CredentialHistoryNode& value, const juce::Stri
     if (node.instrument.isNotEmpty()) node.details += "\nInstrument: " + node.instrument;
     if (! node.sources.isEmpty()) node.details += "\n\n" + node.sources.joinIntoString("\n");
     if (! node.actions.isEmpty()) node.details += "\n\nDeclared actions / tools:\n" + node.actions.joinIntoString("\n");
-    node.details += "\n\nEmbedded history is not independent validation of the ingredient audio.";
+    node.details += "\n\nSource labels describe manifest declarations, not audio detection."
+        "\nEmbedded history is not independent validation of the ingredient audio.";
     return node;
 }
 float span(const ProvenanceGraphNode& node, const std::set<juce::String>& collapsed)

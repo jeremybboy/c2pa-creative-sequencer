@@ -32,7 +32,7 @@ CredentialsPanel::CredentialsPanel()
     addChildComponent(graph);
     addAndMakeVisible(demoTrust);
     demoTrust.setColour(juce::ToggleButton::textColourId, juce::Colour(0xffc4ced6));
-    demoTrust.setTooltip("Session-only, offline demo trust using public certificates from your configured signer. Not production or official-list trust; exports are unchanged. Toggle off/on after changing Signing.");
+    demoTrust.setTooltip("Session-only Test Mode: trust the built-in C2PA Conformance Test Root and public certificates from your configured signer. Test results are labelled; exports are unchanged. Toggle off/on after changing Signing.");
     demoTrust.onClick = [this] { if (onDemoTrustChanged) onDemoTrustChanged(demoTrust.getToggleState()); };
     expand.onClick = [this] { setExpanded(! expanded); };
     for (auto& button : checkDetails)
@@ -177,7 +177,7 @@ void CredentialsPanel::paint(juce::Graphics& g)
         card.removeFromRight(66); card.reduce(8, 3);
         g.setColour(checkColour(check.state)); g.setFont(juce::FontOptions(14, juce::Font::bold));
         g.drawText(check.title + " - " + (i == 2 && view.demoTrust && check.state == CredentialCheckState::pass
-            ? "DEMO / TEST" : checkName(check.state)), card.removeFromTop(18), juce::Justification::centredLeft);
+            ? "PASS (Test Mode)" : checkName(check.state)), card.removeFromTop(18), juce::Justification::centredLeft);
         g.setFont(juce::FontOptions(13));
         g.drawText(check.summary, card, juce::Justification::centredLeft);
     }

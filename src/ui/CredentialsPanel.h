@@ -34,7 +34,7 @@ private:
     juce::TextButton fullDetails { "View Full Details" }, close { "Close" };
     juce::TextButton expand { "Expand Provenance" };
     ProvenanceGraphView graph;
-    juce::ToggleButton demoTrust { "Demo trust" };
+    juce::ToggleButton demoTrust { "Test Mode" };
     std::array<juce::TextButton, 3> checkDetails;
     juce::TextEditor details;
     juce::Rectangle<int> summaryBounds, checksBounds;

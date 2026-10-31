@@ -1,4 +1,5 @@
 #include "ProvenanceService.h"
+#include "TestTrust.h"
 
 #include "app/AppInfo.h"
 
@@ -397,7 +398,7 @@ IngredientInfo inspectAsset(const juce::File& asset, bool offline, const juce::S
         if (demoCertificates.isNotEmpty())
         {
             parsed.demoTrustEvaluation = true;
-            parsed.inspectionPolicy = "DEMO/TEST ONLY: configured signer's public certificates added as local trust anchors; offline; not production or official-list trust";
+            parsed.inspectionPolicy = "Test Mode: explicit local test certificates; offline; not production trust";
         }
         return parsed;
     }
@@ -420,9 +421,11 @@ IngredientInfo ProvenanceService::inspectOffline(const juce::File& asset) const
 juce::String ProvenanceService::demoTrustCertificates() const
 {
     const auto bundle = signingProvider->credentialFile();
-    if (! bundle.existsAsFile()) return {};
-    return juce::String(extractPemBlocks(bundle.loadFileAsString(),
-        "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"));
+    auto certificates = juce::String(testTrust::rootCertificate);
+    if (bundle.existsAsFile())
+        certificates += "\n" + juce::String(extractPemBlocks(bundle.loadFileAsString(),
+            "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----"));
+    return certificates;
 }
 
 IngredientInfo ProvenanceService::inspectWithDemoTrust(const juce::File& asset,
@@ -434,7 +437,7 @@ IngredientInfo ProvenanceService::inspectWithDemoTrust(const juce::File& asset,
     if (publicOnly.isEmpty())
     {
         IngredientInfo info; info.status = ProvenanceStatus::unableToValidate;
-        info.validationSummary = "Demo trust needs the public certificate chain from a configured signer";
+        info.validationSummary = "Test Mode needs an explicitly configured public test certificate";
         return info;
     }
     return inspectAsset(asset, true, publicOnly);

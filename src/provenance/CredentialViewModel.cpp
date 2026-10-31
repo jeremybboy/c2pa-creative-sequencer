@@ -220,9 +220,9 @@ CredentialViewModel makeCredentialViewModel(const IngredientInfo& info, const ju
     if (view.demoTrust)
     {
         if (view.checks[2].state == CredentialCheckState::pass)
-            view.checks[2].summary = "Trusted locally - DEMO/TEST only";
+            view.checks[2].summary = "Trusted in Test Mode - test certificate used";
         // A local demo evaluation must never look like a normal production-trust badge.
-        view.badge += " (demo)";
+        view.badge += " (Test Mode)";
     }
     int budget = 128;
     if (informational) view.policy += " Additional informational statuses reported - see Details.";

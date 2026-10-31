@@ -1381,15 +1381,15 @@ CredentialViewModel ArrangementView::credentialViewFor(const IngredientInfo& bas
         });
     }
     auto pending = makeCredentialViewModel(baseline, title, available);
-    pending.badge = "CC ? (demo pending)";
+    pending.badge = "CC ? (Test Mode)";
     pending.policy = demoTrustPublicCertificates.isEmpty()
-        ? "Demo trust: configure Signing first. No local trust result is available."
-        : ! file.existsAsFile() ? "Demo trust: source file unavailable for local evaluation."
-        : "Demo trust: checking locally in the background; exports and default trust are unchanged.";
+        ? "Test Mode: no public test certificates are available."
+        : ! file.existsAsFile() ? "Test Mode: source file unavailable for local evaluation."
+        : "Test Mode: checking test certificates...";
     for (size_t index = 0; index < pending.checks.size(); ++index)
         if (index == 2 || pending.checks[index].state != CredentialCheckState::fail)
         { pending.checks[index].state = CredentialCheckState::unknown;
-          pending.checks[index].summary = "Local demo evaluation pending"; }
+          pending.checks[index].summary = "Test Mode evaluation pending"; }
     pending.details += "\n\n" + pending.policy;
     return pending;
 }
