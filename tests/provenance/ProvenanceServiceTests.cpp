@@ -1,4 +1,5 @@
 #include "provenance/ProvenanceService.h"
+#include "provenance/CredentialViewModel.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_cryptography/juce_cryptography.h>
@@ -226,6 +227,11 @@ int main()
         return fail(14, "rendered stem fields did not round-trip or unsigned source changed");
 
     const auto captureSource = root.getChildFile("capture-fixture.wav");
+    const auto midiView = c2paseq::makeCredentialViewModel(validation, "MIDI render");
+    if (! midiView.description.contains("rendered audio")
+        || midiView.checks[0].state != c2paseq::CredentialCheckState::pass
+        || midiView.checks[1].state != c2paseq::CredentialCheckState::pass)
+        return fail(25, "real signed MIDI view did not reflect SDK validation/history");
     if (! writeTone(captureSource, 330.0)) return fail(15, "could not create second WAV fixture");
     const auto captureParameters = juce::JSON::parse(
         R"({"fixture":true,"input":{"name":"Synthetic test input"},"channels":1})");
@@ -243,6 +249,13 @@ int main()
         || actionHistory(validation)[0]["digitalSourceType"].toString()
             != "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture")
         return fail(17, "digitalCapture stem fields did not round-trip");
+
+    const auto captureView = c2paseq::makeCredentialViewModel(relaunched.inspectOffline(captureOutput), "Capture");
+    if (! captureView.description.contains("digital capture")
+        || captureView.checks[0].state != c2paseq::CredentialCheckState::pass
+        || captureView.checks[1].state != c2paseq::CredentialCheckState::pass
+        || ! captureView.policy.contains("Local-only"))
+        return fail(26, "real signed capture view/offline inspection lost evidence");
 
     const c2paseq::StemProvenanceDescriptor minimal {
         "Optional-field fixture", "audio/wav", {

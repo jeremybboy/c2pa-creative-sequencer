@@ -13,6 +13,7 @@
 #include "ui/PianoRollView.h"
 #include "ui/SequencerLookAndFeel.h"
 #include "ui/WaveformView.h"
+#include "ui/CredentialsPanel.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -85,6 +86,7 @@ private:
     void showExportCompletion();
     void showExportCredentials();
     void showSelectedCredentials();
+    void refreshCredentialsPanel();
     void togglePlayback();
     void stopSampleAudition(const juce::String& message = {});
     void scanPlugins();
@@ -147,6 +149,8 @@ private:
     PlacesBrowser browser;
     std::unique_ptr<TimelineSurface> timelineSurface;
     std::unique_ptr<PianoRollView> pianoRoll;
+    CredentialsPanel credentialsPanel;
+    juce::String credentialsSelectionKey;
     juce::Component headerContainer;
     juce::ScrollBar horizontalScroll { false };
     juce::ScrollBar verticalScroll { true };

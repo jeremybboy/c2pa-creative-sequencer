@@ -1,5 +1,21 @@
 # Architecture
 
+## PR 027 inspection presentation boundary
+
+`CredentialViewModel` derives scoped, explicit binding/signature/trust checks and bounded declared
+history from the existing Reader JSON; it does not sign, validate, fetch or infer authorship.
+`CredentialsPanel` is a docked JUCE view with Clip / Last Export / Details, separate from audio
+execution and the signing path. `ArrangementView` supplies snapshots and existing export results.
+Referenced ingredient history and local source availability are labelled separately; neither
+implies fresh independent source validation. Unknown is neutral; signature validity is not trust.
+
+Project serialization previously retained summaries only. `ProjectEngine::openProject` rehydrates
+each local media inspection through the same SDK Reader with remote manifests and OCSP fetching
+disabled; panel toggling does not inspect or fetch. This is read-only source IO during project
+loading, not a new project schema, undo action, claim, or continuous file monitor. Import/sign/export
+retain their previous SDK defaults and signing semantics. No official-list or test trust is claimed
+unless separately configured and actually reported; a signing PEM is not a validator trust policy.
+
 The system keeps four concerns separate: creative state, audio execution, provenance state, and C2PA serialization. JUCE owns the application shell and custom interface; a narrow adapter shields application code from Tracktion Engine; the provenance service translates the stable internal provenance model into `c2pa-cpp` calls only at its boundary.
 
 The initial dependency and component flow is shown in the repository overview diagram. This document will expand only when implementation makes an architectural claim real.

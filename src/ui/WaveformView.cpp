@@ -72,8 +72,8 @@ void WaveformView::paint(juce::Graphics& graphics)
     graphics.setFont(juce::FontOptions(12.0f, juce::Font::bold));
     auto titleBounds = getLocalBounds().reduced(8).removeFromTop(16);
     auto badgeBounds = titleBounds.removeFromRight(48);
-    const auto badgeText = provenance == ProvenanceStatus::valid ? "CC"
-        : provenance == ProvenanceStatus::noCredentials ? "No CC" : "CC ?";
+    const auto badgeText = provenance == ProvenanceStatus::valid ? juce::String::fromUTF8("CC \xe2\x9c\x93")
+        : provenance == ProvenanceStatus::noCredentials ? juce::String("No CC") : juce::String("CC ?");
     graphics.setColour(provenance == ProvenanceStatus::valid
         ? juce::Colour::fromRGB(112, 226, 154) : juce::Colour::fromRGB(235, 224, 203));
     graphics.drawFittedText(badgeText, badgeBounds, juce::Justification::centredRight, 1);

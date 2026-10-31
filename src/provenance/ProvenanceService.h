@@ -15,6 +15,8 @@ public:
     explicit ProvenanceService(std::unique_ptr<SigningProvider> provider = {});
 
     [[nodiscard]] IngredientInfo inspect(const juce::File& asset) const;
+    // Same Reader, local-only inspection when rehydrating a reopened project's view data.
+    [[nodiscard]] IngredientInfo inspectOffline(const juce::File& asset) const;
     [[nodiscard]] bool signingConfigured() const;
     [[nodiscard]] juce::String signingConfigurationError() const;
     [[nodiscard]] juce::String signingCredentialStatus() const;

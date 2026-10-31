@@ -16,7 +16,7 @@ credential is a test identity only, not production signing material.
 
 1. Create or open a project and import two ordinary WAV files.
 2. Arrange audible clips on two tracks, including one same-track overlap and initial silence.
-3. Import the known C2PA WAV fixture and confirm the clip automatically shows **CC**; click **Credentials** for details.
+3. Import the known C2PA WAV fixture and confirm **CC ?** when its signer is untrusted under SDK defaults; click **Credentials** for the separate results (binding/signature can pass while trust does not).
 4. Confirm ordinary sources say **No Content Credentials** and the signed source exposes an active manifest.
 5. Play from time zero and confirm timing, same-track priority, and cross-track mixing.
 6. Mute a track or delete one clip so its media must not contribute to export.
@@ -145,6 +145,44 @@ and listening acceptance still need this manual check.
 No intermediate WAVs are added to the project. Manual bounce remains useful when you want to
 keep a separate signed stem. Releases/reverb beyond MIDI clip ends are not automatically added;
 extend the clip beforehand. Automated tests use the test synth, not proof of your Surge XT preset.
+
+## PR 027 Content Credentials viewer acceptance
+
+Use the Release app in `build-pr027` from `codex/in-daw-credentials-validator`.
+The reference mockup is design intent, not an executed validation report; its blue annotations
+are not application UI. Green requires explicitly reported success, not simply a readable manifest.
+
+1. Open the mixed project, start playback, select one Audio clip and toggle **Credentials**.
+   Check the bottom dock opens/closes without stopping music or adding an undo/save mutation.
+   Resize to the minimum window; toolbar labels, dock tabs and the three checks must remain usable.
+2. Select an unsigned conventional sample: **No CC**, three N/A checks, no invented history.
+   No CC must not be described as bad audio or a trust failure.
+3. Select a signed imported/generative loop. Check its actual claim generator/actions remain
+   attributed to the external tool. No AI label is inferred from its filename or waveform.
+4. Select the finalized microphone take: inspect declared `digitalCapture` and the actual tool.
+   Signature success and untrusted signer may coexist. No performer identity is inferred.
+5. Select project MIDI: **CC on export** is informational, not a validated signed WAV.
+   Select a credentialed rendered stem and inspect the declared render action/instrument parameters.
+6. Select multiple clips: expect a request to select one asset, not a guessed clip. Select another
+   single clip and check the dock updates. Open/close the piano roll with the dock visible.
+7. Perform normal signed Export and choose **View Credentials**, or open **Last Export**.
+   The completed exported WAV is the root; its real ingredients branch beneath it. Expand the
+   generated loop, recorded take and rendered MIDI histories where those manifests are embedded.
+8. Referenced/unavailable sources must not have green validation badges. Local files are labelled
+   as cached inspections, not freshly revalidated files. Embedded history is not independent
+   validation of ingredient audio. Unsigned ingredients remain neutral, not failures.
+9. Open each check's **Details**, click history nodes, and use **View Full Details**.
+   Compare active manifest, signer, status codes, actions, source types, parameters, relationships
+   and raw JSON with the simplified view. Check copy/scroll works and returns via Clip/Last Export.
+10. Save/reopen and repeat inspection; this refreshes local source Reader data on project opening,
+    not panel opening, without remote-manifest/OCSP fetching. Repeat recording, manual MIDI bounce,
+    automatic MIDI signed Export and both recovery paths. No signing template or threshold changed.
+
+The dock shows cached results and a session-local Last Export, not continuous file surveillance.
+Default SDK trust anchors are not reported; the viewer does not claim official C2PA trust-list
+validation or that loading a test signing credential establishes test/custom validator trust.
+Real hardware, the user's external generator asset and audible uninterrupted playback remain
+manual acceptance; offscreen fixtures do not prove those behaviors.
 
 ## PR 026 arrangement editing and UI refinement acceptance
 

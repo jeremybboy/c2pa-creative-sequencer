@@ -359,7 +359,9 @@ ProvenanceService::ProvenanceService(std::unique_ptr<SigningProvider> provider)
 {
 }
 
-IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
+namespace
+{
+IngredientInfo inspectAsset(const juce::File& asset, bool offline)
 {
     IngredientInfo info;
     if (! asset.existsAsFile())
@@ -372,14 +374,20 @@ IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
     try
     {
         const auto reader = c2pa::Reader::from_asset(
-            makeContext(), std::filesystem::path(asset.getFullPathName().toStdString()));
+            offline ? std::make_shared<c2pa::Context>(
+                R"({"verify":{"remote_manifest_fetch":false,"ocsp_fetch":false}})") : makeContext(),
+            std::filesystem::path(asset.getFullPathName().toStdString()));
         if (! reader.has_value())
         {
             info.status = ProvenanceStatus::noCredentials;
             info.validationSummary = "No C2PA manifest is embedded";
             return info;
         }
-        return parseManifest(reader->json());
+        auto parsed = parseManifest(reader->json());
+        parsed.inspectionPolicy = offline
+            ? "Local-only SDK defaults; remote manifests and OCSP fetching disabled; trust anchors not reported"
+            : "SDK defaults; trust anchors not reported";
+        return parsed;
     }
     catch (const std::exception& error)
     {
@@ -388,6 +396,14 @@ IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
         return info;
     }
 }
+
+} // namespace
+
+IngredientInfo ProvenanceService::inspect(const juce::File& asset) const
+{ return inspectAsset(asset, false); }
+
+IngredientInfo ProvenanceService::inspectOffline(const juce::File& asset) const
+{ return inspectAsset(asset, true); }
 
 bool ProvenanceService::signingConfigured() const
 {
